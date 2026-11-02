@@ -1,0 +1,39 @@
+schema: spec-driven
+
+context: |
+  Language: en
+  All artifacts must be written in en.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Product: Whatnot Live Assistant (package name whatnot-assistant). The Chrome extension is named Whatnot Assistant. A separate iPhone userscript only repeats Copy link on one live show.
+  It runs on a Whatnot show the user already has open. It does not bid, enter giveaways, store a Whatnot login, or invent certification numbers.
+  API keys stay in chrome.storage.local on that browser profile.
+
+  Stack: TypeScript, Vite, @crxjs/vite-plugin, Vitest, happy-dom. Node.js 22 or newer.
+  Source is src/. The manifest is manifest.config.ts and the version comes from package.json.
+  npm run build typechecks, then rewrites the committed dist/ and dist-userscript/ folders.
+
+  Git: every change uses its own branch and a pull request into main. Do not commit directly to main.
+  Do not commit tokens, .env files, or a Chrome profile.
+
+rules:
+  proposal:
+    - Name the branch and state that the change lands through a pull request into main
+    - State what is out of scope
+  specs:
+    - Describe observable behavior. Each requirement body uses SHALL or MUST
+    - Each requirement has at least one Scenario with WHEN and THEN
+    - Do not specify bids, giveaway entries, or invented certification numbers
+  tasks:
+    - Include creating a branch and opening a pull request into main
+    - Leave tokens, .env files, and Chrome profiles out of the commit
+  design:
+    - Name the modules the change touches
+operations:
+  apply:
+    guidance:
+      - Work on a feature branch. Do not commit directly to main
+      - Open a pull request into main when the tasks are done
+  archive:
+    guidance:
+      - Archive only after the pull request into main is merged

@@ -13,27 +13,34 @@ context: |
   Source is src/. The manifest is manifest.config.ts and the version comes from package.json.
   npm run build typechecks, then rewrites the committed dist/ and dist-userscript/ folders.
 
-  Git: every change uses its own branch and a pull request into main. Do not commit directly to main.
+  Git: when the user says deploy, push, or commit, run this chain every time. Create a branch, commit, push, open a detailed pull request into main, and merge it with `gh pr merge --admin`. Do not commit directly to main.
   Do not commit tokens, .env files, or a Chrome profile.
+
+  Repository: whatnot-live-assistant. This directory is the source of truth.
+  The earlier folder Whatnot-screen-tap-shares is retired. Do not read or edit it for this product.
+
+  Auctions can close in a few seconds. Correctness comes before speed: show a value only when a sale, melt, or a labeled estimate supports it. Show the listing quick read first and fill the rest in after. Bound every network or model call with a timeout. When a change affects an answer, say how it changes time-to-answer and accuracy.
+
+  A change to extension code, assets, or config bumps the version in package.json once per change (patch unless a feature was requested). manifest.config.ts and the userscript build read that version. There is no extension-v2 directory and no separate v1 manifest. Mention the new version in the summary.
 
 rules:
   proposal:
-    - Name the branch and state that the change lands through a pull request into main
+    - Name the branch and state that the change lands through a pull request into main, then merges with gh pr merge --admin
     - State what is out of scope
   specs:
     - Describe observable behavior. Each requirement body uses SHALL or MUST
     - Each requirement has at least one Scenario with WHEN and THEN
     - Do not specify bids, giveaway entries, or invented certification numbers
   tasks:
-    - Include creating a branch and opening a pull request into main
+    - Include the ship chain: branch, commit, push, a detailed pull request into main, and gh pr merge --admin
     - Leave tokens, .env files, and Chrome profiles out of the commit
   design:
     - Name the modules the change touches
 operations:
   apply:
     guidance:
-      - Work on a feature branch. Do not commit directly to main
-      - Open a pull request into main when the tasks are done
+      - When the user says deploy, push, or commit, run the ship chain every time: branch, commit, push, detailed pull request into main, merge with gh pr merge --admin
+      - Do not commit directly to main
   archive:
     guidance:
       - Archive only after the pull request into main is merged

@@ -1,0 +1,28 @@
+---
+description: When the user says deploy, push, or commit, run the full ship chain
+alwaysApply: true
+---
+
+# Ship chain
+
+When the user says deploy, push, or commit, run this chain every time:
+
+1. Create a branch. Do not commit directly to main.
+2. Commit the change. Leave tokens, .env files, and Chrome profiles out.
+3. Push the branch.
+4. Open a detailed pull request into main.
+5. Merge with `gh pr merge --admin`.
+
+```bash
+git push -u origin HEAD
+gh pr create --title "the pr title" --body "$(cat <<'EOF'
+## Summary
+- What changed and why
+
+## Test plan
+- [ ] How to verify
+
+EOF
+)"
+gh pr merge --admin --merge
+```

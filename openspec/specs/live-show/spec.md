@@ -58,6 +58,10 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 - **WHEN** every buy-it-now price is at or above melt and the watched sale median, and none match the watchlist or a key date
 - **THEN** the shop note says there are no deals
 
+#### Scenario: Fractional ounce
+- **WHEN** a buy-it-now title says 1/1000 oz gold and the price is above that fraction of spot
+- **THEN** it is not listed as under melt
+
 ### Requirement: Seller note on the live show
 The Live panel SHALL show the current host's saved profile numbers, the user's private note, and a one-time warning when that seller is blocked. Profile numbers SHALL be fetched at most about once a day and SHALL NOT be the bulk-follow target by themselves.
 

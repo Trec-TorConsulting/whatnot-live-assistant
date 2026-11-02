@@ -104,6 +104,7 @@ describe('quickRead', () => {
   it('reads generic bullion weights, including fractions', () => {
     expect(quickRead('1/10 oz Gold Panda 2024').read).toMatchObject({ metal: 'gold', oz: 0.1 });
     expect(quickRead('Silver round 2 oz').read).toMatchObject({ metal: 'silver', oz: 2 });
+    expect(quickRead('1/1000 oz 24K Gold 250th Anniversary Collectiable Gold Card').read).toMatchObject({ metal: 'gold', oz: 0.001 });
   });
 
   it('reads 1 oz world bullion but leaves other sizes to the generic match', () => {

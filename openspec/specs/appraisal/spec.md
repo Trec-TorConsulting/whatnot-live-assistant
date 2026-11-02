@@ -48,6 +48,10 @@ Before the frame returns, a listing line with a known series or an explicit ounc
 - **WHEN** the listing has no year-or-ounce metal line
 - **THEN** there is no quick melt
 
+#### Scenario: Fractional ounce
+- **WHEN** the listing states a fraction of an ounce, such as 1/1000 oz gold
+- **THEN** melt uses that fraction of an ounce, not the number after the slash
+
 ### Requirement: Automatic appraisal and flea scan
 Automatic appraisal SHALL run for each new auction only when that overlay preference is on. A flea-market table scan SHALL run only when scan is on, which defaults to on for a flea show type. The scan SHALL list other visible items and SHALL NOT change the main max bid.
 

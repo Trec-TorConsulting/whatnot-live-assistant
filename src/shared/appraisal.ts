@@ -50,12 +50,10 @@ export const SPOT_SYMBOLS: Record<Metal, string> = { silver: 'XAG', gold: 'XAU',
 
 export const isMetal = (m: unknown): m is Metal => typeof m === 'string' && m in SPOT_SYMBOLS;
 
-const FRACTIONS: Record<string, number> = { '1/2': 0.5, '1/4': 0.25, '1/10': 0.1, '1/20': 0.05 };
-
 // Only the 1 oz issue: fractional, multi-ounce, gram, and kilo sizes fall through to the generic
 // "N oz metal" match below or to the model.
 const oneOz = (re: RegExp) =>
-  new RegExp(`^(?!.*(?:\\b1\\/(?:2|4|10|20)\\b|\\b(?:[2-9]|\\d{2,})\\s*(?:troy\\s*)?oz\\b|\\bkilo|\\d\\s*(?:g|grams?)\\b)).*(?:${re.source})`, 'i');
+  new RegExp(`^(?!.*(?:\\b\\d+\\/\\d+\\b|\\b(?:[2-9]|\\d{2,})\\s*(?:troy\\s*)?oz\\b|\\bkilo|\\d\\s*(?:g|grams?)\\b)).*(?:${re.source})`, 'i');
 
 const QUICK_PATTERNS: [RegExp, string, string][] = [
   [/\bmorgan\b/i, 'morgan_dollar', 'Morgan Dollar'],
@@ -84,8 +82,22 @@ const QUICK_PATTERNS: [RegExp, string, string][] = [
   [oneOz(/^(?!.*\bgold\b).*\blibertad\b/), 'libertad_silver_1oz', '1 oz Silver Libertad'],
 ];
 
-const BULLION_RE =
-  /(\d+(?:\.\d+)?|1\/2|1\/4|1\/10|1\/20)\s*(?:troy\s*)?oz\b[^\n]*?\b(silver|gold|platinum|palladium)\b|\b(silver|gold|platinum|palladium)\b[^\n]*?(\d+(?:\.\d+)?|1\/2|1\/4|1\/10|1\/20)\s*(?:troy\s*)?oz\b/i;
+// The fraction comes first, and the lookbehind keeps "1/1000 oz" from being read as 1000 oz.
+const OZ_AMOUNT = String.raw`(?<![\d/.])(\d+\/\d+|\d+(?:\.\d+)?)`;
+const BULLION_RE = new RegExp(
+  `${OZ_AMOUNT}\\s*(?:troy\\s*)?oz\\b[^\\n]*?\\b(silver|gold|platinum|palladium)\\b|\\b(silver|gold|platinum|palladium)\\b[^\\n]*?${OZ_AMOUNT}\\s*(?:troy\\s*)?oz\\b`,
+  'i',
+);
+
+const ozOf = (amount: string): number | null => {
+  const frac = /^(\d+)\/(\d+)$/.exec(amount);
+  if (frac) {
+    const den = Number(frac[2]);
+    return den > 0 ? Number(frac[1]) / den : null;
+  }
+  const n = Number(amount);
+  return n > 0 ? n : null;
+};
 const QTY_RE = /\b(?:qty\.?|x)\s*(\d{1,3})\b|\b(\d{1,3})\s*(?:x|pcs|coins)\b/i;
 const SLAB_RE =
   /\b(PCGS|NGC|ANACS|ICG|CACG)\b[^\n]{0,12}?\b(MS|PR|PF|SP|AU|XF|EF|VF|VG|AG|F|G)\s*-?\s*(\d{1,2})\s*(\+)?\s*((?:DM)?PL|DCAM|CAM|RD|RB|BN)?/i;
@@ -128,8 +140,10 @@ export const quickRead = (pageText: string): QuickResult => {
       const m = line.match(BULLION_RE);
       if (!m) continue;
       const amount = (m[1] ?? m[4])!;
+      const parsed = ozOf(amount);
+      if (parsed === null) continue;
       metal = (m[2] ?? m[3])!.toLowerCase() as Metal;
-      oz = FRACTIONS[amount] ?? parseFloat(amount);
+      oz = parsed;
       name = `${amount} oz ${metal}`;
     }
     const slab = line.match(SLAB_RE);

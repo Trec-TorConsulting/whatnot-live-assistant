@@ -97,6 +97,14 @@ describe('scoreShop', () => {
     expect(score([lot], { meltOf: (item) => shopMelt(item, spot) })[0]).toMatchObject({ kind: 'steal', price: 400 });
   });
 
+  it('treats 1/1000 oz as a thousandth of an ounce', () => {
+    const spot = { gold: 3964.2, silver: null };
+    const title = '1/1000 oz 24K Gold 250th Anniversary Collectiable Gold Card';
+    expect(shopMelt(list(title, 36), spot)).toBeCloseTo(3.9642);
+    expect(score([list(title, 36)], { meltOf: (item) => shopMelt(item, spot) })).toEqual([]);
+    expect(score([list(title, 1)], { meltOf: (item) => shopMelt(item, spot) })[0]).toMatchObject({ kind: 'steal', price: 1 });
+  });
+
   it('calls a price under melt a steal and ignores a price at melt', () => {
     const hits = score([list('1 oz silver round', 20), list('1 oz silver round #2', 30)]);
     expect(hits.map((h) => h.title)).toEqual(['1 oz silver round']);

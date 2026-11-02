@@ -73,7 +73,7 @@ const install = () => {
   };
 
   // The wheel's prize list, read the way Whatnot's web app does; without these headers getBreak is null.
-  const fetchBreak = async (id: string, soldAfter: string | null) => {
+  const fetchBreak = async (id: string, soldAfter: string | null, optionsAfter: string | null) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), BREAK_FETCH_TIMEOUT_MS);
     try {
@@ -82,9 +82,9 @@ const install = () => {
         credentials: 'include',
         signal: ctrl.signal,
         headers: { 'content-type': 'application/json', authorization: 'Cookie', 'x-whatnot-app': 'whatnot-web' },
-        body: JSON.stringify({ operationName: BREAK_OPERATION, query: BREAK_QUERY, variables: { id, soldAfter } }),
+        body: JSON.stringify({ operationName: BREAK_OPERATION, query: BREAK_QUERY, variables: { id, soldAfter, optionsAfter } }),
       });
-      if (res.ok) post({ kind: 'graphql', operation: BREAK_OPERATION, body: await res.text() });
+      if (res.ok) post({ kind: 'graphql', operation: BREAK_OPERATION, body: await res.text(), optionsAfter });
     } catch {
       // A missed refresh is retried on the next spin or poll.
     } finally {
@@ -105,7 +105,8 @@ const install = () => {
     } else if (msg.kind === 'quiet') {
       quietUntil = Date.now() + Math.min(MAX_QUIET_MS, Math.max(0, msg.ms));
     } else if (msg.kind === 'fetch_break' && /^\d+$/.test(msg.id)) {
-      void fetchBreak(msg.id, typeof msg.soldAfter === 'string' && msg.soldAfter.length < 200 ? msg.soldAfter : null);
+      const cursor = (v: unknown) => (typeof v === 'string' && v.length < 200 ? v : null);
+      void fetchBreak(msg.id, cursor(msg.soldAfter), cursor(msg.optionsAfter));
     }
   });
 

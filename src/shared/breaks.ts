@@ -7,7 +7,7 @@ export const BREAK_OPERATION = 'QueryBreak';
 // Sold spots come back oldest first, with the prize each spin hit and what the spin sold for
 // (listing.price; confirmed against a live $99 win). $soldAfter pages forward from the last one seen,
 // so each refresh only carries new spins. The alias keeps the app's own sold-spot queries out.
-export const BREAK_QUERY = `query QueryBreak($id: ID!, $soldAfter: String) {
+export const BREAK_QUERY = `query QueryBreak($id: ID!, $soldAfter: String, $optionsAfter: String) {
   getBreak(breakId: $id) {
     id
     title
@@ -15,7 +15,7 @@ export const BREAK_QUERY = `query QueryBreak($id: ID!, $soldAfter: String) {
     status
     soldSpotCount
     totalBreakSpots
-    paginatedSpotOptions(first: 100) { pageInfo { hasNextPage } edges { node { id title available description } } }
+    paginatedSpotOptions(first: 100, after: $optionsAfter) { pageInfo { hasNextPage endCursor } edges { node { id title available description } } }
     soldSpots: paginatedSpots(first: 100, after: $soldAfter, filters: [{ field: "SOLD_STATUS", values: ["SOLD"] }]) {
       pageInfo { hasNextPage endCursor }
       edges { node { id title buyer { username } listing { price { amount } } } }
@@ -54,6 +54,8 @@ export interface BreakSnapshot {
   prizes: BreakPrize[];
   // False when Whatnot has more prize pages than one request returns, so the odds would be off.
   complete: boolean;
+  // Relay cursor for the last prize page folded in. The next fetch passes it as optionsAfter.
+  prizesCursor?: string | null;
   // Spins in the order they sold; null when the response had no sold spots (the app's own queries).
   hits: BreakHit[] | null;
   // How many of the oldest spins were dropped to keep the history under MAX_HITS.
@@ -162,6 +164,7 @@ export const parseBreakResponse = (body: unknown, now = Date.now()): BreakSnapsh
     total: num(b.totalBreakSpots),
     prizes,
     complete: obj(options.pageInfo)?.hasNextPage !== true,
+    prizesCursor: str(obj(options.pageInfo)?.endCursor),
     hits,
     soldOffset: 0,
     soldCursor: str(soldPage?.endCursor),
@@ -196,11 +199,25 @@ const cursorAfter = (index: number) => (index < 0 ? null : btoa(`arrayconnection
 // A refresh only carries spins after the last cursor, so new ones are appended and known ones
 // updated. A spin that sold before it was randomized has to be read again, so the cursor goes back
 // to just before the first one still waiting.
-export const mergeWheel = (prev: BreakSnapshot | null, next: BreakSnapshot): BreakSnapshot => {
+const mergePrizes = (prev: BreakPrize[], page: BreakPrize[]) => {
+  const fresh = new Map(page.map((p) => [p.id, p]));
+  const seen = new Set<string>();
+  const out: BreakPrize[] = [];
+  for (const p of [...prev, ...page]) {
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push(fresh.get(p.id) ?? p);
+  }
+  return out;
+};
+
+// `append` is a later prize page. `replace` is page one of a new read, which drops the old list.
+export const mergeWheel = (prev: BreakSnapshot | null, next: BreakSnapshot, mode: 'replace' | 'append' = 'replace'): BreakSnapshot => {
   const same = prev?.id === next.id ? prev : null;
-  const titleKeys = titleKeysOf(next.prizes, same?.titleKeys ?? {});
+  const prizes = mode === 'append' && same ? mergePrizes(same.prizes, next.prizes) : next.prizes;
+  const titleKeys = titleKeysOf(prizes, same?.titleKeys ?? {});
   if (next.hits === null) {
-    return { ...next, hits: same?.hits ?? null, soldOffset: same?.soldOffset ?? 0, soldCursor: same?.soldCursor ?? null, soldHasMore: false, titleKeys };
+    return { ...next, prizes, hits: same?.hits ?? null, soldOffset: same?.soldOffset ?? 0, soldCursor: same?.soldCursor ?? null, soldHasMore: false, titleKeys };
   }
   const incoming = new Map(next.hits.map((h) => [h.spotId, h]));
   const known = (same?.hits ?? []).map((h) => {
@@ -218,7 +235,7 @@ export const mergeWheel = (prev: BreakSnapshot | null, next: BreakSnapshot): Bre
   let soldCursor = next.soldCursor ?? same?.soldCursor ?? null;
   const firstPending = hits.findIndex((h) => h.pending);
   if (firstPending >= 0) soldCursor = isOffsetCursor(soldCursor) ? cursorAfter(soldOffset + firstPending - 1) : null;
-  return { ...next, hits, soldOffset, soldCursor, titleKeys };
+  return { ...next, prizes, hits, soldOffset, soldCursor, titleKeys };
 };
 
 export const spotsLeft = (b: BreakSnapshot) => (b.total !== null && b.sold !== null ? Math.max(0, b.total - b.sold) : null);

@@ -68,6 +68,14 @@ describe('reduceSocket: chat channel', () => {
     expect(apply(live.session, frame(`chat:${LIVE}`, 'new_msg', chatMsg('c', 'x', 'dup'))).session.chat).toHaveLength(3);
   });
 
+  it('leaves the wheel unchanged when chat says Unlocked Second cousin', () => {
+    const s = emptySession(LIVE);
+    const r = apply(s, frame(`chat:${LIVE}`, 'new_msg', chatMsg('u', 'host', 'Unlocked Second cousin')));
+    expect(r.session.wheel).toBe(s.wheel);
+    expect(r.session.chat.map((m) => m.text)).toEqual(['Unlocked Second cousin']);
+    expect(r.signals).toEqual([{ kind: 'chat', message: expect.objectContaining({ text: 'Unlocked Second cousin' }) }]);
+  });
+
   it('tracks show state from livestream_update and signals new giveaways after the baseline', () => {
     const update = (patch: Record<string, unknown>) =>
       frame(`chat:${LIVE}`, 'livestream_update', {

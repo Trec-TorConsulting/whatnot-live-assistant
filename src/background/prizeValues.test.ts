@@ -79,6 +79,9 @@ describe('valuePrizes', () => {
     expect(geminiPrompts).toHaveLength(1);
     expect(geminiPrompts[0]).not.toContain('ENVELOPE');
     expect(Object.keys(values())).toEqual(['buffalo nickel random year | fair']);
+    await valuePrizes([p('Family Pack #7', 'Envelope'), p('Proof Quarter')], ctx);
+    expect(geminiPrompts.at(-1)).not.toContain('Family Pack');
+    expect(values()['proof quarter']).toBeDefined();
   });
 
   it('reports a failure when no model can answer', async () => {
@@ -93,7 +96,7 @@ describe('valuePrizes', () => {
 describe('readEnvelopes', () => {
   const envelopes = [p('ENVELOPE #2', 'GOOD'), p('ENVELOPE #3', '.9999'), p('ENVELOPE #4', '.9999'), p('BUFFALO NICKEL RANDOM YEAR', 'FAIR')];
 
-  const others = ['BUFFALO NICKEL RANDOM YEAR'];
+  const others = [p('BUFFALO NICKEL RANDOM YEAR', 'FAIR')];
   const boards = () => local.data.wn2_envelopeBoards as Record<string, EnvelopeBoard> | undefined;
 
   it('prices numbered envelopes and the board, melt first, keyed to this wheel', async () => {
@@ -105,16 +108,17 @@ describe('readEnvelopes', () => {
       ],
     });
     const r = await readEnvelopes('5981361', 'jpeg', envelopes, others, ctx);
-    expect(r).toEqual({ ok: true, matched: 1, board: 2 });
+    expect(r).toEqual({ ok: true, matched: 0, board: 3 });
     const body = JSON.parse(geminiPrompts[0]!) as { contents: { parts: { text?: string; inline_data?: { data: string } }[] }[] };
     expect(body.contents[0]!.parts[1]!.inline_data!.data).toBe('jpeg');
     expect(body.contents[0]!.parts[0]!.text).toContain('Named wheel prizes, not in envelopes: BUFFALO NICKEL RANDOM YEAR');
-    // A kilo is 32.15 troy oz at $31.1035 spot.
-    expect(values()['5981361#envelope #3 | .9999']).toMatchObject({ source: 'melt', low: 1000, inside: '1 kilo silver bar' });
-    expect(values()['envelope #3 | .9999']).toBeUndefined();
+    // A shelf number is not stored as that envelope's price. The kilo stays in the pool.
+    expect(values()?.['5981361#envelope #3 | .9999']).toBeUndefined();
+    expect(values()?.['envelope #3 | .9999']).toBeUndefined();
     const board = boards()!['5981361']!;
-    expect(board.prizes).toEqual(['5981361#envelope #2 | good', '5981361#envelope #4 | .9999']);
+    expect(board.prizes).toEqual(['5981361#envelope #2 | good', '5981361#envelope #3 | .9999', '5981361#envelope #4 | .9999']);
     expect(board.items.map((i) => [i.inside, i.source, i.low])).toEqual([
+      ['1 kilo silver bar', 'melt', 1000],
       ['1985 Liberty MS 67', 'ai', 60],
       ['5 oz silver round', 'melt', 155.52],
     ]);

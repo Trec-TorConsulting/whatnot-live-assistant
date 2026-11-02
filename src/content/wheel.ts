@@ -2,7 +2,7 @@
 // its bid instead of an appraisal. Same values as the side panel: yours first, then automatic ones
 // at the low end of their range.
 import { spotsLeft, type BreakSnapshot } from '../shared/breaks';
-import { unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
+import { envelopeSummary, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
 import type { LiveSession, Lot } from '../shared/live';
 import { formatMoney } from '../shared/money';
 import type { PrizeValue } from '../shared/prizeValue';
@@ -59,8 +59,19 @@ export const wheelView = (
   const lastHit = b.hits?.filter((h) => !h.pending).pop() ?? null;
   const unpriced = rows.filter((r) => r.value === null).length;
   const unread = board?.items.length ? 0 : unmatchedEnvelopes(b, values, autoValues).length;
-  const envelopes = rows.filter((r) => r.fromBoard).reduce((n, r) => n + r.left, 0);
-  const extra = board && envelopes ? board.items.length - envelopes : 0;
+  const pool = envelopeSummary(b, values, autoValues, board);
+  const envelopeFacts: WheelFact[] =
+    pool.sealed > 0
+      ? [
+          { label: 'Top item', value: pool.topValue !== null ? formatMoney(pool.topValue) : '—', detail: pool.topName },
+          { label: 'Sealed share', value: pool.share !== null && !pool.shareIncomplete ? formatMoney(pool.share) : 'incomplete', detail: null },
+          {
+            label: 'Envelope average',
+            value: pool.average !== null && !pool.averageIncomplete ? `${pool.averageIsFloor ? '≥ ' : ''}${formatMoney(pool.average)}` : 'incomplete',
+            detail: null,
+          },
+        ]
+      : [];
   const age = now - b.fetchedAt;
 
   // The same prize can be listed as separate options; its odds are all its copies together.
@@ -96,11 +107,11 @@ export const wheelView = (
           : '—',
         detail: lastHit?.title ?? null,
       },
+      ...envelopeFacts,
     ] satisfies WheelFact[],
     warnings: [
       unpriced ? `${unpriced} ${unpriced === 1 ? 'prize has' : 'prizes have'} no value yet (counted as $0).` : null,
       unread ? `${unread} ${unread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; retrying while the board is on camera.` : null,
-      extra > 0 ? `The board shows ${board!.items.length} items for ${envelopes} envelopes; only the cheapest ${envelopes} count.` : null,
       rows.some((r) => r.inside && r.auto) ? 'Some prizes were AI-read from the video; check them against the board.' : null,
       !b.complete ? 'Whatnot sent only part of the prize list, so these odds are incomplete.' : null,
       age >= STALE_MS ? `Prize counts last updated ${Math.round(age / MINUTE)}m ago.` : null,

@@ -36,7 +36,7 @@ describe('parsePrizeAnswer', () => {
 describe('envelopes', () => {
   const titles = ['ENVELOPE #2', 'ENVELOPE #3', 'ENVELOPE #4'];
 
-  it('ties items to envelopes by name or a unique number, and pools the rest as the board', () => {
+  it('keeps envelope links in the pool and drops a number that is not on this wheel', () => {
     const text = JSON.stringify({
       envelopes: [
         { prize: 'envelope  #2', inside: '1 kilo silver bar', low: 1200, high: 1300 },
@@ -48,13 +48,29 @@ describe('envelopes', () => {
       ],
     });
     expect(parseEnvelopeAnswer(text, titles)).toEqual({
-      matched: [
-        { title: 'ENVELOPE #2', inside: '1 kilo silver bar', low: 1200, high: 1300 },
-        { title: 'ENVELOPE #3', inside: '1985 Liberty MS 67', low: 60, high: 90 },
+      matched: [],
+      board: [
+        { inside: '1 kilo silver bar', low: 1200, high: 1300 },
+        { inside: '1985 Liberty MS 67', low: 60, high: 90 },
+        { inside: '5 oz silver round', low: 150, high: 180 },
+        { inside: 'a second answer', low: 1, high: 2 },
       ],
-      board: [{ inside: '5 oz silver round', low: 150, high: 180 }],
     });
     expect(parseEnvelopeAnswer('nope', titles)).toEqual({ matched: [], board: [] });
+  });
+
+  it('matches a labeled instant hit and leaves a shelf number in the pool', () => {
+    const text = JSON.stringify({
+      envelopes: [
+        { prize: '#2', inside: '1 kilo silver bar', low: 1000, high: 1100 },
+        { prize: 'Silver Eagle', inside: '2024 Silver Eagle', low: 40, high: 50 },
+        { prize: 'ENVELOPE #9', inside: 'opened', low: 5, high: 6 },
+      ],
+    });
+    expect(parseEnvelopeAnswer(text, titles, 'envelopes', ['Silver Eagle'])).toEqual({
+      matched: [{ title: 'Silver Eagle', inside: '2024 Silver Eagle', low: 40, high: 50 }],
+      board: [{ inside: '1 kilo silver bar', low: 1000, high: 1100 }],
+    });
   });
 
   it('lists each envelope once, by its exact name, and the named prizes to skip', () => {

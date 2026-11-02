@@ -2,7 +2,7 @@
 // read off the video instead of valued by name. The read runs as soon as the wheel loads, ahead of
 // any bid, again while nothing usable was seen (the board may not be in frame yet), and after an
 // envelope is opened, since its item leaves the board.
-import { isHiddenPrize, type BreakSnapshot } from '../shared/breaks';
+import { isHiddenSpot, soldHiddenCount, type BreakSnapshot } from '../shared/breaks';
 import { boardIsCurrent, unmatchedEnvelopes, unseenPrizes, type EnvelopeBoard } from '../shared/envelopes';
 import type { LiveSession } from '../shared/live';
 import { send } from '../shared/messages';
@@ -54,7 +54,8 @@ export const checkEnvelopes = (
     breakId: b.id,
     image,
     prizes: unmatched.map(({ title, detail }) => ({ title, detail })),
-    others: b.prizes.filter((p) => !isHiddenPrize(p.title)).map((p) => p.title),
+    others: b.prizes.filter((p) => !isHiddenSpot(p)).map(({ title, detail }) => ({ title, detail })),
+    soldHidden: soldHiddenCount(b),
     context: { showTitle: s?.show.title ?? null, wheelTitle: b.title, categories: s?.show.categories ?? [] },
   })
     .catch(() => undefined)

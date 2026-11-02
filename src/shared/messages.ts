@@ -110,7 +110,7 @@ export interface MessageMap {
   REF_LOOKUP: { req: { item: Partial<AppraisalItem> }; res: RefLookupResult };
   APPRAISAL_SAVE: { req: { record: AppraisalRecord }; res: Result };
   WHEEL_VALUE: { req: { prizes: PrizeItem[]; context: PrizeContext }; res: Result };
-  ENVELOPE_READ: { req: { breakId: string; image: string; prizes: PrizeItem[]; others: string[]; context: PrizeContext }; res: EnvelopeResult };
+  ENVELOPE_READ: { req: { breakId: string; image: string; prizes: PrizeItem[]; others: PrizeItem[]; context: PrizeContext; soldHidden: number | null }; res: EnvelopeResult };
   PRIZE_READ: { req: { breakId: string; image: string; prizes: PrizeItem[]; context: PrizeContext }; res: EnvelopeResult };
   CAPTURE_TAB: { req: Record<string, never>; res: { ok: true; dataUrl: string } | { ok: false; error: string } };
   TEST_GEMINI: { req: Record<string, never>; res: TestResult };

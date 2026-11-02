@@ -1,5 +1,5 @@
-import { isHiddenPrize, prizeValueKey, wheelValueKey } from '../shared/breaks';
-import { seenKey } from '../shared/envelopes';
+import { isHiddenPrize, isHiddenSpot, prizeValueKey, wheelValueKey } from '../shared/breaks';
+import { nextEnvelopeBoard, seenKey } from '../shared/envelopes';
 import { createLock } from '../shared/lock';
 import type { EnvelopeResult, Result } from '../shared/messages';
 import {
@@ -46,7 +46,7 @@ export const valuePrizes = (prizes: PrizeItem[], ctx: PrizeContext): Promise<Res
     // "ENVELOPE #3" names no item; any price from the title alone would be made up.
     const items = prizes
       .map((p) => ({ title: String(p.title ?? '').trim(), detail: String(p.detail ?? '').trim() }))
-      .filter((p) => p.title && !isHiddenPrize(p.title));
+      .filter((p) => p.title && !isHiddenSpot(p));
     const stale = [...new Map(items.map((p) => [prizeValueKey(p), p])).entries()].filter(([key]) => !isFresh(cache[key], now));
     if (!stale.length) return { ok: true };
 
@@ -96,7 +96,7 @@ export const readNamedPrizes = (breakId: string, image: string, prizes: PrizeIte
     const cache = (await getItem('prizeValues')) ?? {};
     const named = prizes
       .map((p) => ({ title: String(p.title ?? '').trim(), detail: String(p.detail ?? '').trim() }))
-      .filter((p) => p.title && !isHiddenPrize(p.title));
+      .filter((p) => p.title && !isHiddenSpot(p));
     const wanted = [...new Map(named.map((p) => [seenKey(breakId, p), p])).entries()].filter(([key]) => !isFresh(cache[key], now));
     if (!wanted.length) return { ok: true, matched: 0, board: 0 };
 
@@ -137,23 +137,31 @@ const MAX_BOARDS = 20;
 // item to an envelope only when its number is visible; each item is then priced like any prize,
 // melt and sold comps before the model's own estimate. Items without a number become the board the
 // other envelopes draw from (see shared/envelopes.ts).
-export const readEnvelopes = (breakId: string, image: string, prizes: PrizeItem[], others: string[], ctx: PrizeContext): Promise<EnvelopeResult> =>
+export const readEnvelopes = (
+  breakId: string,
+  image: string,
+  prizes: PrizeItem[],
+  others: PrizeItem[],
+  ctx: PrizeContext,
+  soldHidden: number | null = null,
+): Promise<EnvelopeResult> =>
   lock(async () => {
     const now = Date.now();
     const cache = (await getItem('prizeValues')) ?? {};
     const hidden = prizes
       .map((p) => ({ title: String(p.title ?? '').trim(), detail: String(p.detail ?? '').trim() }))
-      .filter((p) => p.title && isHiddenPrize(p.title));
+      .filter((p) => p.title && isHiddenSpot(p));
     const wanted = [...new Map(hidden.map((p) => [wheelValueKey(breakId, p), p])).entries()].filter(([key]) => !isFresh(cache[key], now));
     if (!wanted.length) return { ok: true, matched: 0, board: 0 };
 
     const titles = wanted.map(([, p]) => p.title);
+    const named = others.map((p) => ({ title: String(p.title ?? '').trim(), detail: String(p.detail ?? '').trim() })).filter((p) => p.title);
     await setSession('envelopeStatus', { state: 'running', count: wanted.length, detail: null, at: now });
     const answer = await askAi({
       instructions: ENVELOPE_INSTRUCTIONS,
       prompt: envelopePrompt(
         wanted.map(([, p]) => p),
-        others.filter((t) => !isHiddenPrize(t)),
+        others.map((p) => p.title).filter((t) => !isHiddenPrize(t)),
         ctx,
       ),
       schema: ENVELOPE_SCHEMA,
@@ -169,7 +177,7 @@ export const readEnvelopes = (breakId: string, image: string, prizes: PrizeItem[
       return { ok: false, error: answer.error };
     }
 
-    const { matched, board } = parseEnvelopeAnswer(answer.text, titles);
+    const { matched, board } = parseEnvelopeAnswer(answer.text, titles, 'envelopes', named.map((p) => p.title));
     const sold = (await getItem('soldHistory')) ?? [];
     const price = async (item: BoardItem): Promise<PrizeValue> => {
       const real = await realPrice(item.inside, sold, now);
@@ -178,26 +186,32 @@ export const readEnvelopes = (breakId: string, image: string, prizes: PrizeItem[
         : { low: cents(item.low), high: cents(item.high), source: 'ai', note: answer.model, inside: item.inside, at: now };
     };
 
-    const byTitle = new Map(matched.map((r) => [r.title, r]));
+    // A shelf number is not an envelope assignment. Named labels price that spot and leave the pool.
     const next = { ...cache };
-    const left: string[] = [];
-    for (const [key, prize] of wanted) {
-      const r = byTitle.get(prize.title);
-      if (r) next[key] = await price(r);
-      else left.push(key);
+    let namedHits = 0;
+    for (const r of matched) {
+      const copies = named.filter((p) => p.title === r.title);
+      if (copies.length !== 1) continue;
+      next[seenKey(breakId, copies[0]!)] = await price(r);
+      namedHits++;
     }
-    if (matched.length) await setItem('prizeValues', trim(next));
+    if (namedHits) await setItem('prizeValues', trim(next));
 
+    const left = wanted.map(([key]) => key);
     // An empty read (board off camera) keeps the last board, and the tab tries again.
     if (board.length && left.length) {
       const items: PrizeValue[] = [];
       for (const item of board) items.push(await price(item));
-      const boards = { ...((await getItem('envelopeBoards')) ?? {}), [breakId]: { at: now, prizes: left, items } };
-      const keep = Object.keys(boards)
-        .sort((a, b) => boards[b]!.at - boards[a]!.at)
-        .slice(0, MAX_BOARDS);
-      await setItem('envelopeBoards', Object.fromEntries(keep.map((k) => [k, boards[k]!])));
+      const boards = (await getItem('envelopeBoards')) ?? {};
+      const saved = nextEnvelopeBoard(boards[breakId] ?? null, { at: now, prizes: left, items }, soldHidden);
+      if (saved !== boards[breakId]) {
+        const nextBoards = { ...boards, [breakId]: saved };
+        const keep = Object.keys(nextBoards)
+          .sort((a, b) => nextBoards[b]!.at - nextBoards[a]!.at)
+          .slice(0, MAX_BOARDS);
+        await setItem('envelopeBoards', Object.fromEntries(keep.map((k) => [k, nextBoards[k]!])));
+      }
     }
     await setSession('envelopeStatus', { state: 'done', count: matched.length + board.length, detail: null, at: Date.now() });
-    return { ok: true, matched: matched.length, board: board.length };
+    return { ok: true, matched: namedHits, board: board.length };
   });

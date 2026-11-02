@@ -1,5 +1,5 @@
 import { MAX_HITS, pendingSpins, prizeKey, scopedKey, spotsLeft, wheelTitleKey, type BreakSnapshot } from '../../shared/breaks';
-import { unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
+import { envelopeSummary, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
 import { UNUSUAL, bigHitCheck, chanceWorthWithin, nextSpinTurnsWorth, spinPrices, type StatPrize } from '../../shared/wheelStats';
 import type { LiveSession } from '../../shared/live';
 import { formatMoney } from '../../shared/money';
@@ -238,7 +238,7 @@ const renderAuto = (b: BreakSnapshot) => {
         ? `AI couldn't value prizes: ${prizeStatus.detail ?? 'unknown error'}`
         : null;
   const unread = board?.items.length ? 0 : unmatchedEnvelopes(b, values, autoValues).length;
-  const envelopes = rows.filter((r) => r.fromBoard).reduce((n, r) => n + r.left, 0);
+  const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeLine =
     envelopeStatus?.state === 'running' && Date.now() - envelopeStatus.at < 60 * SECOND
       ? `Reading ${envelopeStatus.count} envelopes off the video…`
@@ -248,8 +248,16 @@ const renderAuto = (b: BreakSnapshot) => {
           ? `${unread} ${unread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; it retries while the show tab is open, or type a value.`
           : null;
   const boardLine =
-    board && envelopes
-      ? `Envelope board read ${ago(Date.now() - board.at)}: ${board.items.length} ${board.items.length === 1 ? 'item' : 'items'} for ${envelopes} unopened ${envelopes === 1 ? 'envelope' : 'envelopes'}. Each counts as one spot${board.items.length > envelopes ? '; only the cheapest count, so the worth is a floor' : ''}.`
+    pool.sealed > 0
+      ? [
+          pool.topValue !== null ? `Top item ${pool.topName} ${formatMoney(pool.topValue)}` : null,
+          pool.share !== null && !pool.shareIncomplete ? `sealed share ${formatMoney(pool.share)}` : 'sealed share incomplete',
+          pool.average !== null && !pool.averageIncomplete
+            ? `envelope average ${pool.averageIsFloor ? '≥ ' : ''}${formatMoney(pool.average)}`
+            : 'envelope average incomplete',
+        ]
+          .filter(Boolean)
+          .join(' · ')
       : null;
   const envelopesRead = rows.some((r) => r.inside && r.auto);
 

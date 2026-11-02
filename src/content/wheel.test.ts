@@ -147,22 +147,17 @@ describe('wheelView', () => {
     expect(v.warnings).toContain('1 prize has no value yet (counted as $0).');
   });
 
-  it('values envelopes only from this wheel and shows what is inside', () => {
+  it('values envelopes from this wheel’s pool and ignores another wheel’s price', () => {
     const prizes = [prize('1', 'ENVELOPE #2', 1, 'GOOD'), prize('2', 'ENVELOPE #3', 1), prize('3', 'Wheat Penny', 8)];
     const read: PrizeValue = { low: 1000, high: null, source: 'melt', note: null, at: NOW, inside: '1 kilo silver bar' };
-    // A value for "envelope #3" from another wheel, or by name alone, must not count here.
     const auto = { 'b1#envelope #2 | good': read, 'b9#envelope #3': read, 'envelope #3': read };
     const v = wheelView(wheel({ prizes }), lot(), { 'wheat penny': 10 }, auto, NOW);
-    expect(v.value).toBe('Worth ≥ $108 a spin');
-    expect(v.facts.find((f) => f.label === '#1 prize')).toEqual({ label: '#1 prize', value: '$1,000 · 10% chance', detail: 'ENVELOPE #2 · 1 kilo silver bar' });
-    expect(v.warnings).toEqual([
-      '1 prize has no value yet (counted as $0).',
-      '1 envelope not read off the video yet; retrying while the board is on camera.',
-      'Some prizes were AI-read from the video; check them against the board.',
-    ]);
+    expect(v.value).toBe('Worth ≥ $8 a spin');
+    expect(v.facts.find((f) => f.label === 'Envelope average')?.value).toBe('incomplete');
+    expect(v.warnings).toContain('2 prizes have no value yet (counted as $0).');
   });
 
-  it('counts unopened envelopes as the items on the board', () => {
+  it('shows the top item, its sealed share, and an incomplete average when the shelf is crowded', () => {
     const prizes = [prize('1', 'ENVELOPE #2', 1), prize('2', 'ENVELOPE #3', 1), prize('3', 'Wheat Penny', 8)];
     const items: PrizeValue[] = [
       { low: 1000, high: null, source: 'melt', note: null, at: NOW, inside: '1 kilo silver bar' },
@@ -171,12 +166,11 @@ describe('wheelView', () => {
     ];
     const board = { at: NOW, prizes: ['b1#envelope #2', 'b1#envelope #3'], items };
     const v = wheelView(wheel({ prizes }), lot(), { 'wheat penny': 10 }, {}, NOW, board);
-    expect(v.value).toBe('Worth $18 a spin');
-    expect(v.facts.find((f) => f.label === '#1 prize')).toEqual({ label: '#1 prize', value: '$60 · 10% chance', detail: 'Envelope · 1985 Liberty MS 67' });
-    expect(v.warnings).toEqual([
-      'The board shows 3 items for 2 envelopes; only the cheapest 2 count.',
-      'Some prizes were AI-read from the video; check them against the board.',
-    ]);
+    expect(v.value).toBe('Worth ≥ $8 a spin');
+    expect(v.facts.find((f) => f.label === 'Top item')).toEqual({ label: 'Top item', value: '$1,000', detail: '1 kilo silver bar' });
+    expect(v.facts.find((f) => f.label === 'Sealed share')?.value).toBe('$500');
+    expect(v.facts.find((f) => f.label === 'Envelope average')?.value).toBe('incomplete');
+    expect(v.warnings).toContain('2 prizes have no value yet (counted as $0).');
   });
 
   it('warns about partial and stale prize lists', () => {

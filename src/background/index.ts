@@ -102,7 +102,8 @@ handleMessages({
   REF_LOOKUP: ({ item }) => refLookup(item),
   QUICK_APPRAISE: ({ pageText }) => quickAppraise(pageText),
   WHEEL_VALUE: ({ prizes, context }) => valuePrizes(prizes.slice(0, 200), context),
-  ENVELOPE_READ: ({ breakId, image, prizes, others, context }) => readEnvelopes(breakId, image, prizes.slice(0, 100), others.slice(0, 100), context),
+  ENVELOPE_READ: ({ breakId, image, prizes, others, context, soldHidden }) =>
+    readEnvelopes(breakId, image, prizes.slice(0, 100), others.slice(0, 100), context, soldHidden),
   PRIZE_READ: ({ breakId, image, prizes, context }) => readNamedPrizes(breakId, image, prizes.slice(0, 60), context),
   PRICE_LOOKUP: ({ item }) => priceLookup(item),
   APPRAISAL_SAVE: async ({ record }, sender) => {

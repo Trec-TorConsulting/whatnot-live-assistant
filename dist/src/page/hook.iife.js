@@ -1,0 +1,15 @@
+(function(){var e=`QueryBreak`,t=`wn2-hook`,n=e=>{let t=navigator.clipboard;if(t&&typeof t.writeText==`function`){let n=t.writeText.bind(t);t.writeText=t=>e()?Promise.resolve():n(t)}if(typeof document.execCommand==`function`){let t=document.execCommand.bind(document);document.execCommand=(n,r,i)=>e()&&n.toLowerCase()===`copy`?!0:t(n,r,i)}let n=window.open.bind(window);window.open=(...t)=>e()?null:n(...t),document.addEventListener(`click`,t=>{e()&&t.target?.closest?.(`a[target="_blank"]`)&&t.preventDefault()},!0)},r=new Set([`LiveStream`,e]),i=400,a=1e4,o=5e3;(()=>{if(window.__wn2HookInstalled)return;window.__wn2HookInstalled=!0;let s=!1,c=[],l=e=>{s?window.postMessage({source:t,...e},location.origin):(c.push(e),c.length>i&&c.shift())},u=e=>/\/services\/auction\//.test(e)?`auction`:/\/services\/live\//.test(e)?`live`:null,d=window.WebSocket;class f extends d{constructor(e,t){super(e,t);let n=u(String(e));n&&this.addEventListener(`message`,e=>{typeof e.data==`string`&&l({kind:`socket`,socket:n,raw:e.data})})}}window.WebSocket=f;let p=window.fetch;window.fetch=async(e,t)=>{let n=await p.call(window,e,t);try{let t=typeof e==`string`?e:e instanceof URL?e.href:e.url;if(t.includes(`/services/graphql`)){let e=new URL(t,location.href).searchParams.get(`operationName`);e&&r.has(e)?n.clone().text().then(t=>l({kind:`graphql`,operation:e,body:t})).catch(()=>void 0):e&&l({kind:`graphql_op`,operation:e})}}catch{}return n};let m=async(t,n)=>{let r=new AbortController,i=setTimeout(()=>r.abort(),o);try{let i=await p.call(window,`/services/graphql/?operationName=${e}&ssr=0`,{method:`POST`,credentials:`include`,signal:r.signal,headers:{"content-type":`application/json`,authorization:`Cookie`,"x-whatnot-app":`whatnot-web`},body:JSON.stringify({operationName:e,query:`query QueryBreak($id: ID!, $soldAfter: String) {
+  getBreak(breakId: $id) {
+    id
+    title
+    format
+    status
+    soldSpotCount
+    totalBreakSpots
+    paginatedSpotOptions(first: 100) { pageInfo { hasNextPage } edges { node { id title available description } } }
+    soldSpots: paginatedSpots(first: 100, after: $soldAfter, filters: [{ field: "SOLD_STATUS", values: ["SOLD"] }]) {
+      pageInfo { hasNextPage endCursor }
+      edges { node { id title buyer { username } listing { price { amount } } } }
+    }
+  }
+}`,variables:{id:t,soldAfter:n}})});i.ok&&l({kind:`graphql`,operation:e,body:await i.text()})}catch{}finally{clearTimeout(i)}},h=0;window.addEventListener(`message`,e=>{if(e.source!==window||e.data?.source!==`wn2-content`)return;let n=e.data;n.kind===`ready`?(s=!0,window.postMessage({source:t,kind:`hello`},location.origin),c.splice(0).forEach(l)):n.kind===`quiet`?h=Date.now()+Math.min(a,Math.max(0,n.ms)):n.kind===`fetch_break`&&/^\d+$/.test(n.id)&&m(n.id,typeof n.soldAfter==`string`&&n.soldAfter.length<200?n.soldAfter:null)}),n(()=>Date.now()<h)})()})();

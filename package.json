@@ -1,0 +1,25 @@
+{
+  "name": "whatnot-assistant",
+  "version": "0.11.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && vite build --config scripts/userscript.config.ts",
+    "userscript": "vite build --config scripts/userscript.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "icons": "node scripts/make-icons.mjs",
+    "probe": "vite build --config scripts/probe.config.ts"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^3.0.0",
+    "@types/chrome": "^0.3.6",
+    "@types/node": "^26.6.5",
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

@@ -107,6 +107,11 @@ export interface MessageMap {
   TABLE_SCAN: { req: AppraisalContext & { image: string; mainItem: string }; res: TableScanResult };
   QUICK_APPRAISE: { req: { pageText: string }; res: QuickResult & { melt: Melt | null } };
   PRICE_LOOKUP: { req: { item: Partial<AppraisalItem> }; res: PriceLookupResult };
+  // A grade the listing states for a known key date. Not a model guess, and not a slab read.
+  GRADE_GUIDE: {
+    req: { pcgsNo: number; gradeNo: number; year: number; mint: string; denom: string };
+    res: PriceLookupResult;
+  };
   REF_LOOKUP: { req: { item: Partial<AppraisalItem> }; res: RefLookupResult };
   APPRAISAL_SAVE: { req: { record: AppraisalRecord }; res: Result };
   WHEEL_VALUE: { req: { prizes: PrizeItem[]; context: PrizeContext }; res: Result };

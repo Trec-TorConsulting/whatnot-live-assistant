@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appraise, geminiJson, priceLookup } from './appraisal';
+import { appraise, geminiJson, gradeGuide, priceLookup } from './appraisal';
 
 const fakeArea = (initial: Record<string, unknown> = {}) => {
   const data: Record<string, unknown> = { ...initial };
@@ -423,5 +423,62 @@ describe('priceLookup', () => {
     expect(mismatch).toMatchObject({ ok: false, reason: 'mismatch' });
     expect(urls.some((url) => url.includes('GetCoinFactsByGrade'))).toBe(true);
     expect(urls.some((url) => url.includes('GetCoinFactsByCertNo'))).toBe(false);
+  });
+});
+
+describe('gradeGuide', () => {
+  const quarter = {
+    pcgsNo: 5791,
+    gradeNo: 8,
+    year: 1932,
+    mint: 'D',
+    denom: '25c',
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('chrome', {
+      storage: { local: fakeArea({ wn2_appraisalSettings: { pcgsToken: 'tok' } }), session: fakeArea() },
+    });
+  });
+
+  it('does not call PCGS without a token or for a grade it cannot price', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('chrome', { storage: { local: fakeArea(), session: fakeArea() } });
+    expect(await gradeGuide(quarter)).toMatchObject({ ok: false, reason: 'no-token' });
+    vi.stubGlobal('chrome', {
+      storage: { local: fakeArea({ wn2_appraisalSettings: { pcgsToken: 'tok' } }), session: fakeArea() },
+    });
+    expect(await gradeGuide({ ...quarter, gradeNo: 7 })).toMatchObject({ ok: false, reason: 'no-id' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a spec that is a different coin', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(200, { Name: '1921 $1', Year: 1921, MintMark: '', Denomination: '$1', PriceGuideValue: 40 })));
+    const res = await gradeGuide(quarter);
+    expect(res).toMatchObject({ ok: false, reason: 'mismatch' });
+  });
+
+  it('returns the price guide and a median of recent sales', async () => {
+    const recent = (daysAgo: number) => new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        json(200, {
+          Name: '1932-D 25C',
+          Year: 1932,
+          MintMark: 'D',
+          Denomination: '25C',
+          Grade: '8',
+          PriceGuideValue: 175,
+          AuctionList: [
+            { Price: 150, Date: recent(40) },
+            { Price: 160, Date: recent(10) },
+          ],
+        }),
+      ),
+    );
+    const res = await gradeGuide(quarter);
+    expect(res).toMatchObject({ ok: true, guide: 175, auctions: { count: 2, median: 155 } });
   });
 });

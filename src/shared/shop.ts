@@ -1,9 +1,9 @@
 // The show's shop, read when you open it. Only buy-it-now listings are kept; auctions, giveaways,
 // and pre-bids are skipped. A hit is a price under melt or under sales you've watched, a watchlist
 // match, or a known key date. Nothing here buys.
-import { quickRead } from './appraisal';
+import { quickRead, type AuctionSummary } from './appraisal';
 import { matchWatch, type WatchItem } from './buyer';
-import { keyDateCallouts } from './keyDates';
+import { keyDateCallouts, keyDatePrice } from './keyDates';
 import { formatMoney } from './money';
 import { findComps, summarizeComps, type SoldItem } from './soldHistory';
 import type { ShowType } from './showType';
@@ -181,6 +181,28 @@ export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, 
     .slice(0, MAX_SHOP_HITS)
     .map(({ edge: _edge, ...hit }) => hit);
 };
+
+// Auction median when two recent sales exist; otherwise the PCGS price guide for that grade.
+export const shopWorthLine = (
+  grade: string,
+  guide: number | null,
+  auctions: Pick<AuctionSummary, 'count' | 'median'> | null,
+): string | null => {
+  const median = auctions && auctions.count >= 2 && auctions.median && auctions.median > 0 ? auctions.median : null;
+  if (median) return `Market ${formatMoney(median)} (PCGS ${grade})`;
+  if (guide && guide > 0) return `Guide ${formatMoney(guide)} (PCGS ${grade})`;
+  return null;
+};
+
+export const applyShopWorth = (hits: ShopHit[], lines: ReadonlyMap<string, string>): ShopHit[] =>
+  hits.map((h) => {
+    if (h.kind !== 'must') return h;
+    const spec = keyDatePrice(h.title);
+    if (!spec) return h;
+    const line = lines.get(`${spec.pcgs}:${spec.grade.gradeNo}`);
+    if (!line || h.reason.includes(line)) return h;
+    return { ...h, reason: `${line}. ${h.reason}` };
+  });
 
 // Melt for one buy-it-now price. Whatnot's quantity is how many are left in stock, not how many
 // pieces that price buys, so only a count written in the title ("x10", "10 coins") multiplies it.

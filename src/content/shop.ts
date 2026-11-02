@@ -1,7 +1,8 @@
 // On entering a show, read its shop and surface buy-it-now steals, deals, and must-haves.
 import { HOOK_SOURCE, type HookToContent } from '../shared/hookProtocol';
+import { keyDatePrice } from '../shared/keyDates';
 import { formatMoney } from '../shared/money';
-import { isShopOperation, readShopPage, scoreShop, shopMelt, type ShopHit, type ShopListing, type ShopScan } from '../shared/shop';
+import { applyShopWorth, isShopOperation, readShopPage, scoreShop, shopMelt, shopWorthLine, type ShopHit, type ShopListing, type ShopScan } from '../shared/shop';
 import { getBuyerSettings, getGuardSettings, getItem } from '../shared/storage';
 import { send } from '../shared/messages';
 import { isShareWorker, publishShop, postToHook } from './live';
@@ -102,6 +103,40 @@ const finish = async (g: number) => {
   publishShop(scan);
   overlay.setShop(viewOf(scan));
   announce(id, hits);
+  const priced = await priceMustHaves(hits);
+  if (g !== gen || liveId !== id || isShareWorker() || priced === hits) return;
+  const next: ShopScan = { status: 'ready', binCount: listings.length, hits: priced };
+  publishShop(next);
+  overlay.setShop(viewOf(next));
+};
+
+// Must-haves often have no watched sales. The grade in the title prices the key date at PCGS.
+const priceMustHaves = async (hits: ShopHit[]): Promise<ShopHit[]> => {
+  const wanted = new Map<string, ReturnType<typeof keyDatePrice>>();
+  for (const h of hits) {
+    if (h.kind !== 'must') continue;
+    const spec = keyDatePrice(h.title);
+    if (!spec) continue;
+    wanted.set(`${spec.pcgs}:${spec.grade.gradeNo}`, spec);
+  }
+  if (!wanted.size) return hits;
+  const lines = new Map<string, string>();
+  await Promise.all(
+    [...wanted.entries()].map(async ([key, spec]) => {
+      if (!spec) return;
+      const res = await send('GRADE_GUIDE', {
+        pcgsNo: spec.pcgs,
+        gradeNo: spec.grade.gradeNo,
+        year: spec.year,
+        mint: spec.mint,
+        denom: spec.denom,
+      }).catch(() => null);
+      if (!res?.ok) return;
+      const line = shopWorthLine(spec.grade.label, res.guide, res.auctions);
+      if (line) lines.set(key, line);
+    }),
+  );
+  return lines.size ? applyShopWorth(hits, lines) : hits;
 };
 
 const announce = (id: string, hits: ShopHit[]) => {

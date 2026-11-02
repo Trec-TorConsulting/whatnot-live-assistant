@@ -4,7 +4,7 @@ import { addSold } from '../shared/soldHistory';
 import { getItem, getOverlayPrefs, setItem, setTabAppraisal, setTabLive } from '../shared/storage';
 import { addManualPurchase, addWatched, ALARM_WATCH, buyerAlert, checkStartingSoon, deletePurchase, handleSignal, onNotificationClicked } from './alerts';
 import { addMonitor, checkLateOrders, focusMonitor, forgetMonitorTab, removeMonitor, saveOrders, saveSellerProfile, showsSeen } from './buyerData';
-import { appraise, getSpot, priceLookup, quickAppraise, testGemini, testOllama, testPcgs, warmOllama } from './appraisal';
+import { appraise, getSpot, gradeGuide, priceLookup, quickAppraise, testGemini, testOllama, testPcgs, warmOllama } from './appraisal';
 import {
   ALARM_TICK,
   ALARM_WATCHDOG,
@@ -106,6 +106,7 @@ handleMessages({
     readEnvelopes(breakId, image, prizes.slice(0, 100), others.slice(0, 100), context, soldHidden),
   PRIZE_READ: ({ breakId, image, prizes, context }) => readNamedPrizes(breakId, image, prizes.slice(0, 60), context),
   PRICE_LOOKUP: ({ item }) => priceLookup(item),
+  GRADE_GUIDE: (query) => gradeGuide(query),
   APPRAISAL_SAVE: async ({ record }, sender) => {
     // Saved again once its table scan finishes; that replaces the first save.
     const list = [...((await getItem('appraisals')) ?? []).filter((r) => r.id !== record.id), record].slice(-MAX_APPRAISALS);

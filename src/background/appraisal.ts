@@ -100,6 +100,9 @@ const PRICE_CACHE_MAX = 400;
 
 type PcgsData = Record<string, unknown> & {
   Name?: string;
+  Year?: number | string;
+  MintMark?: string | null;
+  Denomination?: string;
   Grade?: string;
   Designation?: string;
   PCGSNo?: string | number;
@@ -232,6 +235,75 @@ export const priceLookup = async (item: Partial<AppraisalItem>): Promise<PriceLo
     grade: [data.Grade, data.Designation].filter(Boolean).join(' '),
     guide: Number(data.PriceGuideValue) > 0 ? Number(data.PriceGuideValue) : null,
     auctions,
+    link: data.CoinFactsLink ?? null,
+    usage: await readPcgsUsage(),
+  };
+};
+
+const SHELDON = new Set([1, 2, 3, 4, 6, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50, 53, 55, 58, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70]);
+
+const DENOM_OK: Record<string, RegExp> = {
+  '1c': /\b1c\b|\bcent\b/i,
+  '5c': /\b5c\b|\bnickel\b/i,
+  '10c': /\b10c\b|\bdime\b/i,
+  '25c': /\b25c\b|\bquarter\b/i,
+  '50c': /\b50c\b|\bhalf\b/i,
+  '$1': /\$1|\bdollar\b|\beagle\b/i,
+};
+
+const mintOf = (data: PcgsData): string | null => {
+  if (typeof data.MintMark === 'string') return data.MintMark.toUpperCase().replace(/[^A-Z]/g, '').replace(/^P$/, '');
+  const name = String(data.Name ?? '');
+  const marked = name.match(/\b(?:1[6-9]\d\d|20\d\d)\s*-\s*(CC|[PDOSWpdosw])\b/i);
+  if (marked) return marked[1]!.toUpperCase().replace(/^P$/, '');
+  // A hyphen we could not read is not Philadelphia.
+  if (/\b(?:1[6-9]\d\d|20\d\d)\s*-/.test(name)) return null;
+  if (/\b(?:1[6-9]\d\d|20\d\d)\b/.test(name)) return '';
+  return null;
+};
+
+const yearOf = (data: PcgsData): number | null => {
+  const n = parseInt(String(data.Year ?? ''), 10);
+  if (n) return n;
+  const m = String(data.Name ?? '').match(/\b(1[6-9]\d\d|20\d\d)\b/);
+  return m ? parseInt(m[1]!, 10) : null;
+};
+
+export interface GradeGuideQuery {
+  pcgsNo: number;
+  gradeNo: number;
+  year: number;
+  mint: string;
+  denom: string;
+}
+
+// Price guide for a grade the listing states. One CoinFacts call, cached with the slab lookups.
+// Year, mint, and denomination have to match so a wrong spec number cannot price a different coin.
+export const gradeGuide = async (query: GradeGuideQuery): Promise<PriceLookupResult> => {
+  const gradeNo = query.gradeNo;
+  const pcgsNo = String(query.pcgsNo ?? '').replace(/\D/g, '');
+  const denom = DENOM_OK[query.denom];
+  if (!pcgsNo || !SHELDON.has(gradeNo) || !denom || !query.year) return { ok: false, reason: 'no-id' };
+  const { pcgsToken: token } = await getAppraisalSettings();
+  if (!token) return { ok: false, reason: 'no-token' };
+  const result = await pcgsGet(token, `GetCoinFactsByGrade?PCGSNo=${pcgsNo}&GradeNo=${gradeNo}&PlusGrade=false`, `grade:${pcgsNo}:${gradeNo}:false`);
+  if ('error' in result) return { ok: false, reason: 'error', error: result.error, usage: await readPcgsUsage() };
+  const data = result.data;
+  if (data.ServerMessage && /no data/i.test(data.ServerMessage)) return { ok: false, reason: 'no-data', usage: await readPcgsUsage() };
+  const blob = `${data.Name ?? ''} ${data.Denomination ?? ''}`;
+  const mint = mintOf(data);
+  const wantMint = String(query.mint ?? '').toUpperCase().replace(/[^A-Z]/g, '').replace(/^P$/, '');
+  if (yearOf(data) !== query.year || mint !== wantMint || !denom.test(blob)) {
+    return { ok: false, reason: 'mismatch', error: `PCGS #${pcgsNo} is ${data.Name || 'a different coin'}`, usage: await readPcgsUsage() };
+  }
+  return {
+    ok: true,
+    source: 'grade',
+    cached: Boolean(result.cached),
+    name: data.Name ?? '',
+    grade: [data.Grade, data.Designation].filter(Boolean).join(' '),
+    guide: Number(data.PriceGuideValue) > 0 ? Number(data.PriceGuideValue) : null,
+    auctions: summarizeAuctions(data.AuctionList, Date.now()),
     link: data.CoinFactsLink ?? null,
     usage: await readPcgsUsage(),
   };

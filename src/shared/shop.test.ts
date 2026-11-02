@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWatchLine } from './buyer';
 import type { SoldItem } from './soldHistory';
 import {
+  applyShopWorth,
   extractShopQuery,
   isShopOperation,
   parseShopListings,
@@ -11,6 +12,7 @@ import {
   shopMelt,
   shopVariables,
   shopVariablesFrom,
+  shopWorthLine,
   type ShopListing,
 } from './shop';
 
@@ -134,6 +136,19 @@ describe('scoreShop', () => {
       meltOf: () => null,
     });
     expect(overMax).toEqual([]);
+  });
+
+  it('puts a PCGS grade value on a must-have and leaves a steal alone', () => {
+    expect(shopWorthLine('VG-8', 140, { count: 3, median: 125 })).toBe('Market $125 (PCGS VG-8)');
+    expect(shopWorthLine('G-4', 110, { count: 1, median: 90 })).toBe('Guide $110 (PCGS G-4)');
+    expect(shopWorthLine('G-4', null, null)).toBeNull();
+    const hits = score([list('1932 S Washington Silver Quarter Coin Key Date 408k MINTED~! (A) Good!', 79)]);
+    expect(hits[0]).toMatchObject({ kind: 'must' });
+    const priced = applyShopWorth(hits, new Map([['5792:4', 'Guide $110 (PCGS G-4)']]));
+    expect(priced[0]!.reason).toContain('Guide $110 (PCGS G-4)');
+    expect(priced[0]!.reason).toContain('Key date');
+    const steal = score([list('1 oz silver round', 20)])[0]!;
+    expect(applyShopWorth([steal], new Map([['5792:4', 'Guide $110 (PCGS G-4)']]))[0]).toBe(steal);
   });
 
   it('does not call a key date a must-have when watched sales are cheaper', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyDateCallouts } from './keyDates';
+import { keyDateCallouts, keyDatePrice, statedGrade } from './keyDates';
 
 const texts = (text: string, year?: number | null, mint?: string | null) => keyDateCallouts({ text, year, mint }).map((c) => c.text);
 
@@ -36,6 +36,32 @@ describe('keyDateCallouts', () => {
     expect(texts('1955 Lincoln Cent Doubled Die Obverse')).toEqual(['Valuable variety: 1955 Doubled Die Obverse.']);
     expect(texts('1955 Lincoln Wheat Penny')).toEqual(["Check for the 1955 Doubled Die Obverse; it's worth far more."]);
     expect(texts('1937-D Buffalo Nickel 3 Legged')).toEqual(['Valuable variety: 1937-D 3-Legged Buffalo.']);
+  });
+
+  it('reads one stated grade and the CoinFacts spec for that key date', () => {
+    expect(statedGrade('1932 S Washington Silver Quarter Coin Key Date 408k MINTED~! (A) Good!')).toEqual({ gradeNo: 4, label: 'G-4' });
+    expect(statedGrade('1932 D Washington Silver Quarter A VERY GOOD')).toEqual({ gradeNo: 8, label: 'VG-8' });
+    expect(statedGrade('1932 D Washington Silver Quarter B VERY GOOD')).toEqual({ gradeNo: 8, label: 'VG-8' });
+    expect(statedGrade('1932 S Washington Silver Quarter (B) Very Good!')).toEqual({ gradeNo: 8, label: 'VG-8' });
+    expect(statedGrade('1893-S Morgan PCGS VF 30')).toEqual({ gradeNo: 30, label: 'VF-30' });
+    expect(statedGrade('1932-S Washington quarter VF-XF')).toBeNull();
+    expect(statedGrade('Good - Extremely Fine')).toBeNull();
+    expect(keyDatePrice('1932 S Washington Silver Quarter Coin Key Date 408k MINTED~! (A) Good!')).toEqual({
+      pcgs: 5792,
+      year: 1932,
+      mint: 'S',
+      denom: '25c',
+      grade: { gradeNo: 4, label: 'G-4' },
+    });
+    expect(keyDatePrice('1932 D Washington Silver Quarter Coin Key Date 436,800 MINTED~! B VERY GOOD')).toMatchObject({
+      pcgs: 5791,
+      mint: 'D',
+      grade: { gradeNo: 8, label: 'VG-8' },
+    });
+    expect(keyDatePrice('1932-S Washington quarter')).toBeNull();
+    expect(keyDatePrice('1916-D Mercury dime FB Good')).toBeNull();
+    expect(keyDatePrice('1909-S VDB Lincoln cent Good')).toMatchObject({ pcgs: 2426 });
+    expect(keyDatePrice('1909-S Lincoln cent Good')).toMatchObject({ pcgs: 2434 });
   });
 
   it('does not mistake other coins for a series', () => {

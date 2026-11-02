@@ -9,6 +9,7 @@ import { CHAT_MAX, chatLine, pasteToChat, type ChatResult } from './chat';
 import { diagnose } from './diagnostics';
 import { claimPage, contextAlive, every, onRetire } from './lifecycle';
 import { isShareWorker, markShareWorker, onLive, resetForPath, startLiveBridge } from './live';
+import { ensureShopListener, resetShop, startShopWatch } from './shop';
 import { overlay } from './overlay';
 import { loadOverrides } from './overridesState';
 import { startPicker } from './picker';
@@ -41,12 +42,6 @@ const runBulkTaskIfAssigned = async () => {
   await send('TASK_DONE', { jobId: task.jobId, index: task.index, report }).catch(() => undefined);
 };
 
-// Sharing runs in its own background tab, so the background decides whether this starts or stops it.
-const toggleShare = async () => {
-  const res = await send('SHARE_TOGGLE', {}).catch((err: Error) => ({ ok: false as const, error: err.message }));
-  if (!res.ok) overlay.notice(res.error);
-};
-
 const CHAT_NOTICE: Record<ChatResult, (n: number) => string> = {
   filled: (n) => `In the chat box (${n}/${CHAT_MAX}). Press Enter there to send.`,
   copied: (n) => `Chat box not found. Copied (${n}/${CHAT_MAX}); paste it into chat.`,
@@ -62,6 +57,7 @@ const runShareIfAssigned = async () => {
     const session = await send('SHARE_CLAIM', {}).catch(() => null);
     if (session) {
       markShareWorker();
+      resetShop();
       await runShareWorker(session);
       return;
     }
@@ -117,7 +113,6 @@ const syncToPath = () => {
   if (isLivePath()) {
     overlay.mount({
       appraise: () => void appraiseAndGuard(),
-      toggleShare: () => void toggleShare(),
       pasteToChat: (view) => void sendToChat(chatLine(view)),
       chatText: (text) => void sendToChat(text.slice(0, CHAT_MAX)),
       quickBid: (kind) => void quickBid(kind),
@@ -128,8 +123,10 @@ const syncToPath = () => {
     refreshGuard();
     refreshWheel();
     resetShowType();
+    startShopWatch();
   } else {
     overlay.unmount();
+    resetShop();
     stopLocalShare();
   }
 };
@@ -153,6 +150,7 @@ const main = async () => {
     },
   });
   await loadOverrides();
+  ensureShopListener();
   await startLiveBridge();
   // Before the guard, so on each lot update the guard reads who's leading after the buyer has seen it.
   await startBuyer({ onChange: refreshGuard });

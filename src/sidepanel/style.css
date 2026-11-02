@@ -405,10 +405,16 @@ label > input[type='number'] {
   opacity: 0.4;
 }
 
+.wheel-break {
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .wheel-slots .wheel-prize {
   display: grid;
   grid-template-columns: 1fr auto 72px;
-  align-items: center;
+  align-items: start;
   gap: 8px;
   padding: 3px 0;
   border-bottom: 1px solid var(--border);
@@ -420,9 +426,26 @@ label > input[type='number'] {
 }
 
 .wheel-slots .wheel-prize .name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.end-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: baseline;
+}
+
+.end-tag.top {
+  color: var(--ok);
+}
+
+.end-tag.floor {
+  color: var(--warn);
 }
 
 .big {

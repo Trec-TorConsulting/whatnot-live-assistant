@@ -8,14 +8,13 @@ import { formatMoney } from '../shared/money';
 import type { PrizeValue } from '../shared/prizeValue';
 import { getItem, onItemChanged } from '../shared/storage';
 import { MINUTE, SECOND } from '../shared/time';
-import { emptyWheel, wheelOdds } from '../shared/wheel';
+import { emptyWheel, hitOutcome, prizeSlotLabel, wheelOdds, type WheelEnd } from '../shared/wheel';
 import { checkEnvelopes, checkNamedPrizes } from './envelopes';
 import { every } from './lifecycle';
 import { liveSession, onLive } from './live';
 import { overlay, type WheelFact, type WheelView } from './overlay';
 
 const STALE_MS = MINUTE;
-const TOP_PRIZES = 3;
 
 export const activeWheel = (s: LiveSession | null): BreakSnapshot | null => (s?.wheel && s.wheel.id === s.breakId ? s.wheel : null);
 
@@ -36,7 +35,7 @@ export const wheelView = (
   const o = wheelOdds({
     ...emptyWheel(b.id, b.fetchedAt),
     price,
-    slots: rows.map((r) => ({ label: r.title, total: r.left, left: r.left, value: r.value })),
+    slots: rows.map((r) => ({ label: prizeSlotLabel(r), total: r.left, left: r.left, value: r.value })),
   });
   const left = spotsLeft(b);
   const hasPrice = price !== null && price > 0;
@@ -73,33 +72,24 @@ export const wheelView = (
         ]
       : [];
   const age = now - b.fetchedAt;
-
-  // The same prize can be listed as separate options; its odds are all its copies together.
-  const byPrize = new Map<string, { title: string; value: number; left: number }>();
-  for (const r of rows) {
-    if (r.value === null || r.left <= 0) continue;
-    const seen = byPrize.get(r.key);
-    const title = seen?.title ?? [r.title, r.inside ?? r.detail].filter(Boolean).join(' · ');
-    byPrize.set(r.key, { title, value: r.value, left: (seen?.left ?? 0) + r.left });
-  }
-  const top = [...byPrize.values()].sort((x, y) => y.value - x.value || y.left - x.left).slice(0, TOP_PRIZES);
+  const endValue = (e: WheelEnd) => `${e.value !== null ? formatMoney(e.value) : 'no value yet'} · ${pct(e.chance)} chance`;
+  const endDetail = (e: WheelEnd) => [e.label, `${e.left} left`, hitOutcome(e.loss)].filter(Boolean).join(' · ');
 
   return {
-    title: [b.title ?? 'Wheel', left !== null && b.total !== null ? `${left} of ${b.total} spots left` : `${o.spotsLeft} spots left`].join(' · '),
+    title: b.title ?? 'Wheel',
+    spots: left !== null && b.total !== null ? `${left} of ${b.total} spots left` : `${o.spotsLeft} spots left`,
     value: o.expectedValue !== null ? `Worth ${o.expectedIsFloor ? '≥ ' : ''}${formatMoney(o.expectedValue)} a spin` : 'Wheel is empty',
     verdict,
     level: o.verdict === 'worth' ? 'worth' : o.verdict === 'not_worth' ? 'not_worth' : 'unclear',
     // Always the same rows in the same order, with a dash for what isn't known yet.
     facts: [
       { label: 'Beats the bid', value: o.chanceBeatPrice !== null ? `${pct(o.chanceBeatPrice)} chance` : '—', detail: null },
-      ...Array.from({ length: TOP_PRIZES }, (_, i) => {
-        const p = top[i];
-        return {
-          label: `#${i + 1} prize`,
-          value: p && o.spotsLeft ? `${formatMoney(p.value)} · ${pct(p.left / o.spotsLeft)} chance` : '—',
-          detail: p ? `${p.title}${p.left > 1 ? ` (${p.left} left)` : ''}` : null,
-        };
-      }),
+      o.top
+        ? { label: 'Top', value: endValue(o.top), detail: endDetail(o.top) }
+        : { label: 'Top', value: '—', detail: null },
+      o.floor
+        ? { label: 'Floor', value: endValue(o.floor), detail: endDetail(o.floor) }
+        : { label: 'Floor', value: o.top ? 'same as the top' : '—', detail: null },
       {
         label: 'Last spin',
         value: lastHit

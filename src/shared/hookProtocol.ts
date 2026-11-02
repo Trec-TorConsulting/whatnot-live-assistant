@@ -8,4 +8,8 @@ export type HookToContent =
   | { kind: 'graphql_op'; operation: string }
   | { kind: 'graphql'; operation: string; body: string; optionsAfter?: string | null };
 
-export type ContentToHook = { kind: 'ready' } | { kind: 'quiet'; ms: number } | { kind: 'fetch_break'; id: string; soldAfter: string | null; optionsAfter: string | null };
+export type ContentToHook =
+  | { kind: 'ready' }
+  | { kind: 'quiet'; ms: number }
+  | { kind: 'fetch_break'; id: string; soldAfter: string | null; optionsAfter: string | null }
+  | { kind: 'fetch_shop'; id: string; after: string | null };

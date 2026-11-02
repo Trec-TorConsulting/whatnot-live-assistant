@@ -47,6 +47,17 @@ A tab marked as the auto-share worker SHALL NOT forward live signals, refetch br
 - **WHEN** a sale matching the user happens in the share-worker tab
 - **THEN** no win signal is sent from that tab
 
+### Requirement: Shop buy-it-now scan
+When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items priced under melt, under watched sales, on the watchlist, or a known key date. Auction, giveaway, and pre-bid listings SHALL be ignored. The scan SHALL NOT buy anything.
+
+#### Scenario: Pre-bid next to a cheap buy-it-now
+- **WHEN** the shop has a pre-bid auction and a buy-it-now coin priced under melt
+- **THEN** only the buy-it-now coin is listed
+
+#### Scenario: Nothing under market
+- **WHEN** every buy-it-now price is at or above melt and the watched sale median, and none match the watchlist or a key date
+- **THEN** the shop note says there are no deals
+
 ### Requirement: Seller note on the live show
 The Live panel SHALL show the current host's saved profile numbers, the user's private note, and a one-time warning when that seller is blocked. Profile numbers SHALL be fetched at most about once a day and SHALL NOT be the bulk-follow target by themselves.
 

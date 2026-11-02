@@ -35,6 +35,7 @@ import {
   type Monitor,
   type OverlayPrefs,
 } from '../../shared/storage';
+import type { ShopHit } from '../../shared/shop';
 import { formatDuration } from '../../shared/time';
 import { $, li, liveIdOfTab, numberOf, onActiveTab, runCommand, setNumber, toast } from '../ui';
 
@@ -42,6 +43,9 @@ const el = {
   title: $('#live-title'),
   meta: $('#live-meta'),
   lot: $('#live-lot'),
+  shopCard: $('#shop-card'),
+  shopSummary: $('#shop-summary'),
+  shopHits: $('#shop-hits'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
   overlayShow: $<HTMLInputElement>('#overlay-show'),
   overlayReset: $<HTMLButtonElement>('#overlay-reset'),
@@ -225,6 +229,25 @@ const renderLot = () => {
   );
 };
 
+const shopLabel = (h: ShopHit) => (h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have');
+
+const renderShop = () => {
+  const shop = session?.shop ?? null;
+  el.shopCard.hidden = !shop;
+  if (!shop) return;
+  el.shopSummary.textContent =
+    shop.status === 'error'
+      ? "Couldn't read this show's shop."
+      : shop.binCount
+        ? `Checked ${shop.binCount} buy-it-now item${shop.binCount === 1 ? '' : 's'}.`
+        : 'No buy-it-now items in this shop.';
+  const rows = shop.hits.map((h) =>
+    li(`${shopLabel(h)}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : ''),
+  );
+  if (!rows.length && shop.status === 'ready' && shop.binCount) rows.push(li('No deals in the buy-it-now shop.', 'muted'));
+  el.shopHits.replaceChildren(...rows);
+};
+
 const renderStats = () => {
   const s = session ? summarizeSales(session.sales) : null;
   el.revenue.textContent = s ? formatMoney(s.revenue) : '—';
@@ -259,6 +282,7 @@ export const renderLive = () => {
   }
   el.appraise.disabled = tabId === null;
   renderLot();
+  renderShop();
   renderAppraisal();
   renderStats();
   renderBudgetLeft();

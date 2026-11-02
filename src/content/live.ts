@@ -12,6 +12,7 @@ import {
 import { pendingSpins, prizeValueKey } from '../shared/breaks';
 import { send } from '../shared/messages';
 import { soldFromSale, type SoldItem } from '../shared/soldHistory';
+import type { ShopScan } from '../shared/shop';
 import { getAlertSettings, getProfile, onItemChanged } from '../shared/storage';
 import { every, onRetire } from './lifecycle';
 import { findLiveHost, findStreamVideo, liveIdFromPath } from './selectors';
@@ -60,6 +61,13 @@ export const markShareWorker = () => {
   shareWorker = true;
 };
 export const isShareWorker = () => shareWorker;
+
+export const publishShop = (shop: ShopScan) => {
+  const s = currentSession();
+  if (!s || shareWorker) return;
+  session = { ...s, shop };
+  schedulePush();
+};
 
 // Only signals the background acts on leave the tab: new giveaways, keyword hits, and your wins.
 const forward = (signal: LiveSignal) => {

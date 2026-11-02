@@ -4,6 +4,7 @@
 // tolerantly by field name, and unrecognized events are sampled for diagnostics.
 import { BREAK_OPERATION, mergeWheel, parseBreakResponse, type BreakSnapshot } from './breaks';
 import { moneyValue } from './money';
+import type { ShopScan } from './shop';
 
 export interface PhoenixMessage {
   topic: string;
@@ -79,6 +80,7 @@ export interface LiveSession {
   eventCounts: Record<string, number>;
   samples: EventSample[];
   graphqlOps: Record<string, number>;
+  shop: ShopScan | null;
   updatedAt: number;
 }
 
@@ -115,6 +117,7 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
   eventCounts: {},
   samples: [],
   graphqlOps: {},
+  shop: null,
   updatedAt: now,
 });
 

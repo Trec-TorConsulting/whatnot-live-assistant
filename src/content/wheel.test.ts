@@ -64,20 +64,20 @@ describe('wheelView', () => {
   it('says worth it when the spin beats its current bid', () => {
     const v = wheelView(wheel(), lot(), values, {}, NOW);
     expect(v.level).toBe('worth');
-    expect(v.title).toBe('Gold Rush · 4 of 10 spots left');
+    expect(v.title).toBe('Gold Rush');
+    expect(v.spots).toBe('4 of 10 spots left');
     expect(v.value).toBe('Worth $32.50 a spin');
     expect(v.verdict).toBe('Worth it: $2.50 over the bid');
     expect(v.facts).toEqual([
       { label: 'Beats the bid', value: '25% chance', detail: null },
-      { label: '#1 prize', value: '$100 · 25% chance', detail: 'Gold Nugget' },
-      { label: '#2 prize', value: '$10 · 75% chance', detail: 'Wheat Penny (3 left)' },
-      { label: '#3 prize', value: '—', detail: null },
+      { label: 'Top', value: '$100 · 25% chance', detail: 'Gold Nugget · 1 left · gain $70' },
+      { label: 'Floor', value: '$10 · 75% chance', detail: 'Wheat Penny · 3 left · lose $20' },
       { label: 'Last spin', value: '$28 · @amy', detail: 'Wheat Penny' },
     ]);
     expect(v.warnings).toEqual([]);
   });
 
-  it('lists the three most valuable prizes, combining copies listed separately', () => {
+  it('groups copies of the top and names the cheap floor', () => {
     const prizes = [
       prize('1', 'Silver Eagle', 1),
       prize('2', 'Gold Nugget', 1),
@@ -86,11 +86,13 @@ describe('wheelView', () => {
       prize('5', 'Morgan Dollar', 2),
     ];
     const v = wheelView(wheel({ prizes }), lot(), { ...values, 'silver eagle': 35, 'morgan dollar': 40 }, {}, NOW);
-    expect(v.facts.filter((f) => f.label.endsWith('prize')).map((f) => [f.value, f.detail])).toEqual([
-      ['$100 · 20% chance', 'Gold Nugget (2 left)'],
-      ['$40 · 20% chance', 'Morgan Dollar (2 left)'],
-      ['$35 · 10% chance', 'Silver Eagle'],
-    ]);
+    const top = v.facts.find((f) => f.label === 'Top');
+    expect(top?.value).toBe('$100 · 20% chance');
+    expect(top?.detail).toContain('2 left · gain $70');
+    expect(top?.detail).toContain('Gold Nugget');
+    expect(top?.detail).toContain('gold  nugget');
+    expect(v.facts.find((f) => f.label === 'Floor')).toMatchObject({ value: '$10 · 50% chance', detail: 'Wheat Penny · 5 left · lose $20' });
+    expect(v.facts.some((f) => f.label === 'Most spots')).toBe(false);
   });
 
   it('keeps one title in two conditions apart, using condition values before title-only ones', () => {
@@ -98,14 +100,11 @@ describe('wheelView', () => {
     const sold = (low: number): PrizeValue => ({ low, high: null, source: 'sold', note: null, at: NOW });
     const auto = { 'morgan dollar | ms65': sold(400), 'morgan dollar': sold(40) };
     const v = wheelView(wheel({ prizes }), lot(), { 'wheat penny': 10 }, auto, NOW);
-    expect(v.facts.filter((f) => f.label.endsWith('prize')).map((f) => [f.value, f.detail])).toEqual([
-      ['$400 · 10% chance', 'Morgan Dollar · MS65'],
-      ['$40 · 30% chance', 'Morgan Dollar · Good (3 left)'],
-      ['$10 · 60% chance', 'Wheat Penny (6 left)'],
-    ]);
+    expect(v.facts.find((f) => f.label === 'Top')).toMatchObject({ value: '$400 · 10% chance', detail: 'Morgan Dollar · MS65 · 1 left · gain $370' });
+    expect(v.facts.find((f) => f.label === 'Floor')).toMatchObject({ value: '$10 · 60% chance', detail: 'Wheat Penny · 6 left · lose $20' });
     // Your own title-only value still beats an automatic one for a specific condition.
     const yours = wheelView(wheel({ prizes }), lot(), { 'morgan dollar': 50, 'wheat penny': 10 }, auto, NOW);
-    expect(yours.facts.find((f) => f.label === '#1 prize')!.value).toBe('$50 · 30% chance');
+    expect(yours.facts.find((f) => f.label === 'Top')!.value).toBe('$50 · 40% chance');
   });
 
   it('shows the last spin that has landed, not one still waiting on the wheel', () => {
@@ -126,9 +125,8 @@ describe('wheelView', () => {
     // Same rows between spins, so the card keeps its shape.
     expect(between.facts.map((f) => [f.label, f.value])).toEqual([
       ['Beats the bid', '—'],
-      ['#1 prize', '$100 · 25% chance'],
-      ['#2 prize', '$10 · 75% chance'],
-      ['#3 prize', '—'],
+      ['Top', '$100 · 25% chance'],
+      ['Floor', '$10 · 75% chance'],
       ['Last spin', '—'],
     ]);
   });

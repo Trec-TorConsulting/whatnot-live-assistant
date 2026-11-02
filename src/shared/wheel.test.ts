@@ -29,6 +29,8 @@ describe('wheelOdds', () => {
     expect(odds.edge).toBe(-5);
     expect(odds.chanceBeatPrice).toBe(0.25);
     expect(odds.topPrize).toEqual({ label: 'Eagle', value: 40, chance: 0.25 });
+    expect(odds.top).toMatchObject({ label: 'Eagle', value: 40, left: 1, chance: 0.25, loss: -25 });
+    expect(odds.floor).toMatchObject({ label: 'Penny', value: 0, left: 3, chance: 0.75, loss: 15 });
     expect(odds.verdict).toBe('not_worth');
     expect(odds.spinsUntilWorth).toBe(2);
   });
@@ -53,6 +55,13 @@ describe('wheelOdds', () => {
     expect(odds.verdict).toBe('unclear');
     expect(odds.spinsUntilWorth).toBeNull();
     expect(wheelOdds(wheel('Eagle $80\nMystery ?', 30)).verdict).toBe('worth');
+  });
+
+  it('marks the lowest priced prizes as the floor, naming the one with the most copies first', () => {
+    const odds = wheelOdds(wheel('Junk $1\nCent x4 $1\nFiller x8 $5\nEagle $40\nEnvelope x2 ?', 12));
+    expect(odds.floor).toMatchObject({ label: 'Cent, Junk', value: 1, left: 5, loss: 11 });
+    expect(odds.top).toMatchObject({ label: 'Eagle', value: 40, left: 1, loss: -28 });
+    expect(odds.floor?.label).not.toContain('Filler');
   });
 
   it('is unclear without a price and empty when no spots are left', () => {

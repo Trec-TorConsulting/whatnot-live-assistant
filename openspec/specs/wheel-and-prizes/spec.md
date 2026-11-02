@@ -23,6 +23,31 @@ The spin SHALL be worth it when the expected value minus the price is at least z
 - **WHEN** every remaining prize has a price and the expected value is below the spin price
 - **THEN** the verdict is not worth it
 
+### Requirement: Readable break name
+The wheel card SHALL show the break name and the spots left as separate wrapping lines.
+
+#### Scenario: Long break name
+- **WHEN** the break title plus the spots-left count do not fit on one line
+- **THEN** both are fully readable and neither is cut off with an ellipsis
+
+### Requirement: Top and floor
+The wheel card SHALL report the best remaining priced prizes as the top, and the lowest priced prizes you can still win as the floor when they cost less than the top. A high quantity SHALL mark that cheap prize as the floor. It SHALL NOT add a separate most-spots line. Each report SHALL include the name, the value when known, how many are left, and the chance. When a spin price is known, the top and the floor SHALL also say the gain or the loss against that price.
+
+#### Scenario: Lowest price is the floor
+- **WHEN** the wheel has one $40 prize, eight $5 prizes, and one $1 prize, and the spin price is $12
+- **THEN** the card shows the $40 prize as the top with a gain and the $1 prize as the floor with a loss, and does not list the $5 prizes as their own row
+
+#### Scenario: Several prizes share the lowest price
+- **WHEN** several remaining prizes share the lowest price and one of them has more copies than the others
+- **THEN** the floor names that higher-quantity prize first and does not add another line for it
+
+### Requirement: Floor in the side panel
+The side panel prize list SHALL tag the top and the floor rows. When the spin is not worth it yet and the cheap hits still needed are within the floor's remaining copies, the side panel SHALL say those hits are the floor and name it.
+
+#### Scenario: Waiting on floor hits
+- **WHEN** the spin is not worth the bid yet and clearing the floor would make it worth the bid
+- **THEN** the side panel names that floor prize as the hits still needed
+
 ### Requirement: Values do not bid
 A typed prize value SHALL beat an automatic value. The displayed max bid SHALL be the floor of the expected value as text. It SHALL NOT be written into the bid box and SHALL NOT change the bid guard. Quick bid and Appraise SHALL be hidden while the wheel card is showing. Manual hit, undo, and reset SHALL edit only the saved wheel.
 

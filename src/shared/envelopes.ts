@@ -2,7 +2,7 @@
 // without saying which envelope holds which. Until an envelope is opened it is equally likely to
 // hold any item on the board, so for the odds the unopened envelopes count as the board's items,
 // one spot each. That keeps the spin's worth and its odds exact when the counts agree.
-import { isHiddenPrize, prizeKey, prizeValueKey, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
+import { isHiddenSpot, prizeKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
 import type { PrizeValue } from './prizeValue';
 
 export interface EnvelopeBoard {
@@ -12,6 +12,10 @@ export interface EnvelopeBoard {
   prizes: string[];
   // Each item priced like a prize, with what it is in `inside`.
   items: PrizeValue[];
+  // True after a later read dropped pool items following an envelope hit.
+  revealed?: boolean;
+  // Hidden spots already sold when this board was saved. A higher count on the next read is a hit.
+  soldHidden?: number | null;
 }
 
 export interface WheelRow {
@@ -48,10 +52,11 @@ export const pickAuto = (byName: PrizeValue | null, seen: PrizeValue | null): Pr
 const prizeRows = (b: BreakSnapshot, yours: Record<string, number>, auto: Record<string, PrizeValue>): WheelRow[] =>
   b.prizes.map((prize) => {
     const key = wheelValueKey(b.id, prize);
-    const titleKey = wheelTitleKey(b.id, prize.title);
+    const titleKey = wheelTitleKey(b.id, prize.title, prize.detail);
     const mine = yours[key] ?? yours[titleKey];
-    const seen = isHiddenPrize(prize.title) ? null : (auto[seenKey(b.id, prize)] ?? null);
-    const a = mine === undefined ? pickAuto(auto[key] ?? auto[titleKey] ?? null, seen) : null;
+    const seen = isHiddenSpot(prize) ? null : (auto[seenKey(b.id, prize)] ?? null);
+    // A hidden prize is not priced from its name. The pool average is applied in wheelRows.
+    const a = mine === undefined && !isHiddenSpot(prize) ? pickAuto(auto[key] ?? auto[titleKey] ?? null, seen) : null;
     return {
       key,
       titleKey,
@@ -65,20 +70,23 @@ const prizeRows = (b: BreakSnapshot, yours: Record<string, number>, auto: Record
     };
   });
 
-const isUnmatched = (r: WheelRow) => !r.fromBoard && r.value === null && r.left > 0 && isHiddenPrize(r.title);
+const isUnmatched = (r: WheelRow, b: BreakSnapshot) => {
+  const prize = b.prizes.find((p) => p.title === r.title && p.detail === r.detail);
+  return !r.fromBoard && r.value === null && r.left > 0 && !!prize && isHiddenSpot(prize);
+};
 
 // Envelopes still on the wheel with no value of their own.
 export const unmatchedEnvelopes = (b: BreakSnapshot, yours: Record<string, number>, auto: Record<string, PrizeValue>) =>
-  prizeRows(b, yours, auto).filter(isUnmatched);
+  prizeRows(b, yours, auto).filter((r) => isUnmatched(r, b));
 
 // Named prizes still on the wheel that the video hasn't shown yet; ones you priced are skipped.
 export const unseenPrizes = (b: BreakSnapshot, yours: Record<string, number>, auto: Record<string, PrizeValue>) =>
   b.prizes.filter(
     (p) =>
       p.left > 0 &&
-      !isHiddenPrize(p.title) &&
+      !isHiddenSpot(p) &&
       yours[wheelValueKey(b.id, p)] === undefined &&
-      yours[wheelTitleKey(b.id, p.title)] === undefined &&
+      yours[wheelTitleKey(b.id, p.title, p.detail)] === undefined &&
       !auto[seenKey(b.id, p)],
   );
 
@@ -88,40 +96,111 @@ export const boardIsCurrent = (board: EnvelopeBoard | null | undefined, unmatche
   return board.prizes.length === keys.size && board.prizes.every((k) => keys.has(k));
 };
 
-// More board items than envelopes means some already went (or the read caught extras): the
-// cheapest are kept so the worth stays a floor. Fewer means some envelopes' items weren't on
-// camera, and those stay unpriced.
+const itemName = (inside: string | null | undefined) => (inside ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+// A shelf label prices a named spot only when it is that spot's name. Everything else is the pool.
+const splitBoard = (b: BreakSnapshot, yours: Record<string, number>, items: PrizeValue[]) => {
+  const pool: { item: PrizeValue; value: number | null }[] = [];
+  const claimed = new Map<string, PrizeValue>();
+  for (const item of items) {
+    const name = itemName(item.inside);
+    const named = b.prizes.find((p) => !isHiddenSpot(p) && prizeKey(p.title) === name);
+    const key = named ? prizeValueKey(named) : '';
+    if (named && key && !claimed.has(key)) claimed.set(key, item);
+    else {
+      const mine = yours[boardKey(b.id, item.inside ?? '')];
+      pool.push({ item, value: mine ?? item.low });
+    }
+  }
+  return { pool, claimed };
+};
+
+export interface EnvelopeSummary {
+  topName: string | null;
+  topValue: number | null;
+  share: number | null;
+  shareIncomplete: boolean;
+  average: number | null;
+  averageIsFloor: boolean;
+  averageIncomplete: boolean;
+  sealed: number;
+  original: number | null;
+  revealed: boolean;
+}
+
+// Each sealed envelope is the pool's average. The top item's share uses the count the wheel
+// started with, until a reveal, so selling one sealed envelope does not make the rest worth more.
+export const envelopeSummary = (
+  b: BreakSnapshot,
+  yours: Record<string, number>,
+  _auto: Record<string, PrizeValue>,
+  board: EnvelopeBoard | null = null,
+): EnvelopeSummary => {
+  const sealed = b.prizes.filter((p) => isHiddenSpot(p)).reduce((n, p) => n + Math.max(0, p.left), 0);
+  const sold = soldHiddenCount(b);
+  const original = sold === null ? null : sealed + sold;
+  const { pool } = splitBoard(b, yours, board?.items ?? []);
+  const priced = pool.filter((p): p is { item: PrizeValue; value: number } => p.value !== null);
+  const top = [...priced].sort((a, b) => b.value - a.value)[0] ?? null;
+  const revealed = board?.revealed === true;
+  const divisor = revealed ? sealed : original;
+  const shareIncomplete = !revealed && original === null;
+  // No camera pool yet is not an average of zero. A shelf larger than the wheel started with is incomplete.
+  const fits = pool.length > 0 && original !== null && pool.length <= original;
+  const sum = pool.reduce((n, p) => n + (p.value ?? 0), 0);
+  const average = fits && original ? sum / original : null;
+  const averageIsFloor = average !== null && (pool.length < original! || pool.some((p) => p.value === null));
+  return {
+    topName: top?.item.inside ?? null,
+    topValue: top?.value ?? null,
+    share: top && divisor ? top.value / divisor : null,
+    shareIncomplete: shareIncomplete || (!top && sealed > 0),
+    average,
+    averageIsFloor,
+    averageIncomplete: sealed > 0 && average === null,
+    sealed,
+    original,
+    revealed,
+  };
+};
+
+// An empty read keeps the last board. A read that drops most of the pool is ignored. A smaller
+// strict subset counts as a reveal only after another envelope has sold.
+export const nextEnvelopeBoard = (prev: EnvelopeBoard | null, next: EnvelopeBoard, soldHidden: number | null): EnvelopeBoard => {
+  const fresh: EnvelopeBoard = { ...next, soldHidden, revealed: false };
+  if (!next.items.length) return prev ? { ...prev } : fresh;
+  if (!prev?.items.length) return fresh;
+  const prevNames = new Set(prev.items.map((i) => itemName(i.inside)));
+  const nextNames = next.items.map((i) => itemName(i.inside));
+  const fewer = next.items.length < prev.items.length && nextNames.every((n) => prevNames.has(n));
+  if (fewer && next.items.length * 2 < prev.items.length) return prev;
+  const hitSince = soldHidden !== null && prev.soldHidden != null && soldHidden > prev.soldHidden;
+  if (fewer && hitSince) return { ...fresh, revealed: true };
+  if (fewer) return prev;
+  const gained = nextNames.some((n) => !prevNames.has(n));
+  return { ...fresh, revealed: gained ? false : (prev.revealed ?? false) };
+};
+
+// Hidden spots take the envelope average. Named spots keep their own prices. Board items are not
+// extra spots, and a crowded shelf is not trimmed down to the cheapest rows.
 export const wheelRows = (
   b: BreakSnapshot,
   yours: Record<string, number>,
   auto: Record<string, PrizeValue>,
   board: EnvelopeBoard | null = null,
 ): WheelRow[] => {
-  const rows = prizeRows(b, yours, auto);
-  const unmatched = rows.filter(isUnmatched);
-  if (!board?.items.length || !unmatched.length) return rows;
-  const envelopes = unmatched.reduce((n, r) => n + r.left, 0);
-  const items = board.items
-    .map((item): WheelRow => {
-      const key = boardKey(b.id, item.inside ?? '');
-      const mine = yours[key];
-      return {
-        key,
-        titleKey: null,
-        title: 'Envelope',
-        detail: '',
-        inside: item.inside ?? null,
-        left: 1,
-        value: mine ?? item.low,
-        auto: mine === undefined ? item : null,
-        fromBoard: true,
-      };
-    })
-    .sort((x, y) => x.value! - y.value!)
-    .slice(0, envelopes);
-  const unseen = envelopes - items.length;
-  const rest: WheelRow[] = unseen
-    ? [{ key: `${b.id}#board|unseen`, titleKey: null, title: 'Envelope', detail: '', inside: 'not on camera', left: unseen, value: yours[`${b.id}#board|unseen`] ?? null, auto: null, fromBoard: true }]
-    : [];
-  return [...rows.filter((r) => !isUnmatched(r)), ...items, ...rest];
+  const summary = envelopeSummary(b, yours, auto, board);
+  const { claimed } = splitBoard(b, yours, board?.items ?? []);
+  return prizeRows(b, yours, auto).map((row) => {
+    const prize = b.prizes.find((p) => p.title === row.title && p.detail === row.detail);
+    if (!prize || !isHiddenSpot(prize)) {
+      const claim = claimed.get(prizeValueKey(prize ?? { title: row.title, detail: row.detail }));
+      if (!claim || row.value !== null) return row;
+      return { ...row, inside: claim.inside ?? row.inside, value: claim.low, auto: claim, fromBoard: false };
+    }
+    const mine = yours[row.key] ?? (row.titleKey ? yours[row.titleKey] : undefined);
+    if (mine !== undefined) return { ...row, value: mine, auto: null };
+    if (summary.average === null) return { ...row, value: null, auto: null, inside: null };
+    return { ...row, value: summary.average, auto: null, inside: null };
+  });
 };

@@ -2,6 +2,7 @@
 // Real prices come first (melt from spot, Whatnot sold comps); the AI only fills what's left.
 // Every range is valued at its low end so the wheel never looks better than the data backs.
 import type { Metal } from './appraisal';
+import { isHiddenPrize } from './breaks';
 import { DAY } from './time';
 
 export type PrizeSource = 'melt' | 'sold' | 'ai';
@@ -264,13 +265,13 @@ const MAX_BOARD_ITEMS = 30;
 // The envelope's number or letter: "ENVELOPE #3" and "#3" both give "3".
 const tagOf = (title: string) => title.trim().match(/(?:#|\s|^)(\d{1,3}|[a-z])$/i)?.[1]?.toLowerCase() ?? null;
 
-// Items tied to a listed envelope (by name, else by a number only one title has) are matched; the
-// rest of the board is the pool the other envelopes draw from. An item tied to an envelope that
-// isn't listed (likely already opened) is dropped, as is a second item for the same envelope.
+// Named instant hits match by label. A shelf number never assigns an item to an envelope: a number
+// on this wheel stays in the pool, and a number that is not on this wheel is discarded.
 export const parseEnvelopeAnswer = (
   text: string,
   titles: string[],
   field: 'envelopes' | 'prizes' = 'envelopes',
+  named: string[] = [],
 ): { matched: EnvelopeRead[]; board: BoardItem[] } => {
   let rows: unknown;
   try {
@@ -287,13 +288,13 @@ export const parseEnvelopeAnswer = (
       .replace(/\s*\([^)]*\)$/, '')
       .replace(/\s+/g, ' ');
   const byName = new Map(titles.map((t) => [norm(t), t]));
-  const tags = new Map<string, string | null>();
-  for (const t of titles) {
-    const tag = tagOf(t);
-    if (tag) tags.set(tag, tags.has(tag) ? null : t);
-  }
+  const namedByName = new Map((field === 'envelopes' ? named : titles).map((t) => [norm(t), t]));
+  const wheelTags = new Set(titles.map((t) => tagOf(t)).filter((t): t is string => !!t));
   const matched = new Map<string, EnvelopeRead>();
   const board: BoardItem[] = [];
+  const keep = (item: BoardItem) => {
+    if (board.length < MAX_BOARD_ITEMS) board.push(item);
+  };
   for (const row of rows) {
     const r = row as { prize?: unknown; inside?: unknown; low?: unknown; high?: unknown };
     const prize = typeof r.prize === 'string' ? r.prize.trim() : '';
@@ -301,13 +302,20 @@ export const parseEnvelopeAnswer = (
     const nums = [r.low, r.high].filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0);
     if (!inside || !nums.length) continue;
     const item = { inside, low: Math.min(...nums), high: Math.max(...nums) };
-    if (!prize) {
-      if (board.length < MAX_BOARD_ITEMS) board.push(item);
+    if (field === 'prizes') {
+      const title = prize ? byName.get(norm(prize)) : undefined;
+      if (title && !matched.has(title)) matched.set(title, { title, ...item });
       continue;
     }
-    const tag = tagOf(prize);
-    const title = byName.get(norm(prize)) ?? (tag ? tags.get(tag) : null);
-    if (title && !matched.has(title)) matched.set(title, { title, ...item });
+    const namedTitle = prize ? namedByName.get(norm(prize)) : undefined;
+    if (namedTitle && !matched.has(namedTitle)) {
+      matched.set(namedTitle, { title: namedTitle, ...item });
+      continue;
+    }
+    const tag = prize ? tagOf(prize) : null;
+    const envelopeLike = !!prize && (isHiddenPrize(prize) || tag !== null);
+    if (envelopeLike && tag && !wheelTags.has(tag) && !byName.has(norm(prize))) continue;
+    keep(item);
   }
   return { matched: [...matched.values()], board };
 };

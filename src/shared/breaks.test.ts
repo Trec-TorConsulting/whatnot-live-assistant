@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   isHiddenPrize,
+  isHiddenSpot,
   mergeWheel,
+  prizeStem,
+  soldHiddenCount,
   parseBreakResponse,
   pendingSpins,
   prizeDetail,
@@ -65,9 +68,31 @@ describe('hidden prizes', () => {
     for (const t of ['ENVELOPE #2', 'Envelope 12', 'ENVELOPES', 'LOPE 3', 'lopes #4', 'ENV #5', 'MYSTERY ENVELOPE #1', 'Gold Envelope A', 'MYSTERY BAG #1', 'Top Prize 2', 'BIG WIN #1']) {
       expect(isHiddenPrize(t), t).toBe(true);
     }
-    for (const t of ['BUFFALO NICKEL RANDOM YEAR ', 'VAULTBOX SELECT BOX RIP/SHIP', 'NOAHS ARK 1OZ GOLD CHASE BREAKMINT RIP/SHIP', '1 Kilo Silver Bar', 'Envelope of Wheat Pennies']) {
+    for (const t of ['BUFFALO NICKEL RANDOM YEAR ', 'VAULTBOX SELECT BOX RIP/SHIP', 'NOAHS ARK 1OZ GOLD CHASE BREAKMINT RIP/SHIP', '1 Kilo Silver Bar', 'Envelope of Wheat Pennies', 'Proof Quarter', 'Family Pack #7']) {
       expect(isHiddenPrize(t), t).toBe(false);
     }
+  });
+
+  it('treats a prize as hidden when the detail is the envelope, and matches sold hits by stem', () => {
+    expect(isHiddenSpot({ title: 'Family Pack #7', detail: 'Envelope' })).toBe(true);
+    expect(isHiddenSpot({ title: 'Proof Quarter', detail: '' })).toBe(false);
+    expect(prizeStem('🔥 Family Pack #3')).toBe(prizeStem('Family Pack #7'));
+    expect(prizeStem('ENVELOPE #12')).toBe('envelope');
+    const b = parseBreakResponse(breakBody(), 1000)!;
+    const hidden = {
+      ...b,
+      prizes: [
+        { id: '1', title: 'Family Pack #7', detail: 'Envelope', left: 2 },
+        { id: '2', title: 'Proof Quarter', detail: '', left: 1 },
+      ],
+      hits: [
+        { spotId: 's1', title: '🎉 Family Pack #1', buyer: 'a', price: 9, pending: false, seenAt: 1 },
+        { spotId: 's2', title: 'Proof Quarter', buyer: 'b', price: 8, pending: false, seenAt: 1 },
+      ],
+      soldHasMore: false,
+    };
+    expect(soldHiddenCount(hidden)).toBe(1);
+    expect(soldHiddenCount({ ...hidden, soldHasMore: true })).toBeNull();
   });
 
   it('keys hidden prizes to their wheel and leaves named prizes shared across shows', () => {

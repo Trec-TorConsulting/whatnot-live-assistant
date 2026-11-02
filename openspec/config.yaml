@@ -32,14 +32,14 @@ rules:
     - Each requirement has at least one Scenario with WHEN and THEN
     - Do not specify bids, giveaway entries, or invented certification numbers
   tasks:
-    - Include the ship chain: branch, commit, push, a detailed pull request into main, and gh pr merge --admin
+    - "Include the ship chain: branch, commit, push, a detailed pull request into main, and gh pr merge --admin"
     - Leave tokens, .env files, and Chrome profiles out of the commit
   design:
     - Name the modules the change touches
 operations:
   apply:
     guidance:
-      - When the user says deploy, push, or commit, run the ship chain every time: branch, commit, push, detailed pull request into main, merge with gh pr merge --admin
+      - "When the user says deploy, push, or commit, run the ship chain every time: branch, commit, push, detailed pull request into main, merge with gh pr merge --admin"
       - Do not commit directly to main
   archive:
     guidance:

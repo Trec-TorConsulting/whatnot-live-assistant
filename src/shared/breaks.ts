@@ -93,10 +93,33 @@ const HIDDEN_PRIZE_RE =
 
 export const isHiddenPrize = (title: string) => HIDDEN_PRIZE_RE.test(title.trim());
 
+// "Family Pack #7" with detail "Envelope" is hidden even though the title is a product name.
+export const isHiddenSpot = (p: { title: string; detail?: string }) => isHiddenPrize(p.title) || isHiddenPrize(p.detail ?? '');
+
+// The shared name of a hidden spot, without emoji or the trailing envelope number.
+export const prizeStem = (title: string) =>
+  title
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/[\uFE0F\u200D]/g, '')
+    .replace(/\s*(?:#|no\.?|number)?\s*\d{1,3}\s*$/i, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+// Sold hits rarely repeat the word "envelope". A hit counts when its stem matches a hidden prize
+// still listed on this break. Null while sold pages remain, so the jackpot share stays incomplete.
+export const soldHiddenCount = (b: BreakSnapshot): number | null => {
+  if (b.hits === null || b.soldHasMore) return null;
+  const stems = new Set(b.prizes.filter((p) => isHiddenSpot(p)).map((p) => prizeStem(p.title)));
+  return b.hits.filter((h) => !h.pending && stems.has(prizeStem(h.title))).length;
+};
+
 // Envelope #3 on another wheel holds something else, so a hidden prize's value belongs to its wheel.
 export const scopedKey = (breakId: string, title: string, key: string) => (isHiddenPrize(title) ? `${breakId}#${key}` : key);
-export const wheelValueKey = (breakId: string, p: { title: string; detail: string }) => scopedKey(breakId, p.title, prizeValueKey(p));
-export const wheelTitleKey = (breakId: string, title: string) => scopedKey(breakId, title, prizeKey(title));
+export const wheelValueKey = (breakId: string, p: { title: string; detail: string }) =>
+  isHiddenSpot(p) ? `${breakId}#${prizeValueKey(p)}` : prizeValueKey(p);
+export const wheelTitleKey = (breakId: string, title: string, detail = '') =>
+  isHiddenSpot({ title, detail }) ? `${breakId}#${prizeKey(title)}` : prizeKey(title);
 
 const PENDING_RE = /^#\d+$/;
 

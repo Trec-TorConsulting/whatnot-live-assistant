@@ -22,8 +22,11 @@ import {
   hitSlot,
   parseWheelSlots,
   resetSpins,
+  hitOutcome,
+  prizeSlotLabel,
   undoSpin,
   wheelOdds,
+  type WheelEnd,
   type WheelOdds,
   type WheelState,
 } from '../../shared/wheel';
@@ -113,6 +116,23 @@ const verdictLine = (o: WheelOdds, price: number | null, priceLabel = 'the price
 
 const verdictClass = (o: WheelOdds) => (o.verdict === 'worth' ? 'good small' : o.verdict === 'not_worth' ? 'bad-text small' : 'muted small');
 
+const endText = (e: WheelEnd) =>
+  [e.label, e.value !== null ? formatMoney(e.value) : 'no value yet', `${e.left} left`, `${pct(e.chance)} chance`, hitOutcome(e.loss)].filter(Boolean).join(' · ');
+
+const endLines = (o: WheelOdds) => {
+  const lines: HTMLElement[] = [];
+  if (o.top) lines.push(div('small', `Top: ${endText(o.top)}`));
+  if (o.floor) lines.push(div('small', `Floor: ${endText(o.floor)}`));
+  else if (o.top) lines.push(div('muted small', 'Floor: same value as the top.'));
+  return lines;
+};
+
+const endKind = (o: WheelOdds, index: number) => {
+  if (o.top?.indexes.includes(index)) return 'top';
+  if (o.floor?.indexes.includes(index)) return 'floor';
+  return '';
+};
+
 // Whatnot's wheel for this show, once its prize list has loaded.
 const liveWheel = (): BreakSnapshot | null => (session?.wheel && session.wheel.id === session.breakId ? session.wheel : null);
 
@@ -157,6 +177,14 @@ const bidAdvice = (b: BreakSnapshot, o: WheelOdds, prizes: StatPrize[], price: n
         `At ${formatMoney(target)} a spin: ${pct(f.next)} chance the next spin makes it worth it, ${SIM_SPINS.map((n, i) => `${pct(f.within[i]!)} within ${n}`).join(', ')}.`,
       ),
     );
+    if (o.floor && o.floor.value !== null && o.spinsUntilWorth !== null && o.spinsUntilWorth > 0 && o.spinsUntilWorth <= o.floor.left) {
+      lines.push(
+        div(
+          'muted small',
+          `Getting there means hitting the floor: ${o.floor.label} (${formatMoney(o.floor.value)}, ${pct(o.floor.chance)} of the spots).`,
+        ),
+      );
+    }
   }
   if (target !== null && historyComplete(b)) {
     const valueOf = (title: string) => hitValue(b, title) ?? 0;
@@ -213,7 +241,7 @@ const renderAuto = (b: BreakSnapshot) => {
   const state: WheelState = {
     ...emptyWheel(b.id, b.fetchedAt),
     price,
-    slots: rows.map((r) => ({ label: r.inside ? `${r.title} (${r.inside})` : r.title, total: r.left, left: r.left, value: r.value })),
+    slots: rows.map((r) => ({ label: prizeSlotLabel(r), total: r.left, left: r.left, value: r.value })),
   };
   const o = wheelOdds(state);
   const left = spotsLeft(b);
@@ -263,9 +291,11 @@ const renderAuto = (b: BreakSnapshot) => {
 
   el.summary.className = `lot ${o.verdict === 'worth' ? 'worth' : o.verdict === 'not_worth' ? 'over' : ''}`;
   el.summary.replaceChildren(
-    div('muted small', [b.title ?? 'Wheel', left !== null && b.total !== null ? `${left} of ${b.total} spots left` : null].filter(Boolean).join(' · ')),
+    div('wheel-break', b.title ?? 'Wheel'),
+    div('muted small', left !== null && b.total !== null ? `${left} of ${b.total} spots left` : `${o.spotsLeft} spots left`),
     div('big', `Worth ${o.expectedIsFloor ? '≥ ' : ''}${formatMoney(o.expectedValue)} a spin`),
     div(verdictClass(o), price !== null ? `${label} ${formatMoney(price)}. ${verdictLine(o, price)}` : verdictLine(o, price, label)),
+    ...endLines(o),
     ...bidAdvice(
       b,
       o,
@@ -276,7 +306,6 @@ const renderAuto = (b: BreakSnapshot) => {
       'muted small',
       [
         o.chanceBeatPrice !== null ? `${pct(o.chanceBeatPrice)} chance to beat the price` : null,
-        o.topPrize ? `top prize ${o.topPrize.label} ${formatMoney(o.topPrize.value)}: ${pct(o.topPrize.chance)}` : null,
         unpriced ? `${unpriced} unpriced (counted as $0)` : null,
         `updated ${ago(Date.now() - b.fetchedAt)}`,
       ]
@@ -328,6 +357,8 @@ const renderAuto = (b: BreakSnapshot) => {
       if (row.titleKey) input.dataset.title = row.titleKey;
       setNumber(input, auto ? null : s.value);
       const name = Object.assign(document.createElement('span'), { className: 'name', textContent: row.detail ? `${row.title} · ${row.detail}` : row.title });
+      const kind = endKind(o, s.index);
+      if (kind) name.append(Object.assign(document.createElement('span'), { className: `end-tag ${kind}`, textContent: kind }));
       if (row.inside) name.append(div('small', row.fromBoard ? `On the board: ${row.inside}` : `On camera: ${row.inside}`));
       if (auto) name.append(div('muted small', `${autoLabel(auto)}${auto.note && auto.source !== 'ai' ? ` (${auto.note})` : ''}`));
       item.append(name, Object.assign(document.createElement('span'), { className: 'muted', textContent: `${s.left} · ${pct(s.chance)}` }), input);
@@ -350,14 +381,9 @@ const renderManual = (w: WheelState | null) => {
     div(verdictClass(o), verdictLine(o, w.price)),
     div(
       'muted small',
-      [
-        `${o.spotsLeft} spots left`,
-        o.chanceBeatPrice !== null ? `${pct(o.chanceBeatPrice)} chance to beat the price` : null,
-        o.topPrize ? `top prize ${o.topPrize.label} ${formatMoney(o.topPrize.value)}: ${pct(o.topPrize.chance)}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      [`${o.spotsLeft} spots left`, o.chanceBeatPrice !== null ? `${pct(o.chanceBeatPrice)} chance to beat the price` : null].filter(Boolean).join(' · '),
     ),
+    ...endLines(o),
   );
   el.slots.replaceChildren(
     ...o.slots.map((s) => {

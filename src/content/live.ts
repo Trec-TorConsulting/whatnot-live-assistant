@@ -12,6 +12,7 @@ import {
 import { pendingSpins, prizeValueKey } from '../shared/breaks';
 import { send } from '../shared/messages';
 import { soldFromSale, type SoldItem } from '../shared/soldHistory';
+import type { ShopScan } from '../shared/shop';
 import { getAlertSettings, getProfile, onItemChanged } from '../shared/storage';
 import { every, onRetire } from './lifecycle';
 import { findLiveHost, findStreamVideo, liveIdFromPath } from './selectors';
@@ -60,6 +61,13 @@ export const markShareWorker = () => {
   shareWorker = true;
 };
 export const isShareWorker = () => shareWorker;
+
+export const publishShop = (shop: ShopScan) => {
+  const s = currentSession();
+  if (!s || shareWorker) return;
+  session = { ...s, shop };
+  schedulePush();
+};
 
 // Only signals the background acts on leave the tab: new giveaways, keyword hits, and your wins.
 const forward = (signal: LiveSignal) => {
@@ -127,16 +135,20 @@ let lastBreakFetch = 0;
 
 const refreshBreak = () => {
   if (!session?.breakId || shareWorker || breakTimer) return;
+  const paging = session.wheel?.id === session.breakId && session.wheel.complete === false && !!session.wheel.prizesCursor;
   breakTimer = setTimeout(
     () => {
       breakTimer = undefined;
       lastBreakFetch = Date.now();
       const id = session?.breakId;
       if (!id) return;
-      const soldAfter = session?.wheel?.id === id ? session.wheel.soldCursor : null;
-      postToHook({ kind: 'fetch_break', id, soldAfter });
+      const wheel = session?.wheel?.id === id ? session.wheel : null;
+      const soldAfter = wheel ? wheel.soldCursor : null;
+      // A short list is read from the start. A list Whatnot split across pages continues from the cursor.
+      const optionsAfter = wheel && !wheel.complete ? (wheel.prizesCursor ?? null) : null;
+      postToHook({ kind: 'fetch_break', id, soldAfter, optionsAfter });
     },
-    Math.max(0, lastBreakFetch + BREAK_MIN_GAP_MS - Date.now()),
+    Math.max(0, lastBreakFetch + (paging ? 200 : BREAK_MIN_GAP_MS) - Date.now()),
   );
 };
 
@@ -187,10 +199,12 @@ const onHookMessage = (e: MessageEvent) => {
     } catch {
       return;
     }
-    session = reduceGraphql(s, msg.operation, body);
+    session = reduceGraphql(s, msg.operation, body, Date.now(), msg.optionsAfter);
     valueWheel(session);
-    // Long spin histories arrive 100 at a time; keep paging until caught up.
-    if (session.wheel?.soldHasMore && session.wheel !== s.wheel) refreshBreak();
+    const stuck = typeof msg.optionsAfter === 'string' && session.wheel?.prizesCursor === msg.optionsAfter;
+    // Prize pages and long spin histories arrive 100 at a time; keep paging until caught up.
+    if (session.wheel && !session.wheel.complete && session.wheel.prizesCursor && !stuck) refreshBreak();
+    else if (session.wheel?.soldHasMore && session.wheel !== s.wheel) refreshBreak();
     // A spin read before Whatnot randomized it gets read again shortly; with Auto-Randomize off the
     // seller may take a while, so this only rechecks every few seconds.
     else if (session.wheel && pendingSpins(session.wheel) && !pendingTimer) {

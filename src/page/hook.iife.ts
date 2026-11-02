@@ -3,6 +3,8 @@
 // the clipboard or opening share popups.
 import { BREAK_OPERATION, BREAK_QUERY } from '../shared/breaks';
 import { CONTENT_SOURCE, HOOK_SOURCE, type ContentToHook, type HookToContent } from '../shared/hookProtocol';
+import { isShopOperation } from '../shared/shop';
+import { fetchShop, inspectGraphql, noteShopCall } from './shopFetch';
 import { installQuietPatches } from './quiet';
 
 declare global {
@@ -54,16 +56,19 @@ const install = () => {
     const res = await nativeFetch.call(window, input, init);
     try {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.includes('/services/graphql')) {
-        const operation = new URL(url, location.href).searchParams.get('operationName');
-        if (operation && WATCHED_OPERATIONS.has(operation)) {
+      const gql = inspectGraphql(url, location.href, init);
+      if (gql) {
+        noteShopCall(gql.operation, gql.query, gql.variables);
+        if (WATCHED_OPERATIONS.has(gql.operation) || isShopOperation(gql.operation)) {
           res
             .clone()
             .text()
-            .then((body) => post({ kind: 'graphql', operation, body }))
+            .then((body) => {
+              if (body.length <= 2_000_000) post({ kind: 'graphql', operation: gql.operation, body });
+            })
             .catch(() => undefined);
-        } else if (operation) {
-          post({ kind: 'graphql_op', operation });
+        } else {
+          post({ kind: 'graphql_op', operation: gql.operation });
         }
       }
     } catch {
@@ -73,7 +78,7 @@ const install = () => {
   };
 
   // The wheel's prize list, read the way Whatnot's web app does; without these headers getBreak is null.
-  const fetchBreak = async (id: string, soldAfter: string | null) => {
+  const fetchBreak = async (id: string, soldAfter: string | null, optionsAfter: string | null) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), BREAK_FETCH_TIMEOUT_MS);
     try {
@@ -82,9 +87,9 @@ const install = () => {
         credentials: 'include',
         signal: ctrl.signal,
         headers: { 'content-type': 'application/json', authorization: 'Cookie', 'x-whatnot-app': 'whatnot-web' },
-        body: JSON.stringify({ operationName: BREAK_OPERATION, query: BREAK_QUERY, variables: { id, soldAfter } }),
+        body: JSON.stringify({ operationName: BREAK_OPERATION, query: BREAK_QUERY, variables: { id, soldAfter, optionsAfter } }),
       });
-      if (res.ok) post({ kind: 'graphql', operation: BREAK_OPERATION, body: await res.text() });
+      if (res.ok) post({ kind: 'graphql', operation: BREAK_OPERATION, body: await res.text(), optionsAfter });
     } catch {
       // A missed refresh is retried on the next spin or poll.
     } finally {
@@ -105,7 +110,11 @@ const install = () => {
     } else if (msg.kind === 'quiet') {
       quietUntil = Date.now() + Math.min(MAX_QUIET_MS, Math.max(0, msg.ms));
     } else if (msg.kind === 'fetch_break' && /^\d+$/.test(msg.id)) {
-      void fetchBreak(msg.id, typeof msg.soldAfter === 'string' && msg.soldAfter.length < 200 ? msg.soldAfter : null);
+      const cursor = (v: unknown) => (typeof v === 'string' && v.length < 200 ? v : null);
+      void fetchBreak(msg.id, cursor(msg.soldAfter), cursor(msg.optionsAfter));
+    } else if (msg.kind === 'fetch_shop' && /^[A-Za-z0-9-]{8,80}$/.test(msg.id)) {
+      const after = typeof msg.after === 'string' && msg.after.length < 200 ? msg.after : null;
+      void fetchShop(msg.id, after, nativeFetch, post);
     }
   });
 

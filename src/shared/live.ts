@@ -4,6 +4,7 @@
 // tolerantly by field name, and unrecognized events are sampled for diagnostics.
 import { BREAK_OPERATION, mergeWheel, parseBreakResponse, type BreakSnapshot } from './breaks';
 import { moneyValue } from './money';
+import type { ShopScan } from './shop';
 
 export interface PhoenixMessage {
   topic: string;
@@ -79,6 +80,7 @@ export interface LiveSession {
   eventCounts: Record<string, number>;
   samples: EventSample[];
   graphqlOps: Record<string, number>;
+  shop: ShopScan | null;
   updatedAt: number;
 }
 
@@ -115,6 +117,7 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
   eventCounts: {},
   samples: [],
   graphqlOps: {},
+  shop: null,
   updatedAt: now,
 });
 
@@ -501,7 +504,9 @@ export const reduceSocket = (
   return { session: { ...next, updatedAt: now }, signals };
 };
 
-export const reduceGraphql = (session: LiveSession, operation: string, body: unknown, now = Date.now()) => {
+// optionsAfter is set only for our own paged fetch. Undefined means the page's own QueryBreak,
+// whose partial pages must not replace a list we already have.
+export const reduceGraphql = (session: LiveSession, operation: string, body: unknown, now = Date.now(), optionsAfter?: string | null) => {
   const graphqlOps = { ...session.graphqlOps, [operation]: (session.graphqlOps[operation] ?? 0) + 1 };
   let next: LiveSession = { ...session, graphqlOps };
   const live = obj(obj(obj(body)?.data)?.liveStream);
@@ -511,9 +516,10 @@ export const reduceGraphql = (session: LiveSession, operation: string, body: unk
   }
   if (operation === BREAK_OPERATION) {
     const wheel = parseBreakResponse(body, now);
-    // The app's own QueryBreak calls can be partial pages; they only fill in a wheel we don't have yet.
-    if (wheel && (!session.breakId || wheel.id === session.breakId) && (wheel.complete || !session.wheel)) {
-      next = { ...next, breakId: wheel.id, wheel: mergeWheel(session.wheel, wheel) };
+    const ours = optionsAfter !== undefined;
+    const sameBreak = !!wheel && (!session.breakId || wheel.id === session.breakId);
+    if (wheel && sameBreak && (ours || wheel.complete || !session.wheel)) {
+      next = { ...next, breakId: wheel.id, wheel: mergeWheel(session.wheel, wheel, optionsAfter ? 'append' : 'replace') };
     }
   }
   return { ...next, updatedAt: now };

@@ -229,4 +229,22 @@ describe('wheel in the live session', () => {
     expect(partial.wheel?.fetchedAt).toBe(1);
     expect(reduceGraphql({ ...base, breakId: '999' }, 'QueryBreak', breakBody(), 3).wheel).toBeNull();
   });
+
+  it('appends the next prize page from our own fetch and clears the partial warning', () => {
+    const page = (titles: string[], hasNextPage: boolean, endCursor: string | null) => {
+      const body = breakBody(hasNextPage);
+      const info = body.data.getBreak.paginatedSpotOptions.pageInfo as { hasNextPage: boolean; endCursor?: string | null };
+      info.hasNextPage = hasNextPage;
+      info.endCursor = endCursor;
+      body.data.getBreak.paginatedSpotOptions.edges = titles.map((title) => option(title, title, 'Qty: 1'));
+      return body;
+    };
+    const base = { ...emptySession('show1'), breakId: '5921155' };
+    const first = reduceGraphql(base, 'QueryBreak', page(['Family Pack #1', 'Family Pack #2'], true, 'cursor-1'), 1, null);
+    expect(first.wheel?.complete).toBe(false);
+    expect(first.wheel?.prizesCursor).toBe('cursor-1');
+    const second = reduceGraphql(first, 'QueryBreak', page(['Family Pack #3'], false, 'cursor-2'), 2, 'cursor-1');
+    expect(second.wheel?.prizes.map((p) => p.title)).toEqual(['Family Pack #1', 'Family Pack #2', 'Family Pack #3']);
+    expect(second.wheel?.complete).toBe(true);
+  });
 });

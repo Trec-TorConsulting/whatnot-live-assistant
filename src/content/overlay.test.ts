@@ -3,7 +3,8 @@ import { messageView } from './appraisalView';
 import { overlay, type WheelView } from './overlay';
 
 const view = (bid: string): WheelView => ({
-  title: 'Gold Rush · 4 of 10 spots left',
+  title: 'Gold Rush',
+  spots: '4 of 10 spots left',
   value: 'Worth $32.50 a spin',
   verdict: 'Worth it: $2.50 over the bid',
   level: 'worth',
@@ -104,9 +105,9 @@ describe('overlay', () => {
   it('keeps the header buttons when only the wheel changes, so a click mid-update still lands', () => {
     overlay.mount({});
     overlay.setWheel(view('$30'));
-    const share = shadow().querySelector('[data-action="share"]');
+    const close = shadow().querySelector('[data-action="close"]');
     overlay.setWheel(view('$31'));
-    expect(shadow().querySelector('[data-action="share"]')).toBe(share);
+    expect(shadow().querySelector('[data-action="close"]')).toBe(close);
     expect(shadow().textContent).toContain('$31');
   });
 
@@ -161,23 +162,28 @@ describe('overlay', () => {
     expect(strip().children[1]!.textContent).toContain("You're winning");
     overlay.setGuard({ lotTitle: '1921 Morgan', bid: '$50', ceiling: '$45', level: 'over', reasons: ['Over'], you: 'outbid' });
     expect(strip().children[1]!.textContent).toContain('Outbid');
-    overlay.setSeller({ host: 'bob', note: 'Slow shipper', blocked: true, history: null, thisShow: 2 });
+    overlay.setSeller({
+      host: 'bob',
+      note: 'Slow shipper',
+      blocked: true,
+      history: null,
+      thisShow: 2,
+      profile: '★4.9 (1.2K reviews) · on Whatnot 5 months',
+      closes: 'Their lots close at ~98% of market (6 compared): about market',
+    });
     expect(shadow().textContent).toContain('@bob is on your blocklist');
     expect(shadow().textContent).toContain('Slow shipper');
     expect(shadow().textContent).toContain('2 won this show');
+    expect(shadow().textContent).not.toContain('★4.9');
+    expect(shadow().textContent).not.toContain('about market');
     overlay.setSeller(null);
     overlay.setGuard(null);
   });
 
-  it('puts a quick chat line in chat and resets the menu', () => {
-    const sent: string[] = [];
-    overlay.mount({ chatText: (t) => sent.push(t) });
-    overlay.setTools({ spot: 'Gold $2,400.00', templates: ['What year is it?', 'Can you show the back?'] });
-    const select = shadow().querySelector<HTMLSelectElement>('select[data-change="template"]')!;
-    select.value = '1';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-    expect(sent).toEqual(['Can you show the back?']);
-    expect(select.value).toBe('');
+  it('shows the spot price and leaves quick chat out', () => {
+    overlay.mount({});
+    overlay.setTools({ spot: 'Gold $2,400.00 · Silver $32.00', templates: ['What year is it?'] });
+    expect(shadow().querySelector('select[data-change="template"]')).toBeNull();
     expect(shadow().textContent).toContain('Gold $2,400');
     overlay.setTools(null);
   });
@@ -192,7 +198,9 @@ describe('overlay', () => {
       { kind: 'max', label: 'Max $60', verdict: null, note: null },
     ]);
     const row = shadow().querySelector<HTMLElement>('.quick')!;
-    expect(row.previousElementSibling!.className).toBe('head');
+    expect(row.previousElementSibling!.className).toBe('lot-block');
+    const order = [...shadow().querySelector('.panel')!.children].map((el) => el.className);
+    expect(order).toEqual(['top-lock', 'lot-block', 'quick', 'main', 'tools']);
     const buttons = [...row.querySelectorAll<HTMLButtonElement>('button')];
     expect(buttons.map((b) => b.className)).toEqual(['ok', 'over', '']);
     expect(buttons[1]!.title).toContain('$65 is over your max bid ($60)');
@@ -200,6 +208,62 @@ describe('overlay', () => {
     expect(kinds).toEqual(['plus5']);
     overlay.setQuickBids([]);
     expect(row.children).toHaveLength(0);
+  });
+
+  it('shows the full break name, how many spots are left, and the floor', () => {
+    overlay.mount({});
+    overlay.setWheel({
+      ...view('$30'),
+      title: 'Marks 12 instant reveal surprise set',
+      spots: '93 of 120 spots left',
+      facts: [{ label: 'Floor', value: '$1 · 75% chance', detail: 'Random wheat · 70 left · lose $14' }],
+    });
+    const name = shadow().querySelector('.wheel-name')!;
+    expect(name.textContent).toBe('Marks 12 instant reveal surprise set');
+    expect(name.className).not.toContain('one-line');
+    expect(shadow().textContent).toContain('93 of 120 spots left');
+    expect(shadow().textContent).toContain('Random wheat · 70 left · lose $14');
+  });
+
+  it('keeps show type and appraise mode above the lot, bids, shop, and appraisal', () => {
+    overlay.mount({});
+    overlay.setWheel(null);
+    overlay.setPrefs({ autoAppraise: true, hidden: false, pos: null });
+    overlay.setScan({ scan: false });
+    overlay.setGuard({ lotTitle: 'Morgan dollar', bid: '$1', ceiling: null, level: 'ok', reasons: [] });
+    overlay.setQuickBids([{ kind: 'plus1', label: '+$1' }]);
+    overlay.setShop({ summary: 'Checked 1 buy-it-now item.', hits: [] });
+    overlay.setAppraisal(messageView('done', 'Silver eagle'), false);
+    overlay.setTools({ spot: 'Gold $2,400', templates: [] });
+    const follows = (earlier: Element, later: Element) => Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const picker = shadow().querySelector('.picker')!;
+    const strip = shadow().querySelector('.lot-strip')!;
+    const quick = shadow().querySelector('.quick')!;
+    const shop = [...shadow().querySelectorAll('.wheel-name')].find((el) => el.textContent === 'Shop')!;
+    const appraisal = shadow().querySelector('.appraisal-head')!;
+    const spot = shadow().querySelector('.spot')!;
+    expect(picker.textContent).toContain('Show type');
+    expect(strip.textContent).toContain('$1');
+    expect(follows(picker, strip)).toBe(true);
+    expect(follows(strip, quick)).toBe(true);
+    expect(follows(quick, shop)).toBe(true);
+    expect(follows(shop, appraisal)).toBe(true);
+    expect(follows(appraisal, spot)).toBe(true);
+    expect(shadow().querySelector('[data-action="chat"]')).toBeNull();
+    expect(shadow().querySelector('[data-action="ask"]')).toBeNull();
+  });
+
+  it('lists buy-it-now shop hits', () => {
+    overlay.mount({});
+    overlay.setShop({
+      summary: 'Checked 4 buy-it-now items.',
+      hits: [{ kind: 'steal', label: 'Steal', text: '1 oz silver round — $20. Under melt ($30)' }],
+    });
+    expect(shadow().textContent).toContain('Checked 4 buy-it-now items.');
+    expect(shadow().textContent).toContain('Steal');
+    expect(shadow().textContent).toContain('1 oz silver round');
+    overlay.setShop(null);
+    expect(shadow().textContent).not.toContain('1 oz silver round');
   });
 
   it('hides Appraise while a wheel is running', () => {

@@ -1,6 +1,6 @@
 # Whatnot Live Assistant
 
-Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.11.2. In Chrome the extension is named **Whatnot Assistant**.
+Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.12.0. In Chrome the extension is named **Whatnot Assistant**.
 
 It runs on a show you already have open. API keys stay in the browser. Nothing in this repository is a key, a login, or a bid.
 
@@ -33,7 +33,7 @@ Open the side panel on a live show.
 
 | Area | What it does |
 | --- | --- |
-| Live | Show title, lot, viewers, revenue, orders, giveaways, and top buyers from the show feed. Appraise the item on screen. Track wheel odds. Watch up to four other shows in muted tabs. |
+| Live | Show title, lot, viewers, revenue, orders, giveaways, and top buyers from the show feed. On entry, check the shop for buy-it-now steals, deals, and must-haves. Appraise the item on screen. Track wheel odds. Watch up to four other shows in muted tabs. |
 | Share | Copy link, X, or Facebook on a delay, once, for a count, or until you stop. Sharing runs in a muted background tab, so the tab you are watching is left alone. |
 | Bulk | Follow the host and bookmark upcoming shows that are not bookmarked yet. Unfollow or remove those bookmarks. Preview mode clicks nothing. |
 | Buys | Record purchases, cost, and what an appraisal said the item was worth. |

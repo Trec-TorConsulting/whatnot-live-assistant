@@ -1,5 +1,4 @@
 // A small shadow-DOM panel on live pages: bid guard, wheel status or appraisal card, share status.
-import { askSeller } from '../shared/buyer';
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from '../shared/storage';
 
 const HOST_ID = 'wn2-overlay';
@@ -13,6 +12,7 @@ export type WheelFact = Fact;
 
 export interface WheelView {
   title: string;
+  spots: string;
   value: string;
   verdict: string;
   level: 'worth' | 'not_worth' | 'unclear';
@@ -44,6 +44,17 @@ export interface SellerView {
   profile?: string | null;
   caution?: string | null;
   closes?: string | null;
+}
+
+export interface ShopHitView {
+  kind: 'steal' | 'deal' | 'must';
+  label: string;
+  text: string;
+}
+
+export interface ShopView {
+  summary: string;
+  hits: ShopHitView[];
 }
 
 export interface ToolsView {
@@ -95,6 +106,7 @@ interface State {
   sharing: boolean;
   notice: string | null;
   seller: SellerView | null;
+  shop: ShopView | null;
   tools: ToolsView | null;
   quickBids: QuickBidButton[];
   checksOpen: boolean;
@@ -112,16 +124,16 @@ const state: State = {
   sharing: false,
   notice: null,
   seller: null,
+  shop: null,
   tools: null,
 };
 let host: HTMLElement | null = null;
 let root: ShadowRoot | null = null;
 // A newer copy of the extension took over this tab and draws its own panel under the same id.
 let detached = false;
-// The show-type picker and quick-chat menu have their own parts: the body redraws with every bid,
-// which would close an open menu.
-let parts: { panel: HTMLElement; head: HTMLElement; bids: HTMLElement; picker: HTMLElement; body: HTMLElement; tools: HTMLElement } | null = null;
-let shown = { head: '', bids: '', picker: '', body: '', tools: '' };
+// The show-type picker has its own part: the lot redraws with every bid, which would close an open menu.
+let parts: { panel: HTMLElement; head: HTMLElement; bids: HTMLElement; picker: HTMLElement; lot: HTMLElement; body: HTMLElement; tools: HTMLElement } | null = null;
+let shown = { head: '', bids: '', picker: '', lot: '', body: '', tools: '' };
 let flashTimer: ReturnType<typeof setTimeout> | undefined;
 // The panel sits on the bottom edge, so shrinking moves everything above it. Its height holds while
 // you stay in one mode (wheel, appraisal, collapsed) and resets when the mode changes.
@@ -130,7 +142,6 @@ let floor = { mode: '', px: 0, shorterSince: 0 };
 let shrinkTimer: ReturnType<typeof setTimeout> | undefined;
 let handlers: {
   appraise?: () => void;
-  toggleShare?: () => void;
   pasteToChat?: (view: AppraisalView) => void;
   chatText?: (text: string) => void;
   quickBid?: (kind: QuickBidButton['kind']) => void;
@@ -156,9 +167,9 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 const STYLE = `
   :host { all: initial; }
-  .panel { position: fixed; left: 12px; bottom: 12px; z-index: 2147483646; width: 300px; max-height: 70vh; overflow: auto; box-sizing: border-box;
-    font: 12px/1.4 system-ui, sans-serif; color: #e8eaef; background: rgba(15,17,21,0.94); border: 1px solid #2a2f3a;
-    border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.4); }
+  .panel { position: fixed; left: 12px; bottom: 12px; z-index: 2147483646; width: 340px; max-height: 70vh; overflow: auto; box-sizing: border-box;
+    font: 13px/1.45 system-ui, sans-serif; color: #e8eaef; background: rgba(15,17,21,0.94); border: 1px solid #2a2f3a;
+    border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.4); scrollbar-width: thin; scrollbar-color: #3a4150 transparent; }
   :host(.popped) .panel { position: static; width: auto; max-height: none; min-height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
   .head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #2a2f3a; cursor: grab; user-select: none; touch-action: none; }
   :host(.popped) .head { cursor: default; }
@@ -167,7 +178,6 @@ const STYLE = `
   button.icon { padding: 3px 6px; }
   button { font: inherit; font-weight: 600; border-radius: 6px; padding: 3px 8px; border: 1px solid #2a2f3a; background: transparent; color: #e8eaef; cursor: pointer; }
   button.primary { background: #f5c518; color: #14161b; border-color: #f5c518; }
-  button.stop { color: #ef4444; border-color: rgba(239,68,68,0.6); }
   .body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
   .row { padding: 6px 8px; border-radius: 6px; background: #181b22; border: 1px solid #2a2f3a; }
   .lot-strip { box-sizing: border-box; height: 42px; padding: 4px 8px; border-radius: 6px; background: #181b22; border: 1px solid #2a2f3a;
@@ -181,10 +191,13 @@ const STYLE = `
   .good { color: #22c55e; font-weight: 600; }
   .bad { color: #ef4444; font-weight: 600; }
   .muted { color: #9aa3b2; }
-  .facts { display: grid; grid-template-columns: 84px 1fr; gap: 4px 10px; margin: 6px 0 0; padding-top: 6px; border-top: 1px solid #2a2f3a; }
-  .facts dt { color: #9aa3b2; white-space: nowrap; }
-  .facts dd { margin: 0; min-width: 0; font-variant-numeric: tabular-nums; }
-  .facts dd .muted { font-size: 11px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+  .facts { display: grid; grid-template-columns: minmax(84px, max-content) 1fr; gap: 5px 10px; margin: 6px 0 0; padding-top: 6px; border-top: 1px solid #2a2f3a; align-items: baseline; }
+  .facts dt { color: #9aa3b2; }
+  .facts dd { margin: 0; min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .facts dd .muted { font-size: 12px; overflow-wrap: anywhere; }
+  .wheel-name { font-weight: 700; overflow-wrap: anywhere; }
+  .wheel-spots { color: #c9cfda; font-variant-numeric: tabular-nums; }
+  .wrap { overflow-wrap: anywhere; }
   .one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .big { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .notice { color: #f59e0b; font-weight: 600; }
@@ -210,10 +223,13 @@ const STYLE = `
   .quick button.over { background: #ef4444; color: #fff; border-color: #ef4444; }
   ul.checks { margin: 4px 0 0; padding-left: 16px; color: #c9cfda; }
   .tools select { flex: 1; min-width: 0; font: inherit; color: #e8eaef; background: #181b22; border: 1px solid #2a2f3a; border-radius: 6px; padding: 2px 4px; }
-  .tools .spot { font-size: 11px; white-space: nowrap; }
+  .tools .spot { font-size: 12px; white-space: nowrap; }
+  .top-lock { position: sticky; top: 0; z-index: 2; background: rgba(15,17,21,0.98); }
+  .lot-block { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 0; }
+  .lot-block:empty { display: none; }
   @keyframes wn2-flash { 0%, 100% { box-shadow: 0 6px 24px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 0 3px #f5c518, 0 6px 24px rgba(0,0,0,0.4); } }
   .panel.flash { animation: wn2-flash 0.4s ease-in-out 3; }
-  .picker { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; }
+  .picker { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
   .picker:empty { display: none; }
   .picker select { flex: 1; min-width: 0; font: inherit; color: #e8eaef; background: #181b22; border: 1px solid #2a2f3a; border-radius: 6px; padding: 2px 4px; }
 `;
@@ -224,17 +240,19 @@ const ensure = () => {
   host = document.createElement('div');
   host.id = HOST_ID;
   root = host.attachShadow({ mode: 'open' });
-  root.innerHTML = `<style>${STYLE}</style><div class="panel"><div class="head"></div><div class="quick"></div><div class="picker"></div><div class="main"></div><div class="tools"></div></div>`;
+  root.innerHTML = `<style>${STYLE}</style><div class="panel"><div class="top-lock"><div class="head"></div><div class="picker"></div></div><div class="lot-block"></div><div class="quick"></div><div class="main"></div><div class="tools"></div></div>`;
   const panel = root.querySelector<HTMLElement>('.panel')!;
+  const lock = panel.querySelector<HTMLElement>('.top-lock')!;
   parts = {
     panel,
-    head: panel.querySelector<HTMLElement>('.head')!,
+    head: lock.querySelector<HTMLElement>('.head')!,
+    picker: lock.querySelector<HTMLElement>('.picker')!,
+    lot: panel.querySelector<HTMLElement>('.lot-block')!,
     bids: panel.querySelector<HTMLElement>('.quick')!,
-    picker: panel.querySelector<HTMLElement>('.picker')!,
     body: panel.querySelector<HTMLElement>('.main')!,
     tools: panel.querySelector<HTMLElement>('.tools')!,
   };
-  shown = { head: '', bids: '', picker: '', body: '', tools: '' };
+  shown = { head: '', bids: '', picker: '', lot: '', body: '', tools: '' };
   floor = { mode: '', px: 0, shorterSince: 0 };
   document.documentElement.appendChild(host);
   root.addEventListener('click', (e) => {
@@ -243,7 +261,6 @@ const ensure = () => {
       state.collapsed = !state.collapsed;
       render();
     } else if (action === 'appraise') handlers.appraise?.();
-    else if (action === 'share') handlers.toggleShare?.();
     else if (action === 'popout') void popOut();
     else if (action === 'close') {
       if (popped) popped.close();
@@ -251,27 +268,18 @@ const ensure = () => {
     } else if (action === 'close-appraisal') {
       state.appraisal = null;
       render();
-    } else if (action === 'chat' && state.appraisal) handlers.pasteToChat?.(state.appraisal);
-    else if (action === 'quickbid') {
+    } else if (action === 'quickbid') {
       const kind = (e.target as HTMLElement).closest<HTMLElement>('[data-kind]')?.dataset.kind as QuickBidButton['kind'] | undefined;
       if (kind) handlers.quickBid?.(kind);
     } else if (action === 'checks') {
       state.checksOpen = !state.checksOpen;
       render();
-    } else if (action === 'ask' && state.appraisal) {
-      const q = askSeller(state.appraisal.cautions, state.appraisal.subtitle);
-      if (q) handlers.chatText?.(q);
     }
   });
   root.addEventListener('change', (e) => {
     const select = (e.target as HTMLElement).closest<HTMLSelectElement>('select[data-change]');
     if (select?.dataset.change === 'scan') handlers.pickScan?.(select.value === 'scan');
     else if (select?.dataset.change === 'auto') savePrefs({ ...prefs, autoAppraise: select.value === 'auto' });
-    else if (select?.dataset.change === 'template') {
-      const text = state.tools?.templates[Number(select.value)];
-      select.value = '';
-      if (text) handlers.chatText?.(text);
-    }
   });
   root.addEventListener('dblclick', (e) => {
     if (!popped && (e.target as HTMLElement).closest('.title')) savePrefs({ ...prefs, pos: null });
@@ -320,7 +328,7 @@ const place = (pos: OverlayPrefs['pos']) => {
     s.left = s.top = s.bottom = s.maxHeight = '';
     return;
   }
-  const width = parts.panel.offsetWidth || 300;
+  const width = parts.panel.offsetWidth || 340;
   const left = clamp(pos.left, 0, Math.max(0, window.innerWidth - width));
   const top = clamp(pos.top, 0, Math.max(0, window.innerHeight - HEAD_MIN_VISIBLE));
   s.left = `${left}px`;
@@ -392,13 +400,20 @@ const sellerRow = (s: SellerView | null) => {
   const lines = [
     s.blocked ? `<div class="bad">⛔ @${esc(s.host)} is on your blocklist</div>` : '',
     s.note ? `<div class="one-line" title="${esc(s.note)}">📝 ${esc(s.note)}</div>` : '',
-    s.profile ? `<div class="muted one-line" title="From their Whatnot profile">@${esc(s.host)} ${esc(s.profile)}</div>` : '',
     s.caution ? `<div class="notice">${esc(s.caution)}</div>` : '',
-    s.closes ? `<div class="muted" title="Their sales you've watched, against your appraisals or other sellers' sales of the same item">${esc(s.closes)}</div>` : '',
     s.history ? `<div class="muted">${esc(s.history)}</div>` : '',
     s.thisShow ? `<div class="muted">${s.thisShow} won this show; shipping usually combines</div>` : '',
   ].filter(Boolean);
   return lines.length ? `<div class="row${s.blocked ? ' blocked' : ''}">${lines.join('')}</div>` : '';
+};
+
+const shopRow = (s: ShopView | null) => {
+  if (!s) return '';
+  const worth = s.hits.some((h) => h.kind === 'steal');
+  const items = s.hits
+    .map((h) => `<li><span class="${h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : ''}">${esc(h.label)}</span> ${esc(h.text)}</li>`)
+    .join('');
+  return `<div class="row${worth ? ' worth' : ''}"><div class="wheel-name">Shop</div><div class="muted">${esc(s.summary)}</div>${items ? `<ul>${items}</ul>` : ''}</div>`;
 };
 
 const render = () => {
@@ -407,20 +422,24 @@ const render = () => {
   const g = state.guard;
   const w = state.wheel;
   const a = state.appraisal;
-  const body = state.collapsed
+  const lot = state.collapsed
     ? ''
-    : `<div class="body">
-        ${lotStrip(g, state.notice)}
+    : `${lotStrip(g, state.notice)}
         ${g?.allIn ? `<div class="muted one-line" title="The current bid plus shipping and your sales tax (Alerts tab)">${esc(g.allIn)}</div>` : ''}
         ${g?.perOz ? `<div class="muted one-line" title="Current bid per troy ounce of metal, against today's spot price">${esc(g.perOz)}</div>` : ''}
         ${g?.pusher ? `<div class="notice" title="From who led and won lots in this show; the feed shows leaders, not every bid">${esc(g.pusher)}</div>` : ''}
-        ${sellerRow(state.seller)}
+        ${sellerRow(state.seller)}`;
+  const body = state.collapsed
+    ? ''
+    : `<div class="body">
+        ${shopRow(state.shop)}
         ${
           w
             ? `<div class="row ${w.level === 'worth' ? 'worth' : w.level === 'not_worth' ? 'over' : ''}">
-                <div class="muted one-line" title="${esc(w.title)}">${esc(w.title)}</div>
+                <div class="wheel-name">${esc(w.title)}</div>
+                <div class="wheel-spots">${esc(w.spots)}</div>
                 <div class="big">${esc(w.value)}</div>
-                <div class="one-line ${w.level === 'worth' ? 'good' : w.level === 'not_worth' ? 'bad' : 'muted'}" title="${esc(w.verdict)}">${esc(w.verdict)}</div>
+                <div class="wrap ${w.level === 'worth' ? 'good' : w.level === 'not_worth' ? 'bad' : 'muted'}">${esc(w.verdict)}</div>
                 ${factsHtml(w.facts)}
                 ${w.warnings.map((l) => `<div class="notice">${esc(l)}</div>`).join('')}
               </div>`
@@ -445,16 +464,8 @@ const render = () => {
                 }
                 ${a.footer ? `<div class="muted footer">${esc(a.footer)}</div>` : ''}
                 ${
-                  a.status === 'quick' || a.status === 'done'
-                    ? `<div class="card-actions">${
-                        a.checks?.length
-                          ? `<button data-action="checks" title="What to check before trusting this kind of item">${state.checksOpen ? 'Hide checks' : 'Checks'}</button>`
-                          : ''
-                      }${
-                        askSeller(a.cautions, a.subtitle)
-                          ? `<button data-action="ask" title="${esc(askSeller(a.cautions, a.subtitle)!)}">Ask seller</button>`
-                          : ''
-                      }<button data-action="chat" title="Put this in the Whatnot chat box (150 characters max) and copy it. Press Enter in chat to send.">Paste to chat</button></div>`
+                  a.checks?.length
+                    ? `<div class="card-actions"><button data-action="checks" title="What to check before trusting this kind of item">${state.checksOpen ? 'Hide checks' : 'Checks'}</button></div>`
                     : ''
                 }
               </div>`
@@ -464,7 +475,6 @@ const render = () => {
       </div>`;
   const head = `<span class="title" title="${popped ? 'Whatnot Assistant' : 'Drag to move. Double-click to put it back in the corner.'}">Whatnot Assistant</span>
     ${w ? '' : '<button class="primary" data-action="appraise" title="Appraise the item on screen (Alt+Shift+V)">Appraise</button>'}
-    <button class="${state.sharing ? 'stop' : ''}" data-action="share" title="Start/stop Auto Share (Alt+Shift+S)">${state.sharing ? 'Stop share' : 'Share'}</button>
     ${!popped && documentPip() ? '<button class="icon" data-action="popout" title="Open in its own window, to move to another monitor">⧉</button>' : ''}
     <button class="icon" data-action="collapse" title="${state.collapsed ? 'Expand' : 'Collapse'}">${state.collapsed ? '▸' : '▾'}</button>
     <button class="icon" data-action="close" title="${popped ? 'Put it back on the page' : 'Hide (Alt+Shift+A or the side panel brings it back)'}">×</button>`;
@@ -495,27 +505,19 @@ const render = () => {
           })
           .join('')
       : '';
-  const tools =
-    tl && !state.collapsed && (tl.templates.length || tl.spot)
-      ? `<div class="tool-row">${
-          tl.templates.length
-            ? `<select data-change="template" title="Puts the line in the Whatnot chat box. Press Enter there to send."><option value="">Quick chat…</option>${tl.templates
-                .map((t, i) => `<option value="${i}">${esc(t)}</option>`)
-                .join('')}</select>`
-            : ''
-        }${tl.spot ? `<span class="muted spot" title="Spot prices, refreshed every 5 minutes">${esc(tl.spot)}</span>` : ''}</div>`
-      : '';
+  const tools = tl && !state.collapsed && tl.spot ? `<div class="tool-row"><span class="muted spot" title="Spot prices, refreshed every 5 minutes">${esc(tl.spot)}</span></div>` : '';
   // Rewriting a button mid-click drops the click, so each part is only rewritten when it changes.
   if (head !== shown.head) p.head.innerHTML = shown.head = head;
-  if (bids !== shown.bids) p.bids.innerHTML = shown.bids = bids;
   if (picker !== shown.picker) p.picker.innerHTML = shown.picker = picker;
+  if (lot !== shown.lot) p.lot.innerHTML = shown.lot = lot;
+  if (bids !== shown.bids) p.bids.innerHTML = shown.bids = bids;
   if (body !== shown.body) p.body.innerHTML = shown.body = body;
   if (tools !== shown.tools) p.tools.innerHTML = shown.tools = tools;
 
   // Hidden still shows a bid-guard notice, so a held bid click is never silent.
   host!.style.display = prefs.hidden && !popped && !state.notice ? 'none' : '';
   if (!drag) place(prefs.pos);
-  fitHeight(`${state.collapsed}|${Boolean(w)}|${Boolean(a)}`);
+  fitHeight(`${state.collapsed}|${Boolean(w)}|${Boolean(a)}|${state.shop?.summary ?? ''}|${state.shop?.hits.length ?? 0}`);
 };
 
 // Grows at once, but only shrinks after the content has stayed shorter for a while, so a row that
@@ -612,6 +614,10 @@ export const overlay = {
   },
   setSeller(view: SellerView | null) {
     state.seller = view;
+    if (host) render();
+  },
+  setShop(view: ShopView | null) {
+    state.shop = view;
     if (host) render();
   },
   setTools(view: ToolsView | null) {

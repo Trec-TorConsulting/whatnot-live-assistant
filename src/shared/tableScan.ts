@@ -2,6 +2,7 @@
 // whole table for what else is worth money. It runs after the answer is on screen, so it never
 // delays the max bid.
 import type { AppraisalContext } from './appraisal';
+import { noteForPrompt } from './showNotes';
 
 export const MAX_TABLE_ITEMS = 8;
 
@@ -69,15 +70,18 @@ export const TABLE_SCHEMA_GEMINI = {
   required: ['items'],
 };
 
-export const tablePrompt = ({ showTitle, lotTitle, categories = [] }: AppraisalContext, mainItem: string) =>
-  [
+export const tablePrompt = ({ showTitle, lotTitle, categories = [], showNotes }: AppraisalContext, mainItem: string) => {
+  const notes = noteForPrompt(showNotes);
+  return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',
     lotTitle ? `Current lot title: ${lotTitle}` : '',
+    notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
     `Being sold now (do not list): ${mainItem || 'unknown'}`,
   ]
     .filter(Boolean)
     .join('\n');
+};
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 

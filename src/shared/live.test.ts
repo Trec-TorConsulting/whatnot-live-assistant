@@ -241,6 +241,20 @@ describe('reduceGraphql', () => {
     expect(s.graphqlOps.LiveStream).toBe(1);
   });
 
+  it('stores published show notes and drops them when the seller unposts', () => {
+    const body = {
+      data: {
+        showNotes: [{ isPublished: true, liveUuid: LIVE, content: { text: 'Wheel is sudden death. /coupon SAVE10' } }],
+      },
+    };
+    const s = reduceGraphql(emptySession(LIVE), 'GetShowNotes', body);
+    expect(s.show.note?.coupons).toEqual(['SAVE10']);
+    expect(s.show.note?.text).toContain('sudden death');
+    const cleared = reduceGraphql(s, 'GetShowNotes', { data: { showNotes: [] } });
+    expect(cleared.show.note).toBeNull();
+    expect(reduceGraphql(s, 'LiveStream', { data: { liveStream: { id: LIVE, activeViewers: 3 } } }).show.note?.text).toContain('sudden death');
+  });
+
   it('keeps the show categories, and later updates without them keep the old ones', () => {
     const s = reduceGraphql(emptySession(LIVE), 'LiveStream', {
       data: { liveStream: { id: LIVE, title: 'T', primaryCategory: { label: 'Vintage Clothing', parent: { name: 'Fashion' } } } },

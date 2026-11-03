@@ -3,6 +3,7 @@
 // Every range is valued at its low end so the wheel never looks better than the data backs.
 import type { Metal } from './appraisal';
 import { isHiddenPrize, isNumberedPrize, prizeIdentity } from './breaks';
+import { noteForPrompt } from './showNotes';
 import { DAY } from './time';
 
 export type PrizeSource = 'melt' | 'sold' | 'ai';
@@ -27,6 +28,8 @@ export interface PrizeContext {
   showTitle: string | null;
   wheelTitle: string | null;
   categories: string[];
+  // The seller's show notes: rules and what the wheel is made of.
+  notes?: string | null;
 }
 
 export const PRIZE_VALUE_TTL_MS: Record<PrizeSource, number> = { melt: DAY, sold: DAY, ai: 7 * DAY };
@@ -102,15 +105,19 @@ export interface PrizeManifest {
 
 const DESC_CAP = 1000;
 
-// "1x 2024 1oz silver pr70 (temperance) (ngc) good" lines, split on the seller's arrows.
+// "1x 2024 1oz silver pr70 (temperance) (ngc) good" lines, split on the seller's arrows or newlines.
 // A truncated description that starts the list over again stops at the first repeat.
-export const parseManifest = (description: string | null | undefined): PrizeManifest => {
+// capped: Whatnot keeps 1000 characters of a break description. Show notes are not cut off that way.
+export const parseManifest = (description: string | null | undefined, opts?: { capped?: boolean }): PrizeManifest => {
   const raw = description ?? '';
-  const text = raw.replace(/\s+/g, ' ').trim();
-  if (!text) return { items: [], truncated: false };
-  const truncated = raw.length >= DESC_CAP || text.length >= DESC_CAP;
-  const cutOff = truncated && !/\b(?:good|fair|poor)\s*$/i.test(text);
-  const parts = text.split(/👉🏼|➡️|\n+/).map((s) => s.trim()).filter(Boolean);
+  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  if (!collapsed) return { items: [], truncated: false };
+  const truncated = opts?.capped !== false && (raw.length >= DESC_CAP || collapsed.length >= DESC_CAP);
+  const cutOff = truncated && !/\b(?:good|fair|poor)\s*$/i.test(collapsed);
+  const parts = raw
+    .split(/👉🏼|➡️|\n+/)
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
   const items: ManifestItem[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < parts.length; i++) {
@@ -129,6 +136,30 @@ export const parseManifest = (description: string | null | undefined): PrizeMani
     items.push({ qty, name });
   }
   return { items, truncated };
+};
+
+// The break description is the prize list. Show notes supply the same lines when that list is
+// missing or cut off. A coin already named in the description is not added again.
+export const manifestFrom = (description: string | null | undefined, notes?: string | null): PrizeManifest => {
+  const listed = parseManifest(description);
+  if (listed.items.length && !listed.truncated) return listed;
+  const extra = parseManifest(notes, { capped: false });
+  if (!extra.items.length) return listed;
+  const seen = new Set(listed.items.map((item) => prizeIdentity(item.name)));
+  const items = [...listed.items];
+  for (const item of extra.items) {
+    const key = prizeIdentity(item.name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(item);
+  }
+  if (!listed.items.length) return { items, truncated: false };
+  return { items, truncated: true };
+};
+
+const showNotesLine = (notes?: string | null) => {
+  const text = noteForPrompt(notes);
+  return text ? `Show notes: ${text}` : '';
 };
 
 export const PRIZE_INSTRUCTIONS = [
@@ -178,6 +209,7 @@ export const prizePrompt = (prizes: PrizeItem[], ctx: PrizeContext) =>
     ctx.showTitle ? `Show: ${ctx.showTitle}` : '',
     ctx.wheelTitle ? `Wheel: ${ctx.wheelTitle}` : '',
     ctx.categories.length ? `Categories: ${ctx.categories.join(', ')}` : '',
+    showNotesLine(ctx.notes),
     'Prizes:',
     ...prizes.map((p, i) => `${i + 1}. ${p.title}${p.detail ? ` (condition: ${p.detail})` : ''}`),
   ]
@@ -250,6 +282,7 @@ export const envelopePrompt = (envelopes: PrizeItem[], others: string[], ctx: Pr
   [
     ctx.showTitle ? `Show: ${ctx.showTitle}` : '',
     ctx.wheelTitle ? `Wheel: ${ctx.wheelTitle}` : '',
+    showNotesLine(ctx.notes),
     'Envelopes:',
     ...[...new Set(envelopes.map((p) => p.title.trim()))].map((t) => `- ${t}`),
     others.length ? `Named wheel prizes, not in envelopes: ${[...new Set(others.map((t) => t.trim()))].join('; ')}` : '',
@@ -304,6 +337,7 @@ export const prizeReadPrompt = (prizes: PrizeItem[], ctx: PrizeContext) =>
   [
     ctx.showTitle ? `Show: ${ctx.showTitle}` : '',
     ctx.wheelTitle ? `Wheel: ${ctx.wheelTitle}` : '',
+    showNotesLine(ctx.notes),
     'Named prizes:',
     ...[...new Set(prizes.map((p) => (p.detail ? `${p.title.trim()} (${p.detail.trim()})` : p.title.trim())))].map((t) => `- ${t}`),
   ]

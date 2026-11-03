@@ -20,4 +20,13 @@ describe('detectShowType', () => {
     expect(detectShowType('Late night show', [])).toBe('general');
     expect(detectShowType(null, [])).toBe('general');
   });
+
+  it('reads the show type from the notes when the title and tags do not say', () => {
+    expect(detectShowType('Late night show', [], 'Morgan dollars, peace dollars, and junk silver')).toBe('coins');
+    expect(detectShowType('Sunday rips', ['sports_cards', 'baseball'], '298 silver dimes tonight')).toBe('cards');
+  });
+
+  it('lets flea wording in the notes outweigh a coin title', () => {
+    expect(detectShowType('Morgan dollars', [], 'Garage sale estate sale storage unit')).toBe('flea');
+  });
 });

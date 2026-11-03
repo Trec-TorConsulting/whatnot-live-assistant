@@ -81,7 +81,7 @@
     },
     {
       "js": [
-        "assets/index.ts-loader-_PP12h3z.js"
+        "assets/index.ts-loader-DzXt5x5I.js"
       ],
       "matches": [
         "https://*.whatnot.com/*"
@@ -95,9 +95,9 @@
         "https://*.whatnot.com/*"
       ],
       "resources": [
-        "assets/envelopes-BgCrmLQ-.js",
-        "assets/wheel-BsWhOVEn.js",
-        "assets/src-content-index.ts-BOBnnyhM.js"
+        "assets/envelopes-BcRMtDa-.js",
+        "assets/wheel-SFLK5xdI.js",
+        "assets/src-content-index.ts-uMout5Xw.js"
       ],
       "use_dynamic_url": false
     }

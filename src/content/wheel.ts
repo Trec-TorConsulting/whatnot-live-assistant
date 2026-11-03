@@ -3,7 +3,7 @@
 // at the low end of their range.
 import { isNumberedPrize, spotsLeft, type BreakSnapshot } from '../shared/breaks';
 import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
-import { parseManifest } from '../shared/prizeValue';
+import { manifestFrom } from '../shared/prizeValue';
 import type { LiveSession, Lot } from '../shared/live';
 import { formatMoney } from '../shared/money';
 import type { PrizeValue } from '../shared/prizeValue';
@@ -28,8 +28,9 @@ export const wheelView = (
   autoValues: Record<string, PrizeValue>,
   now = Date.now(),
   board: EnvelopeBoard | null = null,
+  notes: string | null = null,
 ): WheelView => {
-  const rows = wheelRows(b, values, autoValues, board);
+  const rows = wheelRows(b, values, autoValues, board, notes);
   // A spin's price is its auction: the current bid, or the opening bid before anyone bids.
   const spin = lot?.breakId === b.id ? lot : null;
   const price = spin ? (spin.currentBid ?? spin.nextBid) : null;
@@ -60,8 +61,8 @@ export const wheelView = (
   const unpriced = rows.filter((r) => r.value === null).length;
   const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
   const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
-  const numberedUnread = numberedShare(b, autoValues) ? 0 : unreadRows.length - envelopeUnread;
-  const cutOff = parseManifest(b.description).truncated && rows.some((r) => isNumberedPrize(r.title));
+  const numberedUnread = numberedShare(b, autoValues, notes) ? 0 : unreadRows.length - envelopeUnread;
+  const cutOff = manifestFrom(b.description, notes).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeFacts: WheelFact[] =
     pool.sealed > 0
@@ -129,7 +130,8 @@ export const refreshWheel = () => {
     checkEnvelopes(b, s, values, autoValues, board);
     checkNamedPrizes(b, s, values, autoValues);
   }
-  const view = b ? wheelView(b, s?.lot ?? null, values, autoValues, Date.now(), board) : null;
+  const notes = s?.show.note?.text ?? null;
+  const view = b ? wheelView(b, s?.lot ?? null, values, autoValues, Date.now(), board, notes) : null;
   const key = JSON.stringify(view);
   if (key === shown) return;
   shown = key;

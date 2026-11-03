@@ -318,7 +318,7 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       show(view(record, 'quick', await similarTo(record.name)));
     }
 
-    const context = { pageText, showTitle: base.showTitle ?? '', lotTitle: base.lotTitle, categories, showType };
+    const context = { pageText, showTitle: base.showTitle ?? '', lotTitle: base.lotTitle, categories, showType, showNotes: session?.show.note?.text ?? null };
     const image = (video ? captureFrame(video) : null) ?? (await captureScreenshot(video));
     if (!image) {
       const why = video ? "Couldn't read the video frame. Try the Alt+Shift+V shortcut, which allows a screenshot." : 'Open a live show first.';

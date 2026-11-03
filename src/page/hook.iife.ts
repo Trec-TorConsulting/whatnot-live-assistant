@@ -2,6 +2,7 @@
 // GraphQL responses are mirrored to the content script, and quiet mode keeps shares from touching
 // the clipboard or opening share popups.
 import { BREAK_OPERATION, BREAK_QUERY } from '../shared/breaks';
+import { SHOW_NOTES_OPERATION, SHOW_NOTES_QUERY } from '../shared/showNotes';
 import { CONTENT_SOURCE, HOOK_SOURCE, type ContentToHook, type HookToContent } from '../shared/hookProtocol';
 import { isShopOperation } from '../shared/shop';
 import { logShareSucceeded } from '../userscript/logShare';
@@ -14,7 +15,7 @@ declare global {
   }
 }
 
-const WATCHED_OPERATIONS = new Set(['LiveStream', BREAK_OPERATION]);
+const WATCHED_OPERATIONS = new Set(['LiveStream', BREAK_OPERATION, SHOW_NOTES_OPERATION]);
 const BUFFER_LIMIT = 400;
 const MAX_QUIET_MS = 10_000;
 const BREAK_FETCH_TIMEOUT_MS = 5_000;
@@ -84,6 +85,29 @@ const install = () => {
     return res;
   };
 
+  const fetchShowNotes = async (id: string) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), BREAK_FETCH_TIMEOUT_MS);
+    try {
+      const res = await nativeFetch.call(window, `/services/graphql/?operationName=${SHOW_NOTES_OPERATION}&ssr=0`, {
+        method: 'POST',
+        credentials: 'include',
+        signal: ctrl.signal,
+        headers: { 'content-type': 'application/json', authorization: 'Cookie', 'x-whatnot-app': 'whatnot-web' },
+        body: JSON.stringify({
+          operationName: SHOW_NOTES_OPERATION,
+          query: SHOW_NOTES_QUERY,
+          variables: { filterParams: { livestreamId: id } },
+        }),
+      });
+      if (res.ok) post({ kind: 'graphql', operation: SHOW_NOTES_OPERATION, body: await res.text() });
+    } catch {
+      // The next poll tries again.
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   // The wheel's prize list, read the way Whatnot's web app does; without these headers getBreak is null.
   const fetchBreak = async (id: string, soldAfter: string | null, optionsAfter: string | null) => {
     const ctrl = new AbortController();
@@ -119,6 +143,8 @@ const install = () => {
     } else if (msg.kind === 'fetch_break' && /^\d+$/.test(msg.id)) {
       const cursor = (v: unknown) => (typeof v === 'string' && v.length < 200 ? v : null);
       void fetchBreak(msg.id, cursor(msg.soldAfter), cursor(msg.optionsAfter));
+    } else if (msg.kind === 'fetch_notes' && /^[A-Za-z0-9-]{8,80}$/.test(msg.id)) {
+      void fetchShowNotes(msg.id);
     } else if (msg.kind === 'fetch_shop' && /^[A-Za-z0-9-]{8,80}$/.test(msg.id)) {
       const after = typeof msg.after === 'string' && msg.after.length < 200 ? msg.after : null;
       void fetchShop(msg.id, after, nativeFetch, post);

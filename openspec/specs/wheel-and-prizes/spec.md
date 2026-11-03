@@ -78,11 +78,15 @@ Titles that match once punctuation and symbols are removed SHALL share one price
 - **THEN** both use one price
 
 ### Requirement: Break description lists the numbered hits
-The break description SHALL be read with the prize list. Lines of the form "2x 2024 1oz silver" SHALL be priced and split across the numbered spots still on the wheel. A trailing "good", "fair", or "poor" SHALL NOT replace a grade such as PR70 or MS69. "Ase" SHALL be read as American Silver Eagle. "Clad" and "gilt" SHALL NOT be melted. A face value such as "(.01)" or ".50" SHALL NOT be read as a weight. "1/1000 gold" SHALL be read as one one-thousandth of an ounce. Whatnot keeps 1000 characters: a description that long, or one that ends mid-word, is incomplete, the coins it does not list count as zero, and the numbered hits SHALL be labeled a floor. A repeated list after that cutoff SHALL NOT be added again. A sticker whose number is N SHALL price "Item #N" or "Spot #N" from the camera, and SHALL NOT price an envelope.
+The break description SHALL be read with the prize list. When that description has no such list, or the list was cut off, the same lines in the seller's published show notes SHALL be read too. A line already named in a complete break description SHALL NOT be added again. Lines of the form "2x 2024 1oz silver" SHALL be priced and split across the numbered spots still on the wheel. A trailing "good", "fair", or "poor" SHALL NOT replace a grade such as PR70 or MS69. "Ase" SHALL be read as American Silver Eagle. "Clad" and "gilt" SHALL NOT be melted. A face value such as "(.01)" or ".50" SHALL NOT be read as a weight. "1/1000 gold" SHALL be read as one one-thousandth of an ounce. Whatnot keeps 1000 characters: a description that long, or one that ends mid-word, is incomplete, the coins it does not list count as zero, and the numbered hits SHALL be labeled a floor. A repeated list after that cutoff SHALL NOT be added again. A sticker whose number is N SHALL price "Item #N" or "Spot #N" from the camera, and SHALL NOT price an envelope.
 
 #### Scenario: Description cut off
 - **WHEN** the wheel has Item #1 through Item #90 and the description names fewer coins before it is cut off
 - **THEN** each Item #N is worth the named coins divided by all 90, the unlisted coins count as zero, and the value is a floor
+
+#### Scenario: Mix only in the show notes
+- **WHEN** the break description is empty and the show notes list "298x 1964 90% silver dime"
+- **THEN** those dimes are priced and split across the numbered spots
 
 #### Scenario: Sticker matches Item #N
 - **WHEN** the camera shows a note numbered 12 and the wheel lists Item #12

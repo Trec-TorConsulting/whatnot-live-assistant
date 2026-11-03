@@ -56,7 +56,7 @@ export const checkEnvelopes = (
     prizes: unmatched.map(({ title, detail }) => ({ title, detail })),
     others: b.prizes.filter((p) => !isHiddenSpot(p)).map(({ title, detail }) => ({ title, detail })),
     soldHidden: soldHiddenCount(b),
-    context: { showTitle: s?.show.title ?? null, wheelTitle: b.title, categories: s?.show.categories ?? [] },
+    context: { showTitle: s?.show.title ?? null, wheelTitle: b.title, categories: s?.show.categories ?? [], notes: s?.show.note?.text ?? null },
   })
     .catch(() => undefined)
     .finally(() => {
@@ -100,7 +100,7 @@ export const checkNamedPrizes = (
     breakId: b.id,
     image,
     prizes: unseen.map(({ title, detail }) => ({ title, detail })),
-    context: { showTitle: s?.show.title ?? null, wheelTitle: b.title, categories: s?.show.categories ?? [] },
+    context: { showTitle: s?.show.title ?? null, wheelTitle: b.title, categories: s?.show.categories ?? [], notes: s?.show.note?.text ?? null },
   })
     .catch(() => undefined)
     .finally(() => {

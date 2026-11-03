@@ -4,6 +4,7 @@
 // tolerantly by field name, and unrecognized events are sampled for diagnostics.
 import { BREAK_OPERATION, mergeWheel, parseBreakResponse, type BreakSnapshot } from './breaks';
 import { moneyValue } from './money';
+import { readShowNote, type ShowNote } from './showNotes';
 import type { ShopScan } from './shop';
 
 export interface PhoenixMessage {
@@ -61,6 +62,7 @@ export interface ShowState {
   startedAt: number | null;
   isFollowingHost: boolean | null;
   categories: string[];
+  note: ShowNote | null;
 }
 
 export interface EventSample {
@@ -107,6 +109,7 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
     startedAt: null,
     isFollowingHost: null,
     categories: [],
+    note: null,
   },
   lot: null,
   breakId: null,
@@ -509,6 +512,8 @@ export const reduceSocket = (
 export const reduceGraphql = (session: LiveSession, operation: string, body: unknown, now = Date.now(), optionsAfter?: string | null) => {
   const graphqlOps = { ...session.graphqlOps, [operation]: (session.graphqlOps[operation] ?? 0) + 1 };
   let next: LiveSession = { ...session, graphqlOps };
+  const note = readShowNote(body, session.show.liveId);
+  if (note !== undefined) next = { ...next, show: { ...next.show, note } };
   const live = obj(obj(obj(body)?.data)?.liveStream);
   if (operation === 'LiveStream' && live && (!live.id || live.id === session.show.liveId)) {
     // Page-load data only sets the baseline, so it never raises alerts.

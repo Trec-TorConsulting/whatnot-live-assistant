@@ -10,7 +10,7 @@ import {
   type LiveSignal,
 } from '../shared/live';
 import { pendingSpins, prizePriceKey } from '../shared/breaks';
-import { parseManifest } from '../shared/prizeValue';
+import { manifestFrom } from '../shared/prizeValue';
 import { send } from '../shared/messages';
 import { soldFromSale, type SoldItem } from '../shared/soldHistory';
 import type { ShopScan } from '../shared/shop';
@@ -129,10 +129,18 @@ const emit = (signals: LiveSignal[]) => {
 // goes up, and on a slow poll in case those events are missed.
 const BREAK_MIN_GAP_MS = 1500;
 const BREAK_POLL_MS = 15_000;
+const NOTES_POLL_MS = 2 * 60 * 1000;
 const PENDING_RECHECK_MS = 4000;
 let breakTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 let lastBreakFetch = 0;
+let lastNotesFetch = 0;
+
+const refreshNotes = () => {
+  if (!session || shareWorker) return;
+  lastNotesFetch = Date.now();
+  postToHook({ kind: 'fetch_notes', id: session.show.liveId });
+};
 
 const refreshBreak = () => {
   if (!session?.breakId || shareWorker || breakTimer) return;
@@ -159,13 +167,14 @@ let valuedPrizes = '';
 const valueWheel = (s: LiveSession) => {
   const wheel = s.wheel?.id === s.breakId ? s.wheel : null;
   if (!wheel?.prizes.length || shareWorker) return;
+  const notes = s.show.note?.text ?? null;
   const listed = wheel.prizes.map(({ title, detail }) => ({ title, detail }));
-  const manifest = parseManifest(wheel.description).items.map((item) => ({ title: item.name, detail: '' }));
+  const manifest = manifestFrom(wheel.description, notes).items.map((item) => ({ title: item.name, detail: '' }));
   const prizes = [...listed, ...manifest];
-  const key = `${wheel.id}|${wheel.description ?? ''}|${prizes.map(prizePriceKey).join('|')}`;
+  const key = `${wheel.id}|${wheel.description ?? ''}|${notes ?? ''}|${prizes.map(prizePriceKey).join('|')}`;
   if (key === valuedPrizes) return;
   valuedPrizes = key;
-  const context = { showTitle: s.show.title, wheelTitle: wheel.title, categories: s.show.categories };
+  const context = { showTitle: s.show.title, wheelTitle: wheel.title, categories: s.show.categories, notes };
   void send('WHEEL_VALUE', { prizes, context }).catch(() => undefined);
 };
 
@@ -233,6 +242,7 @@ export const startLiveBridge = async () => {
   postToHook({ kind: 'ready' });
   every(() => {
     if (Date.now() - lastBreakFetch >= BREAK_POLL_MS) refreshBreak();
+    if (Date.now() - lastNotesFetch >= NOTES_POLL_MS) refreshNotes();
   }, BREAK_POLL_MS);
   [alerts, username] = await Promise.all([getAlertSettings(), getProfile().then((p) => p.username)]);
   onItemChanged('alertSettings', (v) => (alerts = sanitizeAlertSettings(v)));
@@ -250,4 +260,5 @@ export const resetForPath = () => {
     session = emptySession(liveId);
     schedulePush();
   }
+  if (liveId) refreshNotes();
 };

@@ -3,7 +3,7 @@
 // hold any item on the board, so for the odds the unopened envelopes count as the board's items,
 // one spot each. That keeps the spin's worth and its odds exact when the counts agree.
 import { isHiddenSpot, isNumberedPrize, prizeKey, prizePriceKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
-import { parseManifest, type PrizeValue } from './prizeValue';
+import { manifestFrom, type PrizeValue } from './prizeValue';
 
 export interface EnvelopeBoard {
   at: number;
@@ -199,10 +199,11 @@ export const nextEnvelopeBoard = (prev: EnvelopeBoard | null, next: EnvelopeBoar
   return { ...fresh, revealed: gained ? false : (prev.revealed ?? false) };
 };
 
-// Each Item #N is an equal share of the coins named in the break description, until a sticker read
-// prices that number. A cut-off description counts the coins it never listed as zero.
-export const numberedShare = (b: BreakSnapshot, auto: Record<string, PrizeValue>): { value: number; floor: boolean } | null => {
-  const manifest = parseManifest(b.description);
+// Each Item #N is an equal share of the coins named in the break description, or in the show notes
+// when that description is empty or cut off, until a sticker read prices that number. A cut-off
+// description counts the coins it never listed as zero.
+export const numberedShare = (b: BreakSnapshot, auto: Record<string, PrizeValue>, notes?: string | null): { value: number; floor: boolean } | null => {
+  const manifest = manifestFrom(b.description, notes);
   if (!manifest.items.length || b.hits === null || b.soldHasMore) return null;
   const left = b.prizes.filter((p) => isNumberedPrize(p.title)).reduce((n, p) => n + Math.max(0, p.left), 0);
   const sold = b.hits.filter((h) => !h.pending && isNumberedPrize(h.title)).length;
@@ -228,6 +229,7 @@ export const wheelRows = (
   yours: Record<string, number>,
   auto: Record<string, PrizeValue>,
   board: EnvelopeBoard | null = null,
+  notes?: string | null,
 ): WheelRow[] => {
   const summary = envelopeSummary(b, yours, auto, board);
   const { claimed } = splitBoard(b, yours, board?.items ?? []);
@@ -235,7 +237,7 @@ export const wheelRows = (
     const prize = b.prizes.find((p) => p.title === row.title && p.detail === row.detail);
     if (prize && isNumberedPrize(prize.title)) {
       if (row.value !== null) return row;
-      const share = numberedShare(b, auto);
+      const share = numberedShare(b, auto, notes);
       if (!share) return row;
       return { ...row, value: share.value, floor: share.floor, auto: null, inside: null };
     }

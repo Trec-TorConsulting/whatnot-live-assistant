@@ -19,7 +19,8 @@ import { collectionLine, compareToCollection, type CollectionSettings } from '..
 import { getCollection, getGuardSettings, getItem } from '../shared/storage';
 import { MINUTE } from '../shared/time';
 import { appraisalView, listingView, messageView } from './appraisalView';
-import { liveSession } from './live';
+import { refreshEstate } from './estate';
+import { liveSession, rememberEstateName } from './live';
 import { overlay, type AppraisalView } from './overlay';
 import { collectPlayerText, findStreamVideo } from './selectors';
 import { contextAlive } from './lifecycle';
@@ -360,6 +361,10 @@ export const appraiseNow = async ({ auto = false } = {}) => {
     const priceInfo: PriceInfo | null = toPriceInfo(price);
     const estimate = rawEstimate ? calibrated(rawEstimate, calibration) : null;
     const name = res.item.is_collectible ? res.item.item_name : `No sellable item identified: ${res.item.item_name}`;
+    if (res.item.is_collectible) {
+      rememberEstateName(res.item.item_name);
+      refreshEstate();
+    }
     const valuation = computeValue(
       { quantity: res.item.quantity, melt: res.melt ?? quick?.melt ?? null, price: priceInfo, estimate, comps },
       guard.maxBidPercent,

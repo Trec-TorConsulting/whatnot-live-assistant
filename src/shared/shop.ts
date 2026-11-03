@@ -1,7 +1,8 @@
-// The show's shop, read when you open it. Only buy-it-now listings are kept; auctions, giveaways,
-// and pre-bids are skipped. A hit is a price under melt or under sales you've watched, a watchlist
-// match, or a known key date. Nothing here buys.
+// The show's shop, read when you open it. Buy-it-now listings and named one-off auctions are kept.
+// Giveaways, sold listings, and template auctions are skipped. A hit is a price under melt or under
+// sales you've watched, a watchlist match, or a known key date. Nothing here buys.
 import { quickRead, type AuctionSummary } from './appraisal';
+import { isTemplate } from './estate';
 import { matchWatch, type WatchItem } from './buyer';
 import { keyDateCallouts, keyDatePrice } from './keyDates';
 import { formatMoney } from './money';
@@ -13,6 +14,7 @@ export interface ShopListing {
   title: string;
   price: number;
   quantity: number;
+  mode?: 'bin' | 'auction';
 }
 
 export type ShopHitKind = 'steal' | 'deal' | 'must';
@@ -24,11 +26,13 @@ export interface ShopHit {
   quantity: number;
   kind: ShopHitKind;
   reason: string;
+  mode?: 'bin' | 'auction';
 }
 
 export interface ShopScan {
   status: 'ready' | 'error';
   binCount: number;
+  auctionCount?: number;
   hits: ShopHit[];
 }
 
@@ -40,10 +44,10 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 // Profile shop is the seller's marketplace, not this show.
 export const isShopOperation = (name: string) => /shop/i.test(name) && !/profile/i.test(name);
 
-const PREBID_KEYS = ['isPreBid', 'preBid', 'prebid', 'hasPreBid', 'preBidEnabled', 'isPrebid'];
 const SOLD_STATUS = /sold|ended|inactive|deleted|removed|cancel|unavailable|expired/i;
 const BIN_TYPE = /buy[_ ]?it[_ ]?now|^bin$|buy[_ ]?now/i;
-const SKIP_TYPE = /auction|giveaway|pre[-_ ]?bid/i;
+const AUCTION_TYPE = /auction/i;
+const GIVEAWAY_TYPE = /giveaway/i;
 
 const money = (v: unknown, cents = false): number | null => {
   if (typeof v === 'number' && Number.isFinite(v)) return cents ? v / 100 : v;
@@ -56,9 +60,10 @@ const money = (v: unknown, cents = false): number | null => {
 };
 
 const readListing = (o: Record<string, unknown>): ShopListing | null => {
-  if (PREBID_KEYS.some((k) => o[k] === true)) return null;
   const type = str(o.transactionType ?? o.transaction_type ?? obj(o.listing)?.transactionType ?? obj(o.product)?.transactionType);
-  if (!type || SKIP_TYPE.test(type) || !BIN_TYPE.test(type)) return null;
+  if (!type || GIVEAWAY_TYPE.test(type)) return null;
+  const auction = AUCTION_TYPE.test(type);
+  if (!auction && !BIN_TYPE.test(type)) return null;
   const status = str(o.status ?? o.publicStatus ?? o.state ?? o.listingStatus);
   if (status && SOLD_STATUS.test(status)) return null;
   const title = str(o.title ?? o.name ?? o.productName ?? obj(o.product)?.title ?? obj(o.listing)?.title);
@@ -73,7 +78,7 @@ const readListing = (o: Record<string, unknown>): ShopListing | null => {
   const rawQty = num(o.quantity ?? o.inventory ?? obj(o.inventoryLevel)?.quantity) ?? 1;
   const quantity = Math.max(1, Math.min(999, Math.round(rawQty)));
   const id = str(o.id ?? o.uuid ?? o.listingId ?? o.productId) ?? `${title}|${price}`;
-  return { id, title: title.slice(0, 160), price, quantity };
+  return { id, title: title.slice(0, 160), price, quantity, mode: auction ? 'auction' : 'bin' };
 };
 
 const MAX_LISTINGS = 400;
@@ -141,6 +146,7 @@ export interface ShopScoreInput {
 export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, meltOf, now }: ShopScoreInput): ShopHit[] => {
   const hits: (ShopHit & { edge: number })[] = [];
   for (const item of listings) {
+    if (isTemplate(item.title) || item.quantity >= 20) continue;
     const comps = summarizeComps(findComps([item.title], sold, now, 8, showType));
     const median = comps && comps.count >= 2 ? comps.median : null;
     const melt = meltOf(item);
@@ -172,6 +178,7 @@ export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, 
       price: item.price,
       quantity: item.quantity,
       kind,
+      mode: item.mode ?? 'bin',
       reason: notes.filter((n, i) => notes.indexOf(n) === i).join('. '),
       edge: reference > 0 ? (reference - item.price) / reference : 0,
     });
@@ -192,6 +199,13 @@ export const shopWorthLine = (
   if (median) return `Market ${formatMoney(median)} (PCGS ${grade})`;
   if (guide && guide > 0) return `Guide ${formatMoney(guide)} (PCGS ${grade})`;
   return null;
+};
+
+export const shopSummary = (scan: Pick<ShopScan, 'status' | 'binCount' | 'auctionCount'>): string => {
+  if (scan.status === 'error') return "Couldn't read this show's shop.";
+  if (!scan.binCount) return scan.auctionCount ? 'No shop items.' : 'No buy-it-now items in this shop.';
+  const noun = scan.auctionCount ? 'shop' : 'buy-it-now';
+  return `Checked ${scan.binCount} ${noun} item${scan.binCount === 1 ? '' : 's'}.`;
 };
 
 export const applyShopWorth = (hits: ShopHit[], lines: ReadonlyMap<string, string>): ShopHit[] =>

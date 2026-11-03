@@ -52,8 +52,12 @@ describe('parseShopListings', () => {
     },
   };
 
-  it('keeps buy-it-now and skips auctions, giveaways, sold, and pre-bids', () => {
-    expect(parseShopListings(body)).toEqual([{ id: '1 oz silver round', title: '1 oz silver round', price: 25, quantity: 1 }]);
+  it('keeps buy-it-now and named auctions, including ones that can be pre-bid', () => {
+    expect(parseShopListings(body)).toEqual([
+      { id: '1 oz silver round', title: '1 oz silver round', price: 25, quantity: 1, mode: 'bin' },
+      { id: 'Morgan pre-bid', title: 'Morgan pre-bid', price: 1, quantity: 1, mode: 'auction' },
+      { id: 'Pre-bid bin', title: 'Pre-bid bin', price: 15, quantity: 1, mode: 'bin' },
+    ]);
   });
 
   it('reads the shop cursor, not a deeper one', () => {
@@ -149,6 +153,28 @@ describe('scoreShop', () => {
     expect(priced[0]!.reason).toContain('Key date');
     const steal = score([list('1 oz silver round', 20)])[0]!;
     expect(applyShopWorth([steal], new Map([['5792:4', 'Guide $110 (PCGS G-4)']]))[0]).toBe(steal);
+  });
+
+  it('lists a named auction under its comps and leaves templates and giveaways out', () => {
+    const body = {
+      data: {
+        edges: [
+          { node: bin('1 oz silver round', 2000) },
+          { node: { ...bin('Better Homes & Gardens Cookbook 1953', 1000), transactionType: 'AUCTION', quantity: 1 } },
+          { node: { ...bin('*z - Category - Coins', 100), transactionType: 'AUCTION', quantity: 400 } },
+          { node: { title: 'Giveaway coin', transactionType: 'GIVEAWAY', price: { amount: 100 } } },
+        ],
+      },
+    };
+    const listings = parseShopListings(body);
+    expect(listings.map((l) => l.title)).not.toContain('Giveaway coin');
+    const hits = score(listings, {
+      sold: [sold('Better Homes & Gardens Cookbook 1953', 40), sold('Better Homes Gardens Cookbook 1953 edition', 50, 2)],
+      meltOf: (item) => shopMelt(item, { gold: null, silver: 30 }),
+    });
+    expect(hits.map((h) => h.title).sort()).toEqual(['1 oz silver round', 'Better Homes & Gardens Cookbook 1953']);
+    expect(hits.find((h) => h.title.includes('Cookbook'))?.mode).toBe('auction');
+    expect(hits.map((h) => h.title)).not.toContain('*z - Category - Coins');
   });
 
   it('does not call a key date a must-have when watched sales are cheaper', () => {

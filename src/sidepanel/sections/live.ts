@@ -12,6 +12,7 @@ import {
   type SellerNote,
 } from '../../shared/buyer';
 import { checksFor } from '../../shared/counterfeit';
+import { estateViewFromSession, isTemplate } from '../../shared/estate';
 import { flipLine, flipProfit } from '../../shared/costs';
 import { closesLine, profileCaution, profileLine, sellerCloses, type SellerProfile } from '../../shared/sellerInfo';
 import { DEFAULT_GUARD_SETTINGS, guardStatus, sanitizeGuardSettings, type GuardSettings } from '../../shared/guard';
@@ -35,7 +36,7 @@ import {
   type Monitor,
   type OverlayPrefs,
 } from '../../shared/storage';
-import type { ShopHit } from '../../shared/shop';
+import { shopSummary, type ShopHit } from '../../shared/shop';
 import { formatDuration } from '../../shared/time';
 import { $, li, liveIdOfTab, numberOf, onActiveTab, runCommand, setNumber, toast } from '../ui';
 
@@ -47,6 +48,13 @@ const el = {
   notesCoupons: $('#notes-coupons'),
   notesText: $('#notes-text'),
   shopCard: $('#shop-card'),
+  estateCard: $('#estate-card'),
+  estateLine: $('#estate-line'),
+  estateShip: $('#estate-ship'),
+  estateRules: $('#estate-rules'),
+  estateClothing: $('#estate-clothing'),
+  estateWants: $('#estate-wants'),
+  estateRuns: $('#estate-runs'),
   shopSummary: $('#shop-summary'),
   shopHits: $('#shop-hits'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
@@ -249,22 +257,45 @@ const renderLot = () => {
   );
 };
 
-const shopLabel = (h: ShopHit) => (h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have');
+const shopLabel = (h: ShopHit) => {
+  const kind = h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have';
+  return h.mode === 'auction' ? `Auction ${kind}` : kind;
+};
+
+const renderEstate = () => {
+  if (!session) {
+    el.estateCard.hidden = true;
+    return;
+  }
+  const named = appraisal && session.lot && (!appraisal.lotId || appraisal.lotId === session.lot.id) ? appraisal.name : null;
+  const view = estateViewFromSession(session, {
+    shippingPaid: purchases.some((p) => p.liveId === session!.show.liveId),
+    recognizedName: named && !isTemplate(named) ? named : null,
+    appraisalNotes: appraisal?.notes,
+  });
+  el.estateCard.hidden = !view;
+  if (!view) return;
+  el.estateLine.textContent = view.line ?? '';
+  el.estateShip.textContent = view.shippingNote ?? '';
+  el.estateRules.textContent = view.rules ?? '';
+  el.estateClothing.textContent = view.clothing ?? '';
+  el.estateWants.replaceChildren(
+    ...view.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
+  );
+  el.estateRuns.replaceChildren(...view.runs.map((r) => li(r)));
+};
 
 const renderShop = () => {
   const shop = session?.shop ?? null;
   el.shopCard.hidden = !shop;
   if (!shop) return;
-  el.shopSummary.textContent =
-    shop.status === 'error'
-      ? "Couldn't read this show's shop."
-      : shop.binCount
-        ? `Checked ${shop.binCount} buy-it-now item${shop.binCount === 1 ? '' : 's'}.`
-        : 'No buy-it-now items in this shop.';
+  el.shopSummary.textContent = shopSummary(shop);
   const rows = shop.hits.map((h) =>
     li(`${shopLabel(h)}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : ''),
   );
-  if (!rows.length && shop.status === 'ready' && shop.binCount) rows.push(li('No deals in the buy-it-now shop.', 'muted'));
+  if (!rows.length && shop.status === 'ready' && shop.binCount) {
+    rows.push(li(shop.auctionCount ? 'No deals in the shop.' : 'No deals in the buy-it-now shop.', 'muted'));
+  }
   el.shopHits.replaceChildren(...rows);
 };
 
@@ -303,6 +334,7 @@ export const renderLive = () => {
   el.appraise.disabled = tabId === null;
   renderNotes();
   renderLot();
+  renderEstate();
   renderShop();
   renderAppraisal();
   renderStats();

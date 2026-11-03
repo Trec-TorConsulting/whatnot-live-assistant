@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { computeValue } from './appraisal';
 import type { Sale } from './live';
 import { addSold, findComps, MAX_SOLD, soldFromSale, summarizeComps, type SoldItem } from './soldHistory';
 import { DAY } from './time';
@@ -69,6 +70,17 @@ describe('findComps', () => {
   it('rules out a different year and ignores one-word names', () => {
     expect(findComps(['1986 Fleer Michael Jordan #57'], list, now).map((c) => c.price)).toEqual([9000]);
     expect(findComps(['Lot #12', 'telephone'], list, now)).toEqual([]);
+  });
+
+  it('keeps junk-bag hammers and does not use them as comps', () => {
+    const bags = [sold('Junk bag #3', 3, { showType: 'flea' }), sold('Junk bag #50', 50, { key: 'bag50', showType: 'flea' })];
+    const kept = addSold([], bags);
+    expect(kept).toHaveLength(2);
+    const morgan = sold('1921 Morgan dollar', 40, { key: 'morgan', showType: 'flea' });
+    expect(findComps(['Junk bag #70'], [...kept, morgan], now, 8, 'flea')).toEqual([]);
+    const one = summarizeComps(findComps(['1921 Morgan dollar'], [morgan], now, 8, 'flea'));
+    expect(one?.count).toBe(1);
+    expect(computeValue({ quantity: 1, melt: null, price: null, comps: one }).basis).not.toBe('whatnot');
   });
 });
 

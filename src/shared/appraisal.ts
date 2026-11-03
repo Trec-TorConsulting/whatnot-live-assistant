@@ -1,6 +1,7 @@
 // Coin and bullion appraisal logic: series weights, listing-text pre-appraisal, the Gemini answer
 // schema, PCGS sale summaries, and the market value / suggested max bid that comes out of them.
 import { formatMoney } from './money';
+import { ESTATE_HINT, estatePassOn, isTemplate, templateContext } from './estate';
 import { noteForPrompt } from './showNotes';
 import { SHOW_TYPES, type ShowType } from './showType';
 import type { Calibration } from './calibration';
@@ -422,14 +423,18 @@ export interface AppraisalContext {
 // Per request rather than in the cached instructions, so every show type shares one cache entry.
 export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [], showType = 'general', showNotes }: AppraisalContext) => {
   const notes = noteForPrompt(showNotes);
+  const template = Boolean(lotTitle && isTemplate(lotTitle));
+  const page = template && lotTitle ? pageText.split(lotTitle).join(' ').replace(/[ \t]{2,}/g, ' ').trim() : pageText;
+  const pass = estatePassOn({ lotTitle, showTitle, categories, notes: showNotes });
   return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',
-    lotTitle ? `Current lot title: ${lotTitle}` : '',
+    template ? (templateContext(lotTitle) ?? '') : lotTitle ? `Current lot title: ${lotTitle}` : '',
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
     SHOW_TYPES[showType].hint ?? '',
+    pass ? ESTATE_HINT : '',
     'Page text (listing title and unrelated chat):',
-    pageText || '(none)',
+    page || '(none)',
   ]
     .filter(Boolean)
     .join('\n');

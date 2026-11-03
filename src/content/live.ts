@@ -3,7 +3,11 @@ import { CONTENT_SOURCE, HOOK_SOURCE, type ContentToHook, type HookToContent } f
 import {
   decodePhoenixFrame,
   emptySession,
+  noteEstateName,
+  noteEstateRules,
+  noteShippingQuote,
   reduceGraphql,
+  sessionForPath,
   reduceSocket,
   snapshotSession,
   type LiveSession,
@@ -38,10 +42,9 @@ export const onLive = (fn: Listener) => {
 export const postToHook = (msg: ContentToHook) => window.postMessage({ source: CONTENT_SOURCE, ...msg }, location.origin);
 
 const currentSession = (): LiveSession | null => {
-  const liveId = liveIdFromPath();
-  if (!liveId) return null;
-  if (!session || session.show.liveId !== liveId) session = emptySession(liveId);
-  return session;
+  const next = sessionForPath(session, liveIdFromPath());
+  session = next;
+  return next;
 };
 
 const schedulePush = () => {
@@ -62,6 +65,30 @@ export const markShareWorker = () => {
   shareWorker = true;
 };
 export const isShareWorker = () => shareWorker;
+
+export const rememberShipping = (shipping: number | null) => {
+  if (!session || shareWorker) return;
+  const next = noteShippingQuote(session, shipping);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
+export const rememberRules = (key: string | null) => {
+  if (!session || shareWorker) return;
+  const next = noteEstateRules(session, key);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
+export const rememberEstateName = (name: string | null | undefined) => {
+  if (!session || shareWorker) return;
+  const next = noteEstateName(session, name);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
 
 export const publishShop = (shop: ShopScan) => {
   const s = currentSession();

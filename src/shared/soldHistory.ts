@@ -1,5 +1,6 @@
 // Paid sales seen in shows you watched, kept as real Whatnot comps for appraisals. Buyers aren't
 // stored; giveaways and $0 sales are dropped since they say nothing about value.
+import { isTemplate } from './estate';
 import type { Sale } from './live';
 import { titleTokens } from './purchases';
 import type { ShowType } from './showType';
@@ -72,7 +73,7 @@ export const findComps = (names: (string | null | undefined)[], list: SoldItem[]
   const wants = names.filter((n): n is string => Boolean(n)).map(meaningful).filter((w) => w.size >= 2);
   if (!wants.length) return [];
   return list
-    .filter((s) => now - s.at < COMP_MAX_AGE_MS && sameKind(showType, s.showType))
+    .filter((s) => !isTemplate(s.title) && now - s.at < COMP_MAX_AGE_MS && sameKind(showType, s.showType))
     .map((s) => ({ s, score: Math.max(...wants.map((w) => matchScore(w, s.title))) }))
     .filter((x) => x.score >= 0.6)
     .sort((a, b) => b.score - a.score || b.s.at - a.s.at)

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_TABLE_ITEMS, parseTableAnswer } from './tableScan';
+import { MAX_TABLE_ITEMS, parseTableAnswer, tablePrompt } from './tableScan';
+
+describe('tablePrompt', () => {
+  it('names the piece being sold, and uses the camera until that name exists', () => {
+    const titled = tablePrompt({ pageText: '', showTitle: 'Estate', lotTitle: '*c - 2 oz Item on screen #57' }, '');
+    expect(titled).toContain('the piece closest to the camera');
+    expect(titled).not.toContain('Item on screen');
+    const named = tablePrompt({ pageText: '', showTitle: 'Estate', lotTitle: 'Junk bag #10' }, 'Manganese glass toothpick holder');
+    expect(named).toContain('Being sold now (do not list): Manganese glass toothpick holder');
+  });
+});
 
 describe('parseTableAnswer', () => {
   it('keeps named, priced items and drops the item being sold', () => {

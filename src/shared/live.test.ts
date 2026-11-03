@@ -3,11 +3,13 @@ import {
   decodePhoenixFrame,
   emptySession,
   isNewLot,
+  noteEstateName,
   readCategories,
   readCommerce,
   reduceGraphql,
   reduceSocket,
   saleFromChat,
+  sessionForPath,
   summarizeSales,
   type LiveSession,
   type Sale,
@@ -294,6 +296,52 @@ describe('summarizeSales', () => {
         { user: 'b', spend: 30, orders: 1 },
       ],
     });
+  });
+});
+
+describe('estate session', () => {
+  const host = (id: string, text: string) =>
+    chatMsg(id, 'seller', text, { user: { id: 'h', isHost: true, isModerator: false, username: 'seller' } });
+  const lot = (id: string, title: string, cents: number) =>
+    frame(`commerce:${LIVE}`, 'product_update', {
+      product: { id, title, currentBid: { amount: cents, currency: 'USD' }, currentBidCount: 1 },
+    });
+  const sold = (id: string, title: string, price: number) =>
+    frame(`commerce:${LIVE}`, 'product_sold', { productId: id, title, soldPrice: price, buyer: { username: 'buyer' } });
+
+  it('keeps template hammers and the name pinned when that lot sold', () => {
+    let s = emptySession(LIVE);
+    s = apply(s, lot('p10', 'Junk bag #10', 300)).session;
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('pin', 'manganese toothpick holder'))).session;
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('ty', 'Ty!'))).session;
+    s = noteEstateName(s, 'Manganese glass toothpick holder');
+    s = apply(s, sold('p10', 'Junk bag #10', 20)).session;
+    s = apply(s, lot('p40', 'Junk bag #40', 100)).session;
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('later', 'ceramic lion'))).session;
+    s = apply(s, sold('p40', 'Junk bag #40', 36)).session;
+    s = apply(s, frame(`commerce:${LIVE}`, 'giveaway_won', {
+      product: { id: 'g1', name: 'Junk bag #11', transactionType: 'GIVEAWAY', soldPrice: { amount: 0 }, purchaserUser: { username: 'winner' } },
+    })).session;
+    s = apply(s, sold('p42', 'Junk bag #42', 1)).session;
+
+    expect(s.estateRuns.map((r) => [r.number, r.name, r.price])).toEqual([
+      [42, null, 1],
+      [40, 'ceramic lion', 36],
+      [10, 'Manganese glass toothpick holder', 20],
+    ]);
+    expect(s.estateRuns.some((r) => r.number === 11)).toBe(false);
+    expect(s.estatePins['10']).toBe('Manganese glass toothpick holder');
+  });
+
+  it('does not pin a backlog line, and a new show starts clean', () => {
+    let s = emptySession(LIVE);
+    s = apply(s, lot('p10', 'Junk bag #10', 100)).session;
+    s = apply(s, frame(`chat:${LIVE}`, 'latest_messages', { messages: [host('old', 'door knocker')] })).session;
+    expect(s.estatePins).toEqual({});
+    const next = sessionForPath(s, 'other-show');
+    expect(next?.estateRuns).toEqual([]);
+    expect(next?.estatePins).toEqual({});
+    expect(next?.estateWants).toEqual([]);
   });
 });
 

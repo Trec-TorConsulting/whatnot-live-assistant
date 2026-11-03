@@ -6,7 +6,15 @@ Appraisal reads the listing and the item on screen, then fills in prices it can 
 ## Requirements
 
 ### Requirement: Model order
-Unless Ollama-only is on, the Chrome on-device model SHALL be asked first and a successful answer SHALL be final. If it is missing or fails, Gemini SHALL run when a key exists, and a configured Ollama server SHALL start if Gemini fails or has not answered within about five seconds. The first good answer inside the deadline SHALL win. Ollama-only SHALL skip the on-device model and Gemini, and SHALL fail without calling Gemini when the Ollama URL or model is blank.
+Unless Ollama-only is on, the on-device model SHALL be asked immediately. An answer from it within about two seconds SHALL be final and SHALL NOT call a cloud provider. If it is missing, fails, or is still running after about two seconds, saved cloud providers SHALL run, preferred first, and the first good answer SHALL win. Another saved provider and Ollama, when configured, SHALL start if the preferred provider fails or has not answered within about five seconds. Ollama-only SHALL skip the on-device model and cloud providers, and SHALL fail without calling them when the Ollama URL or model is blank.
+
+#### Scenario: On-device answers quickly
+- **WHEN** the on-device model answers within about two seconds
+- **THEN** no cloud provider is called
+
+#### Scenario: On-device is still running
+- **WHEN** the on-device model has not answered after about two seconds and a saved cloud provider then answers
+- **THEN** that cloud answer is the one shown
 
 #### Scenario: No model available
 - **WHEN** the on-device model is unavailable, no Gemini key is saved, and Ollama is not configured
@@ -34,6 +42,13 @@ Per piece, market value SHALL prefer a PCGS auction median, then a raw card mark
 - **WHEN** the AI estimate does not clear melt
 - **THEN** the basis is melt rather than the estimate
 
+### Requirement: Answer before sale lookups
+The identification SHALL be shown when the model answers. A PCGS lookup, Whatnot comps, and show-type calibration SHALL fill in afterward and SHALL NOT delay that first answer.
+
+#### Scenario: Price lookup is still running
+- **WHEN** the model has identified the item and the sale-price lookup has not returned
+- **THEN** the card shows the identification
+
 ### Requirement: Same frame cache
 The same JPEG under the same show type SHALL reuse the identification for about ten minutes. Melt SHALL be recomputed. A different show type SHALL miss the cache.
 
@@ -42,7 +57,11 @@ The same JPEG under the same show type SHALL reuse the identification for about 
 - **THEN** the model is not called again for that identification
 
 ### Requirement: Quick melt
-Before the frame returns, a listing line with a known series or an explicit ounce weight SHALL produce a melt floor from spot metal prices. Spot SHALL come from gold-api.com, with a short session cache. Plated, filled, and similar stamps SHALL have no melt. A failed spot fetch with no cache SHALL leave melt empty. The quick read SHALL NOT call PCGS.
+Before the frame returns, a listing line with a known series or an explicit ounce weight SHALL produce a melt floor from spot metal prices. Fetching that spot price SHALL NOT delay sending the frame to the model. Spot SHALL come from gold-api.com, with a short session cache. Plated, filled, and similar stamps SHALL have no melt. A failed spot fetch with no cache SHALL leave melt empty. The quick read SHALL NOT call PCGS.
+
+#### Scenario: Spot price is slow
+- **WHEN** the listing has a metal weight and the spot price has not come back yet
+- **THEN** the frame is still sent to the model
 
 #### Scenario: No metal in the title
 - **WHEN** the listing has no year-or-ounce metal line

@@ -36,7 +36,7 @@ import {
   type GeminiUsage,
 } from '../shared/storage';
 import { DAY, MINUTE, SECOND } from '../shared/time';
-import { ON_DEVICE_MODEL, appraiseOnDevice } from './onDevice';
+import { ON_DEVICE_MODEL, appraiseOnDevice, type OnDeviceResult } from './onDevice';
 
 // --- Spot prices (gold-api.com), cached in session storage so they stay warm across wakeups ---
 
@@ -595,8 +595,26 @@ const withMelt = async (item: AppraisalItem) => {
   return { item: { ...item, quantity }, melt };
 };
 
-// The on-device model answers first. Saved cloud providers run next, preferred first. Another
-// saved provider and Ollama start if that provider fails or is still quiet after HEDGE_MS.
+// A fast on-device answer is free, so cloud stays quiet for this long. After that the two run
+// together and the first good answer is the one we show. Waiting out a slow on-device model
+// (often the whole 10s timeout) was holding every appraisal before a cloud model even started.
+export const ON_DEVICE_HEADSTART_MS = 2 * SECOND;
+
+const fromLocal = async (local: Extract<OnDeviceResult, { ok: true }>): Promise<GeminiResult> => ({
+  ok: true,
+  ...(await withMelt(local.item)),
+  others: local.others,
+  model: ON_DEVICE_MODEL,
+});
+
+const noBackup = (local: Extract<OnDeviceResult, { ok: false }>): GeminiResult =>
+  local.unavailable
+    ? { ok: false, needsKey: true, error: 'Set up the on-device model, add a cloud AI key, or add an Ollama server first' }
+    : { ok: false, error: `On-device model failed (${local.error}) and there is no cloud or Ollama backup` };
+
+// On-device starts immediately. Saved cloud providers run next, preferred first, if on-device
+// fails or is still quiet after the head start. Another saved provider and Ollama start if the
+// preferred provider fails or is still quiet after HEDGE_MS. The first good answer wins.
 const appraiseUncached = async ({ image, ...context }: AppraisalContext & { image: string }): Promise<GeminiResult> => {
   const settings = await getAppraisalSettings();
   if (settings.ollamaOnly) {
@@ -604,21 +622,74 @@ const appraiseUncached = async ({ image, ...context }: AppraisalContext & { imag
     return appraiseWithOllama(settings, image, context, AbortSignal.timeout(DEADLINE_MS), Date.now() + DEADLINE_MS);
   }
 
-  const local = await appraiseOnDevice(image, context);
-  if (local.ok) return { ok: true, ...(await withMelt(local.item)), others: local.others, model: ON_DEVICE_MODEL };
-
   const providers = providersWithKeys(settings);
   const ollama = ollamaReady(settings);
-  if (!providers.length && !ollama) {
-    return local.unavailable
-      ? { ok: false, needsKey: true, error: 'Set up the on-device model, add a cloud AI key, or add an Ollama server first' }
-      : { ok: false, error: `On-device model failed (${local.error}) and there is no cloud or Ollama backup` };
+  const cloud = (signal: AbortSignal): Promise<GeminiResult> | null => {
+    if (!providers.length && !ollama) return null;
+    const deadlineAt = Date.now() + DEADLINE_MS;
+    if (!providers.length) return appraiseWithOllama(settings, image, context, signal, deadlineAt);
+    return raceCloud(
+      providers.map((provider) => (jobSignal, deadline) => appraiseProvider(settings, provider, image, context, jobSignal, deadline)),
+      ollama ? (jobSignal, deadline) => appraiseWithOllama(settings, image, context, jobSignal, deadline) : null,
+      signal,
+    );
+  };
+
+  const abortLocal = new AbortController();
+  const localPromise = appraiseOnDevice(image, context, abortLocal.signal);
+  let headStartTimer: ReturnType<typeof setTimeout> | undefined;
+  const headStart = new Promise<null>((resolve) => {
+    headStartTimer = setTimeout(() => resolve(null), ON_DEVICE_HEADSTART_MS);
+  });
+  const early = await Promise.race([localPromise.then((result) => ({ result }) as const), headStart]);
+  clearTimeout(headStartTimer);
+
+  if (early) {
+    if (early.result.ok) return fromLocal(early.result);
+    return (await cloud(AbortSignal.timeout(DEADLINE_MS))) ?? noBackup(early.result);
   }
-  if (!providers.length) return appraiseWithOllama(settings, image, context, AbortSignal.timeout(DEADLINE_MS), Date.now() + DEADLINE_MS);
-  return raceCloud(
-    providers.map((provider) => (signal, deadlineAt) => appraiseProvider(settings, provider, image, context, signal, deadlineAt)),
-    ollama ? (signal, deadlineAt) => appraiseWithOllama(settings, image, context, signal, deadlineAt) : null,
-  );
+
+  const abortCloud = new AbortController();
+  const backup = cloud(abortCloud.signal);
+  if (!backup) {
+    const local = await localPromise;
+    return local.ok ? fromLocal(local) : noBackup(local);
+  }
+
+  return new Promise((resolve) => {
+    let won = false;
+    let localDone = false;
+    let cloudDone = false;
+    let cloudResult: GeminiResult | undefined;
+    const finishCloud = () => {
+      if (won || !localDone || !cloudDone || !cloudResult) return;
+      won = true;
+      resolve(cloudResult);
+    };
+    localPromise.then((local) => {
+      localDone = true;
+      if (won) return;
+      if (local.ok) {
+        won = true;
+        abortCloud.abort();
+        resolve(fromLocal(local));
+        return;
+      }
+      finishCloud();
+    });
+    backup.then((result) => {
+      cloudDone = true;
+      cloudResult = result;
+      if (won) return;
+      if (result.ok) {
+        won = true;
+        abortLocal.abort();
+        resolve(result);
+        return;
+      }
+      finishCloud();
+    });
+  });
 };
 
 // Same pixels, same answer. A moving video misses. A second click on a held frame does not
@@ -1273,10 +1344,12 @@ const appraiseProvider = async (
 };
 
 // Preferred provider first. One other saved provider may run beside it, and Ollama starts at the
-// same hedge. The first good answer inside the deadline wins.
+// same hedge. The first good answer inside the deadline wins. external aborts the race when an
+// on-device answer already won, so the backup does not keep calling models.
 const raceCloud = <T extends Failable>(
   jobs: Array<(signal: AbortSignal, deadlineAt: number) => Promise<T>>,
   ollama: ((signal: AbortSignal, deadlineAt: number) => Promise<T>) | null,
+  external?: AbortSignal,
 ): Promise<T> => {
   const deadlineAt = Date.now() + DEADLINE_MS;
   return new Promise((resolve) => {
@@ -1290,10 +1363,12 @@ const raceCloud = <T extends Failable>(
     let ollamaDone = !ollama;
     let ollamaError: T | null = null;
     let hedge: ReturnType<typeof setTimeout> | undefined;
+    let onExternalAbort = () => {};
 
     const finish = (result: T) => {
       if (settled) return;
       settled = true;
+      external?.removeEventListener('abort', onExternalAbort);
       clearTimeout(hedge);
       controllers.forEach((controller) => controller.abort());
       ollamaController?.abort();
@@ -1304,6 +1379,7 @@ const raceCloud = <T extends Failable>(
       const error = ollamaError?.error ? `${cloud} Ollama backup: ${ollamaError.error}`.trim() : cloud || 'No cloud provider answered';
       return { ok: false, error, needsKey: errors.length > 0 && errors.every((failure) => failure.needsKey) } as T;
     };
+    onExternalAbort = () => finish(combined());
     const maybeFinish = () => {
       if (settled || active > 0 || !ollamaDone) return;
       if (cursor < jobs.length && Date.now() < deadlineAt) {
@@ -1352,6 +1428,11 @@ const raceCloud = <T extends Failable>(
         launch();
       });
     };
+    if (external?.aborted) {
+      finish(combined());
+      return;
+    }
+    external?.addEventListener('abort', onExternalAbort);
     launch();
   });
 };

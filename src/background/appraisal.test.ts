@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appraise, geminiJson, gradeGuide, priceLookup } from './appraisal';
+import { ON_DEVICE_HEADSTART_MS, appraise, geminiJson, gradeGuide, priceLookup } from './appraisal';
 
 const fakeArea = (initial: Record<string, unknown> = {}) => {
   const data: Record<string, unknown> = { ...initial };
@@ -340,6 +340,33 @@ describe('appraise with the on-device model', () => {
     const res = await run();
     expect(res).toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
     expect(calls).toEqual(['gemini-2.5-flash-lite']);
+  });
+
+  it('asks Gemini when the on-device model is still running after its head start', async () => {
+    stubOnDevice(() => new Promise(() => {}));
+    const calls = scriptGemini({ 'gemini-2.5-flash-lite': [ok] });
+    const pending = appraise({ image: 'AAAA', pageText: '', showTitle: 'Show' });
+    await vi.advanceTimersByTimeAsync(ON_DEVICE_HEADSTART_MS - 100);
+    expect(calls).toEqual([]);
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(pending).resolves.toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
+    expect(calls).toEqual(['gemini-2.5-flash-lite']);
+  });
+
+  it('keeps the on-device answer when it lands before Gemini answers', async () => {
+    let release: (value: string) => void = () => {};
+    stubOnDevice(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const calls = scriptGemini({ 'gemini-2.5-flash-lite': [hang] });
+    const pending = appraise({ image: 'AAAA', pageText: '', showTitle: 'Show' });
+    await vi.advanceTimersByTimeAsync(ON_DEVICE_HEADSTART_MS);
+    expect(calls).toEqual(['gemini-2.5-flash-lite']);
+    release(JSON.stringify(nanoAnswer));
+    await expect(pending).resolves.toMatchObject({ ok: true, model: 'on-device', item: { item_name: '1921 Morgan Dollar' } });
   });
 });
 

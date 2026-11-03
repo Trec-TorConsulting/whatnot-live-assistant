@@ -1,7 +1,7 @@
 import { handleMessages, send, STALE_CONTEXT } from '../shared/messages';
 import type { SellerTask } from '../shared/types';
 import { isNewLot, type LiveSession, type LiveSignal } from '../shared/live';
-import { appraiseNow, newAuction } from './appraise';
+import { appraiseNow, newAuction, watchAppraisal } from './appraise';
 import { hideWorkerBanner, showWorkerBanner } from './banner';
 import { quickBid, refreshGuard, startBidGuard } from './bidGuard';
 import { resetBuyer, startBuyer } from './buyer';
@@ -67,6 +67,7 @@ const runShareIfAssigned = async () => {
 };
 
 // The guard's ceiling and the bid button colors use the appraisal, so they shouldn't wait for the next bid.
+watchAppraisal(refreshGuard);
 const appraiseAndGuard = (auto = false) => appraiseNow({ auto }).finally(refreshGuard);
 
 // A new auction is a new item. Auto clears the last answer and appraises the moment the auction

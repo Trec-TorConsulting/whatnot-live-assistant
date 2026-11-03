@@ -266,29 +266,36 @@ export const promptOnDeviceJson = async (
   }
 };
 
-export const appraiseOnDevice = async (image: string, context: AppraisalContext): Promise<OnDeviceResult> => {
+export const appraiseOnDevice = async (image: string, context: AppraisalContext, external?: AbortSignal): Promise<OnDeviceResult> => {
+  if (external?.aborted) return { ok: false, unavailable: false, error: 'on-device cancelled' };
   const current = await onDeviceState();
+  if (external?.aborted) return { ok: false, unavailable: false, error: 'on-device cancelled' };
   if (current !== 'available') return { ok: false, unavailable: true, error: `on-device model ${current}` };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ON_DEVICE_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(ON_DEVICE_TIMEOUT_MS);
+  const signal = external ? AbortSignal.any([timeout, external]) : timeout;
   let session: OnDeviceSession | null = null;
   try {
     const base = await baseSession();
-    session = await base.clone({ signal: controller.signal }).catch((err: unknown) => {
+    if (signal.aborted) {
+      return { ok: false, unavailable: false, error: external?.aborted ? 'on-device cancelled' : `on-device model took over ${ON_DEVICE_TIMEOUT_MS / SECOND}s` };
+    }
+    session = await base.clone({ signal }).catch((err: unknown) => {
       if (warm?.api === languageModel()) warm = null;
       throw err;
     });
     const text = await session.prompt(
       [{ role: 'user', content: [{ type: 'text', value: appraisalContext(context) }, { type: 'image', value: jpegBlob(image) }] }],
-      { responseConstraint: SCHEMA, signal: controller.signal },
+      { responseConstraint: SCHEMA, signal },
     );
     const parsed = JSON.parse(text) as Answer & { others?: unknown };
     return { ok: true, item: toItem(parsed), others: parseOthers(parsed.others) };
   } catch (err) {
-    if (controller.signal.aborted) return { ok: false, unavailable: false, error: `on-device model took over ${ON_DEVICE_TIMEOUT_MS / SECOND}s` };
+    if (external?.aborted) return { ok: false, unavailable: false, error: 'on-device cancelled' };
+    if (signal.aborted || (err as Error).name === 'AbortError') {
+      return { ok: false, unavailable: false, error: `on-device model took over ${ON_DEVICE_TIMEOUT_MS / SECOND}s` };
+    }
     return { ok: false, unavailable: false, error: String((err as Error)?.message ?? err) };
   } finally {
-    clearTimeout(timer);
     session?.destroy();
   }
 };

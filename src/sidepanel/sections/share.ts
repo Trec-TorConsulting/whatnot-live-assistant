@@ -49,9 +49,9 @@ export const renderShare = () => {
   const active = Boolean(s && s.status !== 'stopped');
   if (tabId === null) el.status.textContent = 'Open a Whatnot live show in the active tab.';
   else if (!s) el.status.textContent = 'Ready to share this show.';
-  else if (s.status === 'waiting') el.status.textContent = `${s.message ?? 'Waiting'}. Next share at ${formatClock(s.waitUntil ?? Date.now())}. ${s.done} sent.`;
-  else if (s.status === 'running') el.status.textContent = `Sharing: ${s.done} sent${s.remaining !== null ? `, ${s.remaining} left` : ''}.`;
-  else el.status.textContent = `${s.message ?? 'Stopped'} · ${s.done} sent.`;
+  else if (s.status === 'waiting') el.status.textContent = `${s.message ?? 'Waiting'}. Next share at ${formatClock(s.waitUntil ?? Date.now())}. ${s.done} confirmed.`;
+  else if (s.status === 'running') el.status.textContent = `Sharing: ${s.done} confirmed${s.remaining !== null ? `, ${s.remaining} left` : ''}.`;
+  else el.status.textContent = `${s.message ?? 'Stopped'} · ${s.done} confirmed.`;
   for (const b of [el.once, el.n, el.auto]) b.disabled = tabId === null || active;
   el.stop.disabled = !active;
 

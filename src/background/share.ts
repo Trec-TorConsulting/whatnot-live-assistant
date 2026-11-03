@@ -12,9 +12,9 @@ const load = async () => (await getSession('shareSessions')) ?? {};
 const TARGET_LABEL = { copy: 'Copy link', x: 'X', facebook: 'Facebook' } as const;
 
 export const shareStatusText = (s: ShareSession) => {
-  if (s.status === 'stopped') return `${s.message ?? 'Stopped'} · ${s.done} sent`;
-  if (s.status === 'waiting') return `${s.message ?? 'Waiting'}. Next share at ${formatClock(s.waitUntil ?? Date.now())}. ${s.done} sent`;
-  return `Sharing via ${TARGET_LABEL[s.target]} in a background tab: ${s.done} sent${s.remaining !== null ? `, ${s.remaining} left` : ''}`;
+  if (s.status === 'stopped') return `${s.message ?? 'Stopped'} · ${s.done} confirmed`;
+  if (s.status === 'waiting') return `${s.message ?? 'Waiting'}. Next share at ${formatClock(s.waitUntil ?? Date.now())}. ${s.done} confirmed`;
+  return `Sharing via ${TARGET_LABEL[s.target]} in a background tab: ${s.done} confirmed${s.remaining !== null ? `, ${s.remaining} left` : ''}`;
 };
 
 // Your show tab's overlay mirrors the share tab's progress.

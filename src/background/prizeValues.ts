@@ -1,4 +1,4 @@
-import { isHiddenPrize, isHiddenSpot, prizeValueKey, wheelValueKey } from '../shared/breaks';
+import { isHiddenPrize, isHiddenSpot, isNumberedPrize, prizeIdentity, prizePriceKey, wheelValueKey } from '../shared/breaks';
 import { nextEnvelopeBoard, seenKey } from '../shared/envelopes';
 import { createLock } from '../shared/lock';
 import type { EnvelopeResult, Result } from '../shared/messages';
@@ -17,6 +17,7 @@ import {
   isFresh,
   parseEnvelopeAnswer,
   parsePrizeAnswer,
+  clarifyPrizeName,
   prizePrompt,
   type BoardItem,
   type PrizeContext,
@@ -47,16 +48,17 @@ export const valuePrizes = (prizes: PrizeItem[], ctx: PrizeContext): Promise<Res
     const items = prizes
       .map((p) => ({ title: String(p.title ?? '').trim(), detail: String(p.detail ?? '').trim() }))
       .filter((p) => p.title && !isHiddenSpot(p));
-    const stale = [...new Map(items.map((p) => [prizeValueKey(p), p])).entries()].filter(([key]) => !isFresh(cache[key], now));
+    const stale = [...new Map(items.map((p) => [prizePriceKey(p), p])).entries()].filter(([key]) => !isFresh(cache[key], now));
     if (!stale.length) return { ok: true };
 
     const next = { ...cache };
     const sold = (await getItem('soldHistory')) ?? [];
     const forAi: [string, PrizeItem][] = [];
     for (const [key, prize] of stale) {
-      const real = await realPrice(prize.title, sold, now);
+      const name = clarifyPrizeName(prize.title);
+      const real = await realPrice(name, sold, now);
       if (real) next[key] = { ...real, at: now };
-      else forAi.push([key, prize]);
+      else forAi.push([key, { title: name, detail: clarifyPrizeName(prize.detail) }]);
     }
     // Real prices show up right away instead of waiting on the model.
     await setItem('prizeValues', trim(next));
@@ -151,7 +153,9 @@ export const readEnvelopes = (
     const hidden = prizes
       .map((p) => ({ title: String(p.title ?? '').trim(), detail: String(p.detail ?? '').trim() }))
       .filter((p) => p.title && isHiddenSpot(p));
-    const wanted = [...new Map(hidden.map((p) => [wheelValueKey(breakId, p), p])).entries()].filter(([key]) => !isFresh(cache[key], now));
+    const wanted = [...new Map(hidden.map((p) => [wheelValueKey(breakId, p), p])).entries()].filter(
+      ([key, prize]) => !isFresh(cache[key], now) && !isFresh(cache[seenKey(breakId, prize)], now),
+    );
     if (!wanted.length) return { ok: true, matched: 0, board: 0 };
 
     const titles = wanted.map(([, p]) => p.title);
@@ -161,7 +165,7 @@ export const readEnvelopes = (
       instructions: ENVELOPE_INSTRUCTIONS,
       prompt: envelopePrompt(
         wanted.map(([, p]) => p),
-        others.map((p) => p.title).filter((t) => !isHiddenPrize(t)),
+        [...new Map(others.map((p) => p.title).filter((t) => t.trim() && !isHiddenPrize(t)).map((t) => [prizeIdentity(t), t])).values()],
         ctx,
       ),
       schema: ENVELOPE_SCHEMA,
@@ -189,8 +193,9 @@ export const readEnvelopes = (
     // A shelf number is not an envelope assignment. Named labels price that spot and leave the pool.
     const next = { ...cache };
     let namedHits = 0;
+    const assignable = [...named, ...hidden.filter((p) => isNumberedPrize(p.title))];
     for (const r of matched) {
-      const copies = named.filter((p) => p.title === r.title);
+      const copies = assignable.filter((p) => p.title === r.title);
       if (copies.length !== 1) continue;
       next[seenKey(breakId, copies[0]!)] = await price(r);
       namedHits++;

@@ -8,6 +8,8 @@ export interface WheelSlot {
   total: number;
   left: number;
   value: number | null;
+  // True when this value is only a floor, as with a break description that was cut off.
+  floor?: boolean;
 }
 
 export interface WheelSpin {
@@ -30,6 +32,7 @@ export interface SlotOdds {
   total: number;
   value: number | null;
   chance: number;
+  floor?: boolean;
 }
 
 export type WheelVerdict = 'worth' | 'not_worth' | 'unclear' | 'empty';
@@ -176,6 +179,7 @@ export const wheelOdds = (wheel: WheelState): WheelOdds => {
     left: s.left,
     total: s.total,
     value: s.value,
+    floor: s.floor,
     chance: spotsLeft ? s.left / spotsLeft : 0,
   }));
   const live = slots.filter((s) => s.left > 0);
@@ -196,6 +200,7 @@ export const wheelOdds = (wheel: WheelState): WheelOdds => {
   if (!spotsLeft) return base;
 
   const unpriced = live.some((s) => s.value === null);
+  const floored = live.some((s) => s.floor && s.value !== null);
   const expectedValue = live.reduce((sum, s) => sum + s.chance * (s.value ?? 0), 0);
   const top = live.filter((s) => s.value !== null).sort((a, b) => b.value! - a.value!)[0];
   const topValue = top?.value ?? null;
@@ -206,17 +211,17 @@ export const wheelOdds = (wheel: WheelState): WheelOdds => {
 
   let verdict: WheelVerdict = 'unclear';
   if (edge !== null && edge >= 0) verdict = 'worth';
-  else if (edge !== null && !unpriced) verdict = 'not_worth';
+  else if (edge !== null && !unpriced && !floored) verdict = 'not_worth';
 
   return {
     ...base,
     expectedValue,
-    expectedIsFloor: unpriced,
+    expectedIsFloor: unpriced || floored,
     edge,
     chanceBeatPrice: beat,
     topPrize: top && topValue !== null ? { label: top.label, value: topValue, chance: topChance } : null,
     ...ends,
     verdict,
-    spinsUntilWorth: price !== null && !unpriced ? spinsUntilWorth(wheel.slots, price) : null,
+    spinsUntilWorth: price !== null && !unpriced && !floored ? spinsUntilWorth(wheel.slots, price) : null,
   };
 };

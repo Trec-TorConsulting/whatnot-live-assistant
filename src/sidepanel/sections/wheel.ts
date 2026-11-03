@@ -1,5 +1,6 @@
-import { MAX_HITS, pendingSpins, prizeKey, scopedKey, spotsLeft, wheelTitleKey, type BreakSnapshot } from '../../shared/breaks';
-import { envelopeSummary, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
+import { isNumberedPrize, MAX_HITS, pendingSpins, prizeKey, scopedKey, spotsLeft, wheelTitleKey, type BreakSnapshot } from '../../shared/breaks';
+import { parseManifest } from '../../shared/prizeValue';
+import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
 import { UNUSUAL, bigHitCheck, chanceWorthWithin, nextSpinTurnsWorth, spinPrices, type StatPrize } from '../../shared/wheelStats';
 import type { LiveSession } from '../../shared/live';
 import { formatMoney } from '../../shared/money';
@@ -241,7 +242,7 @@ const renderAuto = (b: BreakSnapshot) => {
   const state: WheelState = {
     ...emptyWheel(b.id, b.fetchedAt),
     price,
-    slots: rows.map((r) => ({ label: prizeSlotLabel(r), total: r.left, left: r.left, value: r.value })),
+    slots: rows.map((r) => ({ label: prizeSlotLabel(r), total: r.left, left: r.left, value: r.value, floor: r.floor })),
   };
   const o = wheelOdds(state);
   const left = spotsLeft(b);
@@ -265,16 +266,21 @@ const renderAuto = (b: BreakSnapshot) => {
       : prizeStatus?.state === 'failed' && unpriced
         ? `AI couldn't value prizes: ${prizeStatus.detail ?? 'unknown error'}`
         : null;
-  const unread = board?.items.length ? 0 : unmatchedEnvelopes(b, values, autoValues).length;
+  const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
+  const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
+  const numberedUnread = numberedShare(b, autoValues) ? 0 : unreadRows.length - envelopeUnread;
+  const cutOff = parseManifest(b.description).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeLine =
     envelopeStatus?.state === 'running' && Date.now() - envelopeStatus.at < 60 * SECOND
       ? `Reading ${envelopeStatus.count} envelopes off the video…`
-      : envelopeStatus?.state === 'failed' && unread
+      : envelopeStatus?.state === 'failed' && envelopeUnread
         ? `Couldn't read the envelopes: ${envelopeStatus.detail ?? 'unknown error'}`
-        : unread
-          ? `${unread} ${unread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; it retries while the show tab is open, or type a value.`
-          : null;
+        : envelopeUnread
+          ? `${envelopeUnread} ${envelopeUnread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; it retries while the show tab is open, or type a value.`
+          : numberedUnread
+            ? `${numberedUnread} numbered ${numberedUnread === 1 ? 'hit is' : 'hits are'} not matched to the board yet.`
+            : null;
   const boardLine =
     pool.sealed > 0
       ? [
@@ -317,7 +323,8 @@ const renderAuto = (b: BreakSnapshot) => {
       ? [div('muted small', `${pct(aiSpots / o.spotsLeft)} of spots use AI guesses; check the big ones before a big bid.`)]
       : []),
     ...(statusLine ? [div(prizeStatus?.state === 'failed' ? 'bad-text small' : 'muted small', statusLine)] : []),
-    ...(envelopeLine ? [div(envelopeStatus?.state === 'failed' && unread ? 'bad-text small' : 'muted small', envelopeLine)] : []),
+    ...(cutOff ? [div('muted small', 'The break description was cut off, so the numbered hits are only a floor.')] : []),
+    ...(envelopeLine ? [div(envelopeStatus?.state === 'failed' && envelopeUnread ? 'bad-text small' : 'muted small', envelopeLine)] : []),
     ...(boardLine ? [div('muted small', boardLine)] : []),
     ...(envelopesRead ? [div('muted small', 'Envelope contents are read off the video by AI; check them against the board before a big bid.')] : []),
     ...(!b.complete ? [div('bad-text small', 'Whatnot returned only part of the prize list, so these odds are incomplete.')] : []),

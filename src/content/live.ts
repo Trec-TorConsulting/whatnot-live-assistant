@@ -9,7 +9,8 @@ import {
   type LiveSession,
   type LiveSignal,
 } from '../shared/live';
-import { pendingSpins, prizeValueKey } from '../shared/breaks';
+import { pendingSpins, prizePriceKey } from '../shared/breaks';
+import { parseManifest } from '../shared/prizeValue';
 import { send } from '../shared/messages';
 import { soldFromSale, type SoldItem } from '../shared/soldHistory';
 import type { ShopScan } from '../shared/shop';
@@ -158,8 +159,10 @@ let valuedPrizes = '';
 const valueWheel = (s: LiveSession) => {
   const wheel = s.wheel?.id === s.breakId ? s.wheel : null;
   if (!wheel?.prizes.length || shareWorker) return;
-  const prizes = wheel.prizes.map(({ title, detail }) => ({ title, detail }));
-  const key = `${wheel.id}|${prizes.map(prizeValueKey).join('|')}`;
+  const listed = wheel.prizes.map(({ title, detail }) => ({ title, detail }));
+  const manifest = parseManifest(wheel.description).items.map((item) => ({ title: item.name, detail: '' }));
+  const prizes = [...listed, ...manifest];
+  const key = `${wheel.id}|${wheel.description ?? ''}|${prizes.map(prizePriceKey).join('|')}`;
   if (key === valuedPrizes) return;
   valuedPrizes = key;
   const context = { showTitle: s.show.title, wheelTitle: wheel.title, categories: s.show.categories };

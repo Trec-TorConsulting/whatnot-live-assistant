@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envelopePrompt, isFresh, parseEnvelopeAnswer, parsePrizeAnswer, prizeMelt, prizePrompt, prizeReadPrompt } from './prizeValue';
+import { clarifyPrizeName, envelopePrompt, isFresh, parseEnvelopeAnswer, parseManifest, parsePrizeAnswer, prizeMelt, prizePrompt, prizeReadPrompt } from './prizeValue';
 import { DAY } from './time';
 
 describe('prizeMelt', () => {
@@ -10,6 +10,15 @@ describe('prizeMelt', () => {
     expect(prizeMelt('BATMANS EMBLEM GOLD AGORO .10 GRAM')!.oz).toBeCloseTo(0.1 / 31.1035, 6);
     expect(prizeMelt('1 GRAM 14kt GOLD GRAIN / SHOT')).toMatchObject({ purity: 0.583 });
     expect(prizeMelt('1/10 oz Gold Eagle')).toMatchObject({ oz: 0.1 });
+  });
+
+  it('reads a fraction of gold, and does not melt clad or gilt', () => {
+    expect(prizeMelt(clarifyPrizeName('1/1000 gold (patriot) good'))).toMatchObject({ metal: 'gold', oz: 0.001 });
+    expect(prizeMelt('2oz gilt copper')).toBeNull();
+    expect(prizeMelt('2005 Kennedy half clad')).toBeNull();
+    expect(clarifyPrizeName('2x 2024 1oz silver (Ase) ms69 (ngc) good')).toBe('2x 2024 1oz silver (American Silver Eagle) ms69 (ngc)');
+    expect(clarifyPrizeName('1 × 1964 .01 Lincoln cent clad , pcgs pr69, us mint good')).toBe('1 × 1964 Lincoln cent clad , pcgs pr69, us mint');
+    expect(clarifyPrizeName('1 × 2006 .10 Rosevelt clad , pcgs pr69')).toContain('Roosevelt');
   });
 
   it('leaves boxes, chases and coins to other sources', () => {
@@ -57,6 +66,31 @@ describe('envelopes', () => {
       ],
     });
     expect(parseEnvelopeAnswer('nope', titles)).toEqual({ matched: [], board: [] });
+  });
+
+  it('assigns a sticker number to Item #N and leaves an envelope number in the pool', () => {
+    const text = JSON.stringify({
+      envelopes: [
+        { prize: '#12', inside: '2024 1oz silver Temperance NGC PR70', low: 80, high: 90 },
+        { prize: 'ENVELOPE #2', inside: '1 kilo silver bar', low: 1000, high: 1100 },
+        { prize: '#9', inside: 'not on this wheel', low: 5, high: 6 },
+      ],
+    });
+    expect(parseEnvelopeAnswer(text, ['Item #12', 'Item #13', 'ENVELOPE #2'])).toEqual({
+      matched: [{ title: 'Item #12', inside: '2024 1oz silver Temperance NGC PR70', low: 80, high: 90 }],
+      board: [{ inside: '1 kilo silver bar', low: 1000, high: 1100 }],
+    });
+  });
+
+  it('stops a cut-off description when the list repeats', () => {
+    const listed = '👉🏼1x 2024 1oz silver pr70 (temperance) (ngc) good 👉🏼2x 1/1000 gold (patriot) good 👉🏼1x 2024 1oz silver pr70 (temperance) (ngc) goo';
+    const description = listed.padEnd(1000, ' ');
+    const manifest = parseManifest(description);
+    expect(manifest.truncated).toBe(true);
+    expect(manifest.items.map((item) => [item.qty, item.name])).toEqual([
+      [1, '2024 1oz silver pr70 (temperance) (ngc)'],
+      [2, '1/1000 oz gold (patriot) good'],
+    ]);
   });
 
   it('matches a labeled instant hit and leaves a shelf number in the pool', () => {

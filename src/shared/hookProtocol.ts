@@ -6,7 +6,8 @@ export type HookToContent =
   | { kind: 'hello' }
   | { kind: 'socket'; socket: 'live' | 'auction'; raw: string }
   | { kind: 'graphql_op'; operation: string }
-  | { kind: 'graphql'; operation: string; body: string; optionsAfter?: string | null };
+  | { kind: 'graphql'; operation: string; body: string; optionsAfter?: string | null }
+  | { kind: 'log_share'; ok: boolean };
 
 export type ContentToHook =
   | { kind: 'ready' }

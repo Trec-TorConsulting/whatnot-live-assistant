@@ -2,8 +2,8 @@
 // without saying which envelope holds which. Until an envelope is opened it is equally likely to
 // hold any item on the board, so for the odds the unopened envelopes count as the board's items,
 // one spot each. That keeps the spin's worth and its odds exact when the counts agree.
-import { isHiddenSpot, prizeKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
-import type { PrizeValue } from './prizeValue';
+import { isHiddenSpot, isNumberedPrize, prizeKey, prizePriceKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
+import { parseManifest, type PrizeValue } from './prizeValue';
 
 export interface EnvelopeBoard {
   at: number;
@@ -31,6 +31,8 @@ export interface WheelRow {
   value: number | null;
   auto: PrizeValue | null;
   fromBoard: boolean;
+  // The number is a floor: the break description was cut off or did not list every numbered hit.
+  floor?: boolean;
 }
 
 export const boardKey = (breakId: string, inside: string) => `${breakId}#board|${prizeKey(inside)}`;
@@ -54,9 +56,25 @@ const prizeRows = (b: BreakSnapshot, yours: Record<string, number>, auto: Record
     const key = wheelValueKey(b.id, prize);
     const titleKey = wheelTitleKey(b.id, prize.title, prize.detail);
     const mine = yours[key] ?? yours[titleKey];
-    const seen = isHiddenSpot(prize) ? null : (auto[seenKey(b.id, prize)] ?? null);
+    const seen = auto[seenKey(b.id, prize)] ?? null;
+    // Item #N is priced from the sticker read, or later from the break description. Its name is not a coin.
+    if (isNumberedPrize(prize.title)) {
+      const picked = mine === undefined ? seen : null;
+      return {
+        key,
+        titleKey,
+        title: prize.title,
+        detail: prize.detail,
+        inside: picked?.inside ?? null,
+        left: prize.left,
+        value: mine ?? picked?.low ?? null,
+        auto: picked,
+        fromBoard: false,
+      };
+    }
     // A hidden prize is not priced from its name. The pool average is applied in wheelRows.
-    const a = mine === undefined && !isHiddenSpot(prize) ? pickAuto(auto[key] ?? auto[titleKey] ?? null, seen) : null;
+    const namedAuto = auto[key] ?? auto[titleKey] ?? auto[prizePriceKey(prize)] ?? null;
+    const a = mine === undefined && !isHiddenSpot(prize) ? pickAuto(namedAuto, seen) : null;
     return {
       key,
       titleKey,
@@ -136,7 +154,7 @@ export const envelopeSummary = (
   _auto: Record<string, PrizeValue>,
   board: EnvelopeBoard | null = null,
 ): EnvelopeSummary => {
-  const sealed = b.prizes.filter((p) => isHiddenSpot(p)).reduce((n, p) => n + Math.max(0, p.left), 0);
+  const sealed = b.prizes.filter((p) => isHiddenSpot(p) && !isNumberedPrize(p.title)).reduce((n, p) => n + Math.max(0, p.left), 0);
   const sold = soldHiddenCount(b);
   const original = sold === null ? null : sealed + sold;
   const { pool } = splitBoard(b, yours, board?.items ?? []);
@@ -181,6 +199,28 @@ export const nextEnvelopeBoard = (prev: EnvelopeBoard | null, next: EnvelopeBoar
   return { ...fresh, revealed: gained ? false : (prev.revealed ?? false) };
 };
 
+// Each Item #N is an equal share of the coins named in the break description, until a sticker read
+// prices that number. A cut-off description counts the coins it never listed as zero.
+export const numberedShare = (b: BreakSnapshot, auto: Record<string, PrizeValue>): { value: number; floor: boolean } | null => {
+  const manifest = parseManifest(b.description);
+  if (!manifest.items.length || b.hits === null || b.soldHasMore) return null;
+  const left = b.prizes.filter((p) => isNumberedPrize(p.title)).reduce((n, p) => n + Math.max(0, p.left), 0);
+  const sold = b.hits.filter((h) => !h.pending && isNumberedPrize(h.title)).length;
+  const original = left + sold;
+  if (!original) return null;
+  let sum = 0;
+  let missing = 0;
+  let listed = 0;
+  for (const item of manifest.items) {
+    listed += item.qty;
+    const priced = auto[prizePriceKey({ title: item.name, detail: '' })];
+    if (!priced) missing += item.qty;
+    else sum += priced.low * item.qty;
+  }
+  if (!listed || missing === listed) return null;
+  return { value: sum / original, floor: manifest.truncated || missing > 0 || listed < original };
+};
+
 // Hidden spots take the envelope average. Named spots keep their own prices. Board items are not
 // extra spots, and a crowded shelf is not trimmed down to the cheapest rows.
 export const wheelRows = (
@@ -193,6 +233,12 @@ export const wheelRows = (
   const { claimed } = splitBoard(b, yours, board?.items ?? []);
   return prizeRows(b, yours, auto).map((row) => {
     const prize = b.prizes.find((p) => p.title === row.title && p.detail === row.detail);
+    if (prize && isNumberedPrize(prize.title)) {
+      if (row.value !== null) return row;
+      const share = numberedShare(b, auto);
+      if (!share) return row;
+      return { ...row, value: share.value, floor: share.floor, auto: null, inside: null };
+    }
     if (!prize || !isHiddenSpot(prize)) {
       const claim = claimed.get(prizeValueKey(prize ?? { title: row.title, detail: row.detail }));
       if (!claim || row.value !== null) return row;

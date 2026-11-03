@@ -15,6 +15,7 @@ export const BREAK_QUERY = `query QueryBreak($id: ID!, $soldAfter: String, $opti
     status
     soldSpotCount
     totalBreakSpots
+    description
     paginatedSpotOptions(first: 100, after: $optionsAfter) { pageInfo { hasNextPage endCursor } edges { node { id title available description } } }
     soldSpots: paginatedSpots(first: 100, after: $soldAfter, filters: [{ field: "SOLD_STATUS", values: ["SOLD"] }]) {
       pageInfo { hasNextPage endCursor }
@@ -51,6 +52,8 @@ export interface BreakSnapshot {
   status: string | null;
   sold: number | null;
   total: number | null;
+  // The seller's break description. Whatnot keeps only the first 1000 characters.
+  description?: string | null;
   prizes: BreakPrize[];
   // False when Whatnot has more prize pages than one request returns, so the odds would be off.
   complete: boolean;
@@ -85,15 +88,40 @@ export const prizeDetail = (description: unknown) =>
 
 export const prizeKey = (title: string) => title.trim().toLowerCase().replace(/\s+/g, ' ');
 
+// Titles that name one prize and then add punctuation so Whatnot stores them as different spots.
+// "random (.01) Wheat cent poor.://" and "random (.01) Wheat cent poor\\{]]{{" are one prize.
+// Decimals and fractions stay ("1.51", "1/10", ".10"), and so does a slash between words ("rip/ship").
+export const prizeIdentity = (title: string) =>
+  title
+    .toLowerCase()
+    .replace(/(\d)\s*([./])\s*(\d)/g, '$1$2$3')
+    .replace(/[^\p{L}\p{N}./]+/gu, ' ')
+    .replace(/(?<!\d)\.(?!\d)/g, ' ')
+    .replace(/(?<![\p{L}\d])\/|\/(?![\p{L}\d])/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 // Same title in two conditions is two different prizes.
 export const prizeValueKey = (p: { title: string; detail: string }) => prizeKey(p.detail ? `${p.title} | ${p.detail}` : p.title);
+
+// The price cache key. Punctuation variants share one value; a normal title keeps prizeValueKey.
+export const prizePriceKey = (p: { title: string; detail: string }) => {
+  const title = prizeIdentity(p.title);
+  const detail = prizeKey(p.detail);
+  return detail ? `${title} | ${detail}` : title;
+};
 
 // Envelope wheels list their big prizes as "ENVELOPE #3" (or "LOPE 3", "MYSTERY BAG #1") and show
 // what each one holds on camera. The title names no item, so it can't be valued by name.
 const HIDDEN_PRIZE_RE =
   /^(?:(?:mystery|secret|bonus|special|big|top|grand|gold(?:en)?|red|blue|green|black|white|pink|purple)\s+)*(?:envelopes?|envelops?|envs?|e?lopes?|velopes?|bags?|pouch(?:es)?|tickets?|slips?|box(?:es)?|mystery|chase|hits?|prizes?|wins?)\s*(?:#|no\.?|number)?\s*(?:\d{1,3}|[a-z])?$/i;
 
-export const isHiddenPrize = (title: string) => HIDDEN_PRIZE_RE.test(title.trim());
+// "Item #12" names a sticker on the board, not the coin. "Spot 3" is the same kind of placeholder.
+const NUMBERED_RE = /^(?:items?|spots?)\s*(?:#|no\.?|number)?\s*\d{1,3}$/i;
+
+export const isNumberedPrize = (title: string) => NUMBERED_RE.test(title.trim());
+
+export const isHiddenPrize = (title: string) => HIDDEN_PRIZE_RE.test(title.trim()) || isNumberedPrize(title);
 
 // "Family Pack #7" with detail "Envelope" is hidden even though the title is a product name.
 export const isHiddenSpot = (p: { title: string; detail?: string }) => isHiddenPrize(p.title) || isHiddenPrize(p.detail ?? '');
@@ -112,7 +140,8 @@ export const prizeStem = (title: string) =>
 // still listed on this break. Null while sold pages remain, so the jackpot share stays incomplete.
 export const soldHiddenCount = (b: BreakSnapshot): number | null => {
   if (b.hits === null || b.soldHasMore) return null;
-  const stems = new Set(b.prizes.filter((p) => isHiddenSpot(p)).map((p) => prizeStem(p.title)));
+  // Item #N is hidden from name pricing, but selling one is not an envelope being opened.
+  const stems = new Set(b.prizes.filter((p) => isHiddenSpot(p) && !isNumberedPrize(p.title)).map((p) => prizeStem(p.title)));
   return b.hits.filter((h) => !h.pending && stems.has(prizeStem(h.title))).length;
 };
 
@@ -163,6 +192,7 @@ export const parseBreakResponse = (body: unknown, now = Date.now()): BreakSnapsh
     sold: num(b.soldSpotCount),
     total: num(b.totalBreakSpots),
     prizes,
+    description: str(b.description),
     complete: obj(options.pageInfo)?.hasNextPage !== true,
     prizesCursor: str(obj(options.pageInfo)?.endCursor),
     hits,

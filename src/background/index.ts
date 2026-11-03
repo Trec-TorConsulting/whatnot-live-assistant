@@ -4,7 +4,7 @@ import { addSold } from '../shared/soldHistory';
 import { getItem, getOverlayPrefs, setItem, setTabAppraisal, setTabLive } from '../shared/storage';
 import { addManualPurchase, addWatched, ALARM_WATCH, buyerAlert, checkStartingSoon, deletePurchase, handleSignal, onNotificationClicked } from './alerts';
 import { addMonitor, checkLateOrders, focusMonitor, forgetMonitorTab, removeMonitor, saveOrders, saveSellerProfile, showsSeen } from './buyerData';
-import { appraise, getSpot, gradeGuide, priceLookup, quickAppraise, testGemini, testOllama, testPcgs, warmOllama } from './appraisal';
+import { appraise, getSpot, gradeGuide, priceLookup, quickAppraise, testGemini, testOllama, testPcgs, testProvider, warmOllama } from './appraisal';
 import {
   ALARM_TICK,
   ALARM_WATCHDOG,
@@ -124,6 +124,7 @@ handleMessages({
     }
   },
   TEST_GEMINI: () => testGemini(),
+  TEST_PROVIDER: ({ provider }) => testProvider(provider),
   TEST_OLLAMA: () => testOllama(),
   ON_DEVICE_STATUS: async ({ recheck }) => ({ status: await (recheck ? checkOnDevice(true) : onDeviceState()) }),
   TEST_PCGS: () => testPcgs(),

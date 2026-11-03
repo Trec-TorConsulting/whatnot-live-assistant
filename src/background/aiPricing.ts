@@ -34,7 +34,7 @@ export const askAi = async ({ instructions, prompt, schema, geminiSchema, image,
   const remote = await geminiJson(instructions, prompt, geminiSchema, image);
   if (remote.ok) return remote;
   const localError = local.ok ? 'on-device model gave no values' : local.error;
-  return { ok: false, error: remote.needsKey ? `${localError}, and there is no Gemini key to fall back on` : remote.error };
+  return { ok: false, error: remote.needsKey ? `${localError}, and there is no cloud AI key to fall back on` : remote.error };
 };
 
 export const cents = (n: number) => Math.round(n * 100) / 100;

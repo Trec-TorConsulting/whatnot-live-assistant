@@ -2,13 +2,18 @@ import { send } from '../../shared/messages';
 import { downloadOnDeviceModel, type OnDeviceStatus } from '../../shared/onDevice';
 import { parseOverrides } from '../../shared/overrides';
 import {
+  CLOUD_PROVIDER_LABEL,
   emptyGeminiUsage,
   getAppraisalSettings,
   getItem,
   getOverrides,
   getProfile,
   onItemChanged,
+  providerKey,
+  providerModel,
   setItem,
+  withProviderCredentials,
+  type CloudProvider,
   type GeminiUsage,
 } from '../../shared/storage';
 import { $, toast } from '../ui';
@@ -16,8 +21,9 @@ import { $, toast } from '../ui';
 const el = {
   username: $<HTMLInputElement>('#profile-username'),
   profileSave: $<HTMLButtonElement>('#profile-save'),
-  geminiKey: $<HTMLInputElement>('#gemini-key'),
-  geminiModel: $<HTMLInputElement>('#gemini-model'),
+  cloudProvider: $<HTMLSelectElement>('#cloud-provider'),
+  cloudKey: $<HTMLInputElement>('#cloud-key'),
+  cloudModel: $<HTMLInputElement>('#cloud-model'),
   pcgsToken: $<HTMLInputElement>('#pcgs-token'),
   psaToken: $<HTMLInputElement>('#psa-token'),
   discogsToken: $<HTMLInputElement>('#discogs-token'),
@@ -25,7 +31,7 @@ const el = {
   ollamaModel: $<HTMLInputElement>('#ollama-model'),
   ollamaOnly: $<HTMLInputElement>('#ollama-only'),
   appraisalSave: $<HTMLButtonElement>('#appraisal-save'),
-  geminiTest: $<HTMLButtonElement>('#gemini-test'),
+  cloudTest: $<HTMLButtonElement>('#cloud-test'),
   ollamaTest: $<HTMLButtonElement>('#ollama-test'),
   pcgsTest: $<HTMLButtonElement>('#pcgs-test'),
   appraisalNote: $('#appraisal-note'),
@@ -112,6 +118,19 @@ const renderOverrides = async () => {
 };
 
 // localhost is already allowed. Any other host needs a click here, which is a user gesture.
+const PROVIDER_ORIGIN: Record<Exclude<CloudProvider, 'gemini'>, string> = {
+  openai: 'https://api.openai.com/*',
+  anthropic: 'https://api.anthropic.com/*',
+  openrouter: 'https://openrouter.ai/*',
+};
+
+const grantProvider = async (provider: CloudProvider, key: string): Promise<'ok' | 'denied'> => {
+  if (provider === 'gemini' || !key) return 'ok';
+  const pattern = PROVIDER_ORIGIN[provider];
+  if (await chrome.permissions.contains({ origins: [pattern] })) return 'ok';
+  return (await chrome.permissions.request({ origins: [pattern] })) ? 'ok' : 'denied';
+};
+
 const grantOllama = async (raw: string): Promise<'ok' | 'bad-url' | 'denied'> => {
   let url: URL;
   try {
@@ -127,8 +146,21 @@ const grantOllama = async (raw: string): Promise<'ok' | 'bad-url' | 'denied'> =>
   return (await chrome.permissions.request({ origins: [pattern] })) ? 'ok' : 'denied';
 };
 
+let loaded: Awaited<ReturnType<typeof getAppraisalSettings>>;
+
+const providerOnScreen = (): CloudProvider =>
+  el.cloudProvider.value === 'openai' || el.cloudProvider.value === 'anthropic' || el.cloudProvider.value === 'openrouter'
+    ? el.cloudProvider.value
+    : 'gemini';
+
+const showProvider = (provider: CloudProvider) => {
+  el.cloudProvider.value = provider;
+  el.cloudKey.value = providerKey(loaded, provider);
+  el.cloudModel.value = providerModel(loaded, provider);
+  el.cloudKey.placeholder = provider === 'gemini' ? 'AIza…' : provider === 'openai' ? 'sk-…' : '';
+};
+
 const saveAppraisal = async () => {
-  const current = await getAppraisalSettings();
   const ollamaBaseUrl = el.ollamaUrl.value.trim();
   if (ollamaBaseUrl) {
     const access = await grantOllama(ollamaBaseUrl);
@@ -143,25 +175,31 @@ const saveAppraisal = async () => {
       return false;
     }
   }
-  await setItem('appraisalSettings', {
-    ...current,
-    geminiApiKey: el.geminiKey.value.trim(),
-    geminiModel: el.geminiModel.value.trim(),
-    pcgsToken: el.pcgsToken.value.trim(),
-    psaToken: el.psaToken.value.trim(),
-    discogsToken: el.discogsToken.value.trim(),
-    ollamaBaseUrl,
-    ollamaModel: el.ollamaModel.value.trim(),
-    ollamaOnly: el.ollamaOnly.checked,
-  });
+  const provider = providerOnScreen();
+  const key = el.cloudKey.value.trim();
+  const granted = await grantProvider(provider, key);
+  if (granted === 'denied') {
+    el.appraisalNote.textContent = `Chrome blocked ${CLOUD_PROVIDER_LABEL[provider]}. Allow access to use it.`;
+    el.appraisalNote.className = 'small bad-text';
+    return false;
+  }
+  const next = withProviderCredentials(loaded, provider, key, el.cloudModel.value.trim());
+  next.pcgsToken = el.pcgsToken.value.trim();
+  next.psaToken = el.psaToken.value.trim();
+  next.discogsToken = el.discogsToken.value.trim();
+  next.ollamaBaseUrl = ollamaBaseUrl;
+  next.ollamaModel = el.ollamaModel.value.trim();
+  next.ollamaOnly = el.ollamaOnly.checked;
+  await setItem('appraisalSettings', next);
+  loaded = next;
   return true;
 };
 
 export const initSettings = async () => {
   const [profile, appraisal, config] = await Promise.all([getProfile(), getAppraisalSettings(), getItem('overridesConfig')]);
   el.username.value = profile.username;
-  el.geminiKey.value = appraisal.geminiApiKey;
-  el.geminiModel.value = appraisal.geminiModel;
+  loaded = appraisal;
+  showProvider(appraisal.preferredProvider);
   el.pcgsToken.value = appraisal.pcgsToken;
   el.psaToken.value = appraisal.psaToken;
   el.discogsToken.value = appraisal.discogsToken;
@@ -193,7 +231,7 @@ export const initSettings = async () => {
     const missingModel = el.ollamaUrl.value.trim() && !el.ollamaModel.value.trim();
     const onlyWithoutServer = el.ollamaOnly.checked && (!el.ollamaUrl.value.trim() || !el.ollamaModel.value.trim());
     el.appraisalNote.textContent = onlyWithoutServer
-      ? 'Saved. Add the Ollama server and a vision model. Cloud Gemini stays off until you do.'
+          ? 'Saved. Add the Ollama server and a vision model. Cloud AI stays off until you do.'
       : missingModel
         ? 'Saved. Add a vision model name so the backup can run.'
         : 'Saved.';
@@ -208,7 +246,18 @@ export const initSettings = async () => {
     el.appraisalNote.textContent = res.ok ? res.detail : res.error;
     el.appraisalNote.className = `small ${res.ok ? 'ok-text' : 'bad-text'}`;
   };
-  el.geminiTest.addEventListener('click', () => void runTest('TEST_GEMINI'));
+  el.cloudProvider.addEventListener('change', () => showProvider(providerOnScreen()));
+  el.cloudTest.addEventListener('click', async () => {
+    if (!(await saveAppraisal())) return;
+    el.appraisalNote.textContent = 'Testing…';
+    el.appraisalNote.className = 'small muted';
+    const res = await send('TEST_PROVIDER', { provider: providerOnScreen() }).catch((err: Error) => ({
+      ok: false as const,
+      error: err.message,
+    }));
+    el.appraisalNote.textContent = res.ok ? res.detail : res.error;
+    el.appraisalNote.className = `small ${res.ok ? 'ok-text' : 'bad-text'}`;
+  });
   el.ollamaTest.addEventListener('click', () => void runTest('TEST_OLLAMA'));
   el.pcgsTest.addEventListener('click', () => void runTest('TEST_PCGS'));
 

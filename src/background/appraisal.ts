@@ -21,13 +21,18 @@ import {
 } from '../shared/appraisal';
 import type { GeminiResult, PcgsUsage, PriceLookupResult, TestResult } from '../shared/messages';
 import {
+  CLOUD_PROVIDER_LABEL,
   emptyGeminiUsage,
   getAppraisalSettings,
   getItem,
   getSession,
+  providerKey,
+  providerModel,
+  providersWithKeys,
   setItem,
   setSession,
   type AppraisalSettings,
+  type CloudProvider,
   type GeminiUsage,
 } from '../shared/storage';
 import { DAY, MINUTE, SECOND } from '../shared/time';
@@ -323,7 +328,7 @@ export const testPcgs = async (): Promise<TestResult> => {
 // Cheapest first by Gemini API paid-tier price per 1M input/output tokens (Oct 2026):
 // 2.5 Flash-Lite $0.10/$0.40, 3.1 Flash-Lite $0.25/$1.50, 2.5 Flash $0.30/$2.50.
 // Avoid "-latest" aliases: they point at the newest, priciest Flash.
-const MODELS_BY_PRICE = ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+const MODELS_BY_PRICE = ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
 const DEFAULT_MODEL = MODELS_BY_PRICE[0]!;
 const RETRYABLE_STATUS = new Set([404, 429, 500, 503, 504]);
 // "Overloaded" and other server errors are per request, not per model, and aren't billed, so the
@@ -428,6 +433,32 @@ const pickCheapModel = async (apiKey: string) => {
   );
 };
 
+export const testProvider = async (provider: CloudProvider): Promise<TestResult> => {
+  if (provider === 'gemini') return testGemini();
+  const settings = await getAppraisalSettings();
+  const key = providerKey(settings, provider).trim();
+  const label = CLOUD_PROVIDER_LABEL[provider];
+  if (!key) return { ok: false, error: `No ${label} key saved yet` };
+  const url =
+    provider === 'openai'
+      ? 'https://api.openai.com/v1/models'
+      : provider === 'anthropic'
+        ? 'https://api.anthropic.com/v1/models'
+        : 'https://openrouter.ai/api/v1/models';
+  const headers: Record<string, string> =
+    provider === 'anthropic'
+      ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+      : { Authorization: `Bearer ${key}` };
+  try {
+    const res = await fetchWithTimeout(url, { headers }, 15 * SECOND);
+    if (res.ok) return { ok: true, detail: `${label} key works` };
+    const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return { ok: false, error: body?.error?.message ?? `${label} HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, error: (err as Error).name === 'AbortError' ? `${label} did not answer in 15s` : String((err as Error).message ?? err) };
+  }
+};
+
 export const testGemini = async (): Promise<TestResult> => {
   const settings = await getAppraisalSettings();
   if (!settings.geminiApiKey) return { ok: false, error: 'No Gemini key saved yet' };
@@ -453,6 +484,7 @@ interface RunResult {
   name: string;
   res?: Response;
   body?: GeminiBody;
+  text?: string;
   error?: string;
   timedOut?: boolean;
 }
@@ -468,7 +500,12 @@ interface RaceOutcome {
 // retryable status. Models that were merely overloaded or hung go to the back of the line after a
 // short backoff and keep retrying until the deadline, so a busy minute doesn't end the appraisal
 // after one try per model. First good answer wins.
-const raceModels = (candidates: string[], run: (name: string, signal: AbortSignal) => Promise<RunResult>, external?: AbortSignal) =>
+const raceModels = (
+  candidates: string[],
+  run: (name: string, signal: AbortSignal) => Promise<RunResult>,
+  external?: AbortSignal,
+  deadlineMs = DEADLINE_MS,
+) =>
   new Promise<RaceOutcome>((resolve) => {
     const started = Date.now();
     const queue = [...candidates];
@@ -494,7 +531,7 @@ const raceModels = (candidates: string[], run: (name: string, signal: AbortSigna
     const retryLater = (name: string) => {
       const attempt = retries[name] ?? 0;
       const delay = backoffMs(attempt);
-      if (Date.now() + delay >= started + DEADLINE_MS) return;
+      if (Date.now() + delay >= started + deadlineMs) return;
       retries[name] = attempt + 1;
       const timer = setTimeout(() => {
         timers.delete(timer);
@@ -525,24 +562,24 @@ const raceModels = (candidates: string[], run: (name: string, signal: AbortSigna
         launch();
       });
     };
-    const deadline = setTimeout(() => finish(null), DEADLINE_MS);
+    const deadline = setTimeout(() => finish(null), Math.max(1, deadlineMs));
     if (external?.aborted) return finish(null);
     external?.addEventListener('abort', onExternalAbort);
     launch();
   });
 
-const failureMessage = ({ failures, elapsedMs }: RaceOutcome) => {
+const failureMessage = ({ failures, elapsedMs }: RaceOutcome, label = 'Gemini') => {
   const tried = [...new Set(failures.map((f) => f.name))].join(', ');
   const statuses = failures.map((f) => f.res?.status);
   const seconds = Math.round(elapsedMs / SECOND);
-  if (!failures.length) return `Gemini did not answer within ${seconds}s. Try again.`;
-  if (statuses.every((s) => s === 429)) return `Gemini is rate-limiting this key (${tried}). Try again in a few minutes.`;
+  if (!failures.length) return `${label} did not answer within ${seconds}s. Try again.`;
+  if (statuses.every((s) => s === 429)) return `${label} is rate-limiting this key (${tried}). Try again in a few minutes.`;
   if (statuses.some((s) => s !== undefined && TRANSIENT_STATUS.has(s))) {
-    return `Gemini is overloaded right now: ${failures.length} tries across ${tried} in ${seconds}s. Try again in a minute.`;
+    return `${label} is overloaded right now: ${failures.length} tries across ${tried} in ${seconds}s. Try again in a minute.`;
   }
-  if (failures.every((f) => f.timedOut)) return `Gemini did not answer in time (${tried}). Try again.`;
+  if (failures.every((f) => f.timedOut)) return `${label} did not answer in time (${tried}). Try again.`;
   const last = failures[failures.length - 1]!;
-  return last.error ?? (last.res ? errorMessage(last.res, last.body ?? null) : `Gemini did not answer (${tried}). Try again.`);
+  return last.error ?? (last.res ? errorMessage(last.res, last.body ?? null) : `${label} did not answer (${tried}). Try again.`);
 };
 
 // Jewelry melt comes only from the stamp and scale weight read off the frame; a model's own weight
@@ -558,10 +595,8 @@ const withMelt = async (item: AppraisalItem) => {
   return { item: { ...item, quantity }, melt };
 };
 
-// The on-device model answers first: no network, no overload, no quota. Gemini runs when that
-// model is missing or fails. Ollama is a backup for a slow or silent Gemini, started once Gemini
-// has had HEDGE_MS, so a fast Gemini answer never waits on the local server. Ollama-only skips
-// both and asks the local server immediately.
+// The on-device model answers first. Saved cloud providers run next, preferred first. Another
+// saved provider and Ollama start if that provider fails or is still quiet after HEDGE_MS.
 const appraiseUncached = async ({ image, ...context }: AppraisalContext & { image: string }): Promise<GeminiResult> => {
   const settings = await getAppraisalSettings();
   if (settings.ollamaOnly) {
@@ -572,15 +607,18 @@ const appraiseUncached = async ({ image, ...context }: AppraisalContext & { imag
   const local = await appraiseOnDevice(image, context);
   if (local.ok) return { ok: true, ...(await withMelt(local.item)), others: local.others, model: ON_DEVICE_MODEL };
 
+  const providers = providersWithKeys(settings);
   const ollama = ollamaReady(settings);
-  if (!settings.geminiApiKey && !ollama) {
+  if (!providers.length && !ollama) {
     return local.unavailable
-      ? { ok: false, needsKey: true, error: 'Set up the on-device model, add a Gemini API key, or add an Ollama server first' }
-      : { ok: false, error: `On-device model failed (${local.error}) and there is no Gemini or Ollama backup` };
+      ? { ok: false, needsKey: true, error: 'Set up the on-device model, add a cloud AI key, or add an Ollama server first' }
+      : { ok: false, error: `On-device model failed (${local.error}) and there is no cloud or Ollama backup` };
   }
-  if (!settings.geminiApiKey) return appraiseWithOllama(settings, image, context, AbortSignal.timeout(DEADLINE_MS), Date.now() + DEADLINE_MS);
-  if (!ollama) return appraiseWithGemini(settings, image, context);
-  return withOllamaBackup(settings, image, context);
+  if (!providers.length) return appraiseWithOllama(settings, image, context, AbortSignal.timeout(DEADLINE_MS), Date.now() + DEADLINE_MS);
+  return raceCloud(
+    providers.map((provider) => (signal, deadlineAt) => appraiseProvider(settings, provider, image, context, signal, deadlineAt)),
+    ollama ? (signal, deadlineAt) => appraiseWithOllama(settings, image, context, signal, deadlineAt) : null,
+  );
 };
 
 // Same pixels, same answer. A moving video misses. A second click on a held frame does not
@@ -657,6 +695,7 @@ const appraiseWithGemini = async (
   image: string,
   context: AppraisalContext,
   signal?: AbortSignal,
+  deadlineAt = Date.now() + DEADLINE_MS,
 ): Promise<GeminiResult> => {
   const parts = [{ text: appraisalContext(context) }, { inline_data: { mime_type: 'image/jpeg', data: image } }];
   const bodyFor = (name: string, fast: boolean) =>
@@ -670,7 +709,7 @@ const appraiseWithGemini = async (
         ...(fast ? { thinkingConfig: thinkingConfigFor(name) } : {}),
       },
     });
-  const outcome = await raceModels(await candidateModels(settings), geminiRunner(settings, bodyFor), signal);
+  const outcome = await raceModels(await candidateModels(settings), geminiRunner(settings, bodyFor), signal, deadlineAt - Date.now());
   const winner = outcome.result;
   const res = winner?.res;
   const body = winner?.body ?? null;
@@ -710,28 +749,17 @@ export type GeminiJson = { ok: true; text: string; model: string; usage?: CallUs
 export const geminiJson = async (system: string, prompt: string, schema: object, image?: string): Promise<GeminiJson> => {
   const settings = await getAppraisalSettings();
   if (settings.ollamaOnly) return ollamaJson(settings, system, prompt, schema, image);
-  if (!settings.geminiApiKey) return { ok: false, needsKey: true, error: 'no Gemini key' };
-  const parts = image ? [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: image } }] : [{ text: prompt }];
-  const bodyFor = (name: string, fast: boolean) =>
-    JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts }],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema: schema,
-        ...(fast ? { thinkingConfig: thinkingConfigFor(name) } : {}),
-      },
-    });
-  const outcome = await raceModels(await candidateModels(settings), geminiRunner(settings, bodyFor));
-  const res = outcome.result?.res;
-  if (!res) return { ok: false, error: failureMessage(outcome) };
-  const body = outcome.result?.body ?? null;
-  if (!res.ok) {
-    const message = errorMessage(res, body);
-    return { ok: false, needsKey: isKeyError(res, message), error: message };
-  }
-  return { ok: true, text: answerText(body), model: outcome.result!.name, usage: usageOf(body) };
+  const providers = providersWithKeys(settings);
+  const ollama = ollamaReady(settings);
+  if (!providers.length && !ollama) return { ok: false, needsKey: true, error: 'no cloud key' };
+  if (!providers.length) return ollamaJson(settings, system, prompt, schema, image);
+  return raceCloud(
+    providers.map(
+      (provider) => (signal, deadlineAt) =>
+        askProvider(settings, provider, system, prompt, schema, image, signal, deadlineAt),
+    ),
+    ollama ? (signal, deadlineAt) => ollamaJson(settings, system, prompt, schema, image, deadlineAt, signal) : null,
+  );
 };
 
 const answerText = (body: GeminiBody | null) =>
@@ -969,13 +997,21 @@ const ollamaPrice = async (base: string, model: string, item: AppraisalItem, sig
 };
 
 // JSON for wheel prizes when cloud Gemini is turned off.
-const ollamaJson = async (settings: AppraisalSettings, system: string, prompt: string, schema: object, image?: string): Promise<GeminiJson> => {
+const ollamaJson = async (
+  settings: AppraisalSettings,
+  system: string,
+  prompt: string,
+  schema: object,
+  image?: string,
+  deadlineAt = Date.now() + DEADLINE_MS,
+  signal?: AbortSignal,
+): Promise<GeminiJson> => {
   const base = ollamaBase(settings.ollamaBaseUrl);
   const model = settings.ollamaModel.trim();
   if (!base || !model) return { ok: false, error: 'Ollama-only is on. Add the server URL and a model in Settings.' };
   if (!(await ollamaPermitted(base))) return { ok: false, error: `This extension can't reach ${base}. Save the server again and allow access.` };
-  const deadlineAt = Date.now() + DEADLINE_MS;
-  const signal = AbortSignal.timeout(DEADLINE_MS);
+  const own = AbortSignal.timeout(Math.max(1, deadlineAt - Date.now()));
+  const used = signal ? AbortSignal.any([signal, own]) : own;
   const payload = (structured: boolean) => ({
     model,
     stream: false,
@@ -988,16 +1024,16 @@ const ollamaJson = async (settings: AppraisalSettings, system: string, prompt: s
     ...(structured ? { think: false, format: toJsonSchema(schema) } : { format: 'json' }),
   });
   try {
-    let { res, body } = await ollamaChat(base, payload(true), signal, deadlineAt);
+    let { res, body } = await ollamaChat(base, payload(true), used, deadlineAt);
     if (res.status === 400 && /think|format|schema/i.test(body?.error ?? '')) {
-      ({ res, body } = await ollamaChat(base, payload(false), signal, deadlineAt));
+      ({ res, body } = await ollamaChat(base, payload(false), used, deadlineAt));
     }
     if (!res.ok) return { ok: false, error: ollamaHttpError(res.status, body) };
     const text = ollamaText(body).trim();
     if (!text) return { ok: false, error: 'Ollama gave no usable answer' };
     return { ok: true, text, model: `ollama:${model}` };
   } catch (err) {
-    if (signal.aborted) return { ok: false, error: 'Ollama stopped' };
+    if (signal?.aborted) return { ok: false, error: 'Ollama stopped' };
     if ((err as Error).name === 'AbortError') return { ok: false, error: 'Ollama took too long' };
     return { ok: false, error: `Can't reach Ollama at ${base}` };
   }
@@ -1051,56 +1087,272 @@ const appraiseWithOllama = async (
   }
 };
 
-type FailedAppraisal = Extract<GeminiResult, { ok: false }>;
+type Failable = { ok: boolean; error?: string; needsKey?: boolean };
 
-// Gemini keeps the first chance. Ollama starts once that chance has lasted HEDGE_MS, or as soon
-// as Gemini fails, and the first good answer wins inside the same deadline.
-const withOllamaBackup = (settings: AppraisalSettings, image: string, context: AppraisalContext) => {
-  const deadlineAt = Date.now() + DEADLINE_MS;
-  const geminiAbort = new AbortController();
-  const ollamaAbort = new AbortController();
-  let settled = false;
-  let ollamaPromise: Promise<GeminiResult> | null = null;
-  let geminiFail: FailedAppraisal | null = null;
-  let ollamaFail: FailedAppraisal | null = null;
-  let hedge: ReturnType<typeof setTimeout> | undefined;
+const AUTO_MODELS: Record<Exclude<CloudProvider, 'gemini'>, string[]> = {
+  openai: ['gpt-5-nano', 'gpt-5.4-nano'],
+  anthropic: ['claude-haiku-5-5', 'claude-haiku-4-5'],
+  openrouter: ['openai/gpt-5-nano', 'anthropic/claude-haiku-5.5'],
+};
 
-  const startOllama = () => {
-    ollamaPromise ??= appraiseWithOllama(settings, image, context, ollamaAbort.signal, deadlineAt);
-    return ollamaPromise;
+const plainCloud = new Set<string>();
+
+const modelsFor = async (settings: AppraisalSettings, provider: CloudProvider) => {
+  if (provider === 'gemini') return candidateModels(settings);
+  const typed = providerModel(settings, provider).trim();
+  const all = [...new Set([typed, ...AUTO_MODELS[provider]].filter((name): name is string => Boolean(name)))];
+  const cooldowns = (await getSession('modelCooldowns')) ?? {};
+  const cooling = (name: string) => (cooldowns[name] ?? 0) > Date.now();
+  return [...all.filter((name) => !cooling(name)), ...all.filter(cooling)];
+};
+
+const namedModel = (provider: CloudProvider, model: string) => (provider === 'gemini' ? model : `${provider}:${model}`);
+
+interface ForeignBody {
+  error?: { message?: string };
+  choices?: { message?: { content?: string } }[];
+  content?: { text?: string }[];
+}
+
+const foreignText = (provider: CloudProvider, body: ForeignBody | null) =>
+  provider === 'anthropic' ? (body?.content ?? []).map((part) => part.text ?? '').join('') : (body?.choices?.[0]?.message?.content ?? '');
+
+const foreignBody = (
+  provider: Exclude<CloudProvider, 'gemini'>,
+  model: string,
+  system: string,
+  prompt: string,
+  schema: object,
+  image: string | undefined,
+  plain: boolean,
+) => {
+  const schemaJson = toJsonSchema(schema);
+  if (provider === 'anthropic') {
+    const content = [
+      ...(image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }] : []),
+      { type: 'text', text: prompt },
+    ];
+    return JSON.stringify({
+      model,
+      max_tokens: 2048,
+      ...(system ? { system } : {}),
+      messages: [{ role: 'user', content }],
+      ...(plain ? {} : { output_config: { format: { type: 'json_schema', schema: schemaJson } } }),
+    });
+  }
+  const user = image
+    ? [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } },
+      ]
+    : prompt;
+  return JSON.stringify({
+    model,
+    messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: user }],
+    ...(plain
+      ? {}
+      : {
+          reasoning_effort: 'minimal',
+          response_format: { type: 'json_schema', json_schema: { name: 'answer', strict: false, schema: schemaJson } },
+        }),
+  });
+};
+
+const askProvider = async (
+  settings: AppraisalSettings,
+  provider: CloudProvider,
+  system: string,
+  prompt: string,
+  schema: object,
+  image: string | undefined,
+  signal: AbortSignal | undefined,
+  deadlineAt: number,
+): Promise<GeminiJson> => {
+  const label = CLOUD_PROVIDER_LABEL[provider];
+  if (provider === 'gemini') {
+    const parts = image ? [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: image } }] : [{ text: prompt }];
+    const bodyFor = (name: string, fast: boolean) =>
+      JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+          ...(fast ? { thinkingConfig: thinkingConfigFor(name) } : {}),
+        },
+      });
+    const outcome = await raceModels(await modelsFor(settings, provider), geminiRunner(settings, bodyFor), signal, deadlineAt - Date.now());
+    const res = outcome.result?.res;
+    if (!res) return { ok: false, error: failureMessage(outcome, label) };
+    const body = outcome.result?.body ?? null;
+    if (!res.ok) {
+      const message = errorMessage(res, body);
+      return { ok: false, needsKey: isKeyError(res, message), error: message };
+    }
+    return { ok: true, text: answerText(body), model: outcome.result!.name, usage: usageOf(body) };
+  }
+
+  const key = providerKey(settings, provider).trim();
+  const url =
+    provider === 'openai'
+      ? 'https://api.openai.com/v1/chat/completions'
+      : provider === 'anthropic'
+        ? 'https://api.anthropic.com/v1/messages'
+        : 'https://openrouter.ai/api/v1/chat/completions';
+  const headers: Record<string, string> =
+    provider === 'anthropic'
+      ? { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+      : { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
+  const run = async (name: string, runSignal: AbortSignal): Promise<RunResult> => {
+    const plain = plainCloud.has(`${provider}:${name}`);
+    const call = (bare: boolean) =>
+      fetchWithTimeout(
+        url,
+        { method: 'POST', headers, body: foreignBody(provider, name, system, prompt, schema, image, bare), signal: runSignal },
+        Math.min(ATTEMPT_MS, Math.max(1, deadlineAt - Date.now())),
+      );
+    try {
+      let res = await call(plain);
+      let body = (await res.json().catch(() => ({}))) as ForeignBody;
+      if (!plain && res.status === 400) {
+        plainCloud.add(`${provider}:${name}`);
+        res = await call(true);
+        body = (await res.json().catch(() => ({}))) as ForeignBody;
+      }
+      if (!res.ok) void coolDownModel(name, res.status, null);
+      return { name, res, text: foreignText(provider, body), error: body.error?.message };
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return { name, error: `${name} took too long`, timedOut: !runSignal.aborted };
+      return { name, error: String((err as Error).message ?? err) };
+    }
   };
+  const outcome = await raceModels(await modelsFor(settings, provider), run, signal, deadlineAt - Date.now());
+  const res = outcome.result?.res;
+  if (!res) return { ok: false, error: failureMessage(outcome, label) };
+  if (!res.ok) {
+    const message = outcome.result?.error || `${label} HTTP ${res.status}`;
+    return { ok: false, needsKey: isKeyError(res, message), error: message.includes(label) ? message : `${label}: ${message}` };
+  }
+  const text = outcome.result?.text ?? '';
+  if (!text) return { ok: false, error: `${label} gave no usable answer` };
+  return { ok: true, text, model: namedModel(provider, outcome.result!.name) };
+};
 
-  return new Promise<GeminiResult>((resolve) => {
-    const finish = (result: GeminiResult, winner: 'gemini' | 'ollama' | 'none') => {
+const appraiseProvider = async (
+  settings: AppraisalSettings,
+  provider: CloudProvider,
+  image: string,
+  context: AppraisalContext,
+  signal: AbortSignal,
+  deadlineAt: number,
+): Promise<GeminiResult> => {
+  if (provider === 'gemini') return appraiseWithGemini(settings, image, context, signal, deadlineAt);
+  const asked = await askProvider(settings, provider, APPRAISAL_INSTRUCTIONS, appraisalContext(context), APPRAISAL_SCHEMA, image, signal, deadlineAt);
+  if (!asked.ok) return asked;
+  let item: AppraisalItem;
+  let others: ReturnType<typeof parseOthers>;
+  try {
+    ({ item, others } = parsedAnswer(asked.text));
+  } catch {
+    return { ok: false, error: `${CLOUD_PROVIDER_LABEL[provider]} gave no usable answer` };
+  }
+  const priced = await withMelt(item);
+  if (item.is_collectible && !priced.melt && !estimateOf(item)) {
+    const follow = await askProvider(settings, provider, '', pricePrompt(item), PRICE_SCHEMA, undefined, signal, deadlineAt);
+    if (follow.ok) {
+      try {
+        const price = JSON.parse(follow.text) as Pick<AppraisalItem, 'estimate_low_usd' | 'estimate_high_usd'>;
+        if (estimateOf(price)) Object.assign(priced.item, price);
+      } catch {
+        // The identification still stands without a guessed price.
+      }
+    }
+  }
+  return { ok: true, ...priced, others, model: asked.model };
+};
+
+// Preferred provider first. One other saved provider may run beside it, and Ollama starts at the
+// same hedge. The first good answer inside the deadline wins.
+const raceCloud = <T extends Failable>(
+  jobs: Array<(signal: AbortSignal, deadlineAt: number) => Promise<T>>,
+  ollama: ((signal: AbortSignal, deadlineAt: number) => Promise<T>) | null,
+): Promise<T> => {
+  const deadlineAt = Date.now() + DEADLINE_MS;
+  return new Promise((resolve) => {
+    let settled = false;
+    let cursor = 0;
+    let active = 0;
+    const controllers: AbortController[] = [];
+    const errors: T[] = [];
+    let ollamaController: AbortController | null = null;
+    let ollamaStarted = false;
+    let ollamaDone = !ollama;
+    let ollamaError: T | null = null;
+    let hedge: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (result: T) => {
       if (settled) return;
       settled = true;
       clearTimeout(hedge);
-      if (winner === 'gemini') ollamaAbort.abort();
-      else geminiAbort.abort();
-      if (winner === 'none') ollamaAbort.abort();
+      controllers.forEach((controller) => controller.abort());
+      ollamaController?.abort();
       resolve(result);
     };
-    const bothFailed = () => {
-      if (!geminiFail || !ollamaFail) return;
-      finish({ ok: false, needsKey: geminiFail.needsKey, error: `${geminiFail.error} Ollama backup: ${ollamaFail.error}` }, 'none');
+    const combined = (): T => {
+      const cloud = errors.map((failure) => failure.error).filter(Boolean).join(' ');
+      const error = ollamaError?.error ? `${cloud} Ollama backup: ${ollamaError.error}`.trim() : cloud || 'No cloud provider answered';
+      return { ok: false, error, needsKey: errors.length > 0 && errors.every((failure) => failure.needsKey) } as T;
     };
-    const takeOllama = (result: GeminiResult) => {
-      if (settled) return;
-      if (result.ok) finish(result, 'ollama');
-      else {
-        ollamaFail = result;
-        bothFailed();
+    const maybeFinish = () => {
+      if (settled || active > 0 || !ollamaDone) return;
+      if (cursor < jobs.length && Date.now() < deadlineAt) {
+        launch();
+        return;
       }
+      finish(combined());
     };
-
-    hedge = setTimeout(() => void startOllama().then(takeOllama), HEDGE_MS);
-    void appraiseWithGemini(settings, image, context, geminiAbort.signal).then((result) => {
-      if (settled) return;
-      if (result.ok) return finish(result, 'gemini');
-      geminiFail = result;
-      clearTimeout(hedge);
-      void startOllama().then(takeOllama);
-    });
+    const startOllama = () => {
+      if (!ollama || ollamaStarted || settled) return;
+      ollamaStarted = true;
+      ollamaDone = false;
+      ollamaController = new AbortController();
+      void ollama(ollamaController.signal, deadlineAt).then((result) => {
+        if (settled) return;
+        if (result.ok) return finish(result);
+        ollamaError = result;
+        ollamaDone = true;
+        maybeFinish();
+      });
+    };
+    const launch = () => {
+      if (settled || active >= 2 || cursor >= jobs.length || Date.now() >= deadlineAt) {
+        maybeFinish();
+        return;
+      }
+      const job = jobs[cursor]!;
+      cursor += 1;
+      const controller = new AbortController();
+      controllers.push(controller);
+      active += 1;
+      if (cursor === 1) {
+        hedge = setTimeout(() => {
+          if (settled) return;
+          startOllama();
+          if (cursor === 1) launch();
+        }, HEDGE_MS);
+      }
+      void job(controller.signal, deadlineAt).then((result) => {
+        active -= 1;
+        if (settled) return;
+        if (result.ok) return finish(result);
+        errors.push(result);
+        clearTimeout(hedge);
+        startOllama();
+        launch();
+      });
+    };
+    launch();
   });
 };
 

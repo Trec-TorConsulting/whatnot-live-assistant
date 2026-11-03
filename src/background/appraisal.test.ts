@@ -76,7 +76,7 @@ describe('appraise', () => {
     const calls = scriptGemini({ 'gemini-2.5-flash-lite': [overloaded, ok] });
     const res = await run();
     expect(res).toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
-    expect(calls.slice(0, 3)).toEqual(['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash']);
+    expect(calls.slice(0, 4)).toEqual(['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-2.5-flash']);
   });
 
   it('retries a model whose first request hung instead of dropping it', async () => {
@@ -90,7 +90,7 @@ describe('appraise', () => {
     const calls = scriptGemini({});
     const res = await run();
     expect(res.ok).toBe(false);
-    expect(!res.ok && res.error).toMatch(/overloaded right now: \d+ tries across gemini-2\.5-flash-lite, gemini-3\.1-flash-lite, gemini-2\.5-flash/);
+    expect(!res.ok && res.error).toMatch(/overloaded right now: \d+ tries across gemini-2\.5-flash-lite, gemini-3\.1-flash-lite, gemini-3\.5-flash-lite, gemini-2\.5-flash/);
     expect(calls.length).toBeGreaterThan(3);
   });
 
@@ -340,6 +340,108 @@ describe('appraise with the on-device model', () => {
     const res = await run();
     expect(res).toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
     expect(calls).toEqual(['gemini-2.5-flash-lite']);
+  });
+});
+
+describe('cloud provider backup', () => {
+  const openaiAnswer = () =>
+    json(200, { choices: [{ message: { content: JSON.stringify({ ...answer, item_name: 'From OpenAI' }) } }] });
+
+  const scriptHosts = (openai: Step, gemini: Step = overloaded) => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('gold-api')) return json(200, { price: 30 });
+        calls.push(url);
+        if (url.includes('api.openai.com')) return openai(init);
+        return gemini(init);
+      }),
+    );
+    return calls;
+  };
+
+  it('reads a scripted OpenAI answer and names that model', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({ wn2_appraisalSettings: { preferredProvider: 'openai', openaiApiKey: 'sk-test' } }),
+        session: fakeArea(),
+      },
+    });
+    const calls = scriptHosts(openaiAnswer);
+    const res = await run();
+    expect(res).toMatchObject({ ok: true, model: 'openai:gpt-5-nano', item: { item_name: 'From OpenAI' } });
+    expect(calls.some((url) => url.includes('api.openai.com/v1/chat/completions'))).toBe(true);
+    const chat = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('api.openai.com'));
+    const body = JSON.parse(String((chat?.[1] as RequestInit).body)) as { model: string; messages: { content: unknown }[] };
+    expect(body.model).toBe('gpt-5-nano');
+    expect(JSON.stringify(body.messages)).toContain('AAAA');
+  });
+
+  it('does not call another cloud provider when Gemini answers before five seconds', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({ wn2_appraisalSettings: { geminiApiKey: 'test-key', openaiApiKey: 'sk-test' } }),
+        session: fakeArea(),
+      },
+    });
+    const calls = scriptHosts(openaiAnswer, ok);
+    const res = await run();
+    expect(res).toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
+    expect(calls.some((url) => url.includes('api.openai.com'))).toBe(false);
+  });
+
+  it('asks OpenAI on the same click when Gemini is overloaded', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({ wn2_appraisalSettings: { geminiApiKey: 'test-key', openaiApiKey: 'sk-test' } }),
+        session: fakeArea(),
+      },
+    });
+    scriptHosts(openaiAnswer);
+    const res = await run();
+    expect(res).toMatchObject({ ok: true, model: 'openai:gpt-5-nano', item: { item_name: 'From OpenAI' } });
+  });
+
+  it('uses a saved key when the preferred provider key is blank', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({ wn2_appraisalSettings: { preferredProvider: 'openai', openaiApiKey: '', geminiApiKey: 'test-key' } }),
+        session: fakeArea(),
+      },
+    });
+    const calls = scriptHosts(openaiAnswer, ok);
+    const res = await run();
+    expect(res).toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
+    expect(calls.some((url) => url.includes('api.openai.com'))).toBe(false);
+  });
+
+  it('names every saved provider when all of them are overloaded', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({ wn2_appraisalSettings: { geminiApiKey: 'test-key', openaiApiKey: 'sk-test' } }),
+        session: fakeArea(),
+      },
+    });
+    scriptHosts(overloaded);
+    const res = await run();
+    expect(res.ok).toBe(false);
+    expect(!res.ok && res.error).toMatch(/Gemini/);
+    expect(!res.ok && res.error).toMatch(/OpenAI/);
+  });
+
+  it('sends text questions through the same cloud order', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({ wn2_appraisalSettings: { preferredProvider: 'openai', openaiApiKey: 'sk-test' } }),
+        session: fakeArea(),
+      },
+    });
+    const calls = scriptHosts(() => json(200, { choices: [{ message: { content: '{"low":1}' } }] }));
+    const pending = geminiJson('sys', 'prompt', { type: 'OBJECT', properties: { low: { type: 'NUMBER' } } });
+    await vi.advanceTimersByTimeAsync(31_000);
+    await expect(pending).resolves.toMatchObject({ ok: true, model: 'openai:gpt-5-nano', text: '{"low":1}' });
+    expect(calls.some((url) => url.includes('api.openai.com'))).toBe(true);
   });
 });
 

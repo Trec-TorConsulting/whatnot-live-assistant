@@ -2,6 +2,7 @@
 // whole table for what else is worth money. It runs after the answer is on screen, so it never
 // delays the max bid.
 import type { AppraisalContext } from './appraisal';
+import { isTemplate } from './estate';
 import { noteForPrompt } from './showNotes';
 
 export const MAX_TABLE_ITEMS = 8;
@@ -70,14 +71,23 @@ export const TABLE_SCHEMA_GEMINI = {
   required: ['items'],
 };
 
+export const tableSubject = (mainItem: string | null | undefined, lotTitle?: string | null) => {
+  const name = mainItem?.trim() ?? '';
+  if (!name || isTemplate(name) || (lotTitle && name.toLowerCase() === lotTitle.trim().toLowerCase() && isTemplate(lotTitle))) {
+    return 'the piece closest to the camera';
+  }
+  return name;
+};
+
 export const tablePrompt = ({ showTitle, lotTitle, categories = [], showNotes }: AppraisalContext, mainItem: string) => {
   const notes = noteForPrompt(showNotes);
+  const template = Boolean(lotTitle && isTemplate(lotTitle));
   return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',
-    lotTitle ? `Current lot title: ${lotTitle}` : '',
+    template ? '' : lotTitle ? `Current lot title: ${lotTitle}` : '',
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
-    `Being sold now (do not list): ${mainItem || 'unknown'}`,
+    `Being sold now (do not list): ${tableSubject(mainItem, lotTitle)}`,
   ]
     .filter(Boolean)
     .join('\n');

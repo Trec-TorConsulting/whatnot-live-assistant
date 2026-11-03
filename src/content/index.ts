@@ -9,6 +9,7 @@ import { CHAT_MAX, chatLine, pasteToChat, type ChatResult } from './chat';
 import { diagnose } from './diagnostics';
 import { claimPage, contextAlive, every, onRetire } from './lifecycle';
 import { isShareWorker, markShareWorker, onLive, resetForPath, startLiveBridge } from './live';
+import { startEstate } from './estate';
 import { ensureShopListener, resetShop, startShopWatch } from './shop';
 import { overlay } from './overlay';
 import { loadOverrides } from './overridesState';
@@ -155,6 +156,7 @@ const main = async () => {
   // Before the guard, so on each lot update the guard reads who's leading after the buyer has seen it.
   await startBuyer({ onChange: refreshGuard });
   await startBidGuard();
+  startEstate();
   await startWheelStatus();
   await startShowType();
   overlay.setPrefs(await getOverlayPrefs());

@@ -2,7 +2,7 @@
 import { HOOK_SOURCE, type HookToContent } from '../shared/hookProtocol';
 import { keyDatePrice } from '../shared/keyDates';
 import { formatMoney } from '../shared/money';
-import { applyShopWorth, isShopOperation, readShopPage, scoreShop, shopMelt, shopWorthLine, type ShopHit, type ShopListing, type ShopScan } from '../shared/shop';
+import { applyShopWorth, isShopOperation, readShopPage, scoreShop, shopMelt, shopSummary, shopWorthLine, type ShopHit, type ShopListing, type ShopScan } from '../shared/shop';
 import { getBuyerSettings, getGuardSettings, getItem } from '../shared/storage';
 import { send } from '../shared/messages';
 import { isShareWorker, publishShop, postToHook } from './live';
@@ -25,20 +25,19 @@ let gen = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending: { operation: string; body: string; at: number }[] = [];
 
-const viewOf = (scan: ShopScan): ShopView => {
-  if (scan.status === 'error') return { summary: "Couldn't read this show's shop.", hits: [] };
-  const summary = scan.binCount
-    ? `Checked ${scan.binCount} buy-it-now item${scan.binCount === 1 ? '' : 's'}.`
-    : 'No buy-it-now items in this shop.';
-  return {
-    summary,
-    hits: scan.hits.map((h) => ({
-      kind: h.kind,
-      label: h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have',
-      text: `${h.title} — ${formatMoney(h.price)}. ${h.reason}`,
-    })),
-  };
+const hitLabel = (h: ShopHit) => {
+  const kind = h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have';
+  return h.mode === 'auction' ? `Auction ${kind}` : kind;
 };
+
+const viewOf = (scan: ShopScan): ShopView => ({
+  summary: shopSummary(scan),
+  hits: scan.hits.map((h) => ({
+    kind: h.kind,
+    label: hitLabel(h),
+    text: `${h.title} — ${formatMoney(h.price)}. ${h.reason}`,
+  })),
+});
 
 const arm = (ms: number) => {
   const g = ++gen;
@@ -99,13 +98,14 @@ const finish = async (g: number) => {
     meltOf: (item) => shopMelt(item, spot),
     now: Date.now(),
   });
-  const scan: ShopScan = { status: 'ready', binCount: listings.length, hits };
+  const auctionCount = listings.filter((l) => l.mode === 'auction').length;
+  const scan: ShopScan = { status: 'ready', binCount: listings.length, auctionCount, hits };
   publishShop(scan);
   overlay.setShop(viewOf(scan));
   announce(id, hits);
   const priced = await priceMustHaves(hits);
   if (g !== gen || liveId !== id || isShareWorker() || priced === hits) return;
-  const next: ShopScan = { status: 'ready', binCount: listings.length, hits: priced };
+  const next: ShopScan = { status: 'ready', binCount: listings.length, auctionCount: listings.filter((l) => l.mode === 'auction').length, hits: priced };
   publishShop(next);
   overlay.setShop(viewOf(next));
 };
@@ -146,13 +146,14 @@ const announce = (id: string, hits: ShopHit[]) => {
   const mark = `${id}:${top?.id ?? ''}`;
   if (!top || noted === mark) return;
   noted = mark;
+  const mixed = hits.some((h) => h.mode === 'auction');
   const notice = steals.length
     ? steals.length === 1
       ? `Shop steal: ${steals[0]!.title} at ${formatMoney(steals[0]!.price)}`
-      : `${steals.length} buy-it-now steals in the shop`
+      : `${steals.length} ${mixed ? 'shop' : 'buy-it-now'} steals in the shop`
     : deals.length === 1
       ? `Shop deal: ${deals[0]!.title} at ${formatMoney(deals[0]!.price)}`
-      : `${deals.length} buy-it-now deals in the shop`;
+      : `${deals.length} ${mixed ? 'shop' : 'buy-it-now'} deals in the shop`;
   overlay.notice(notice, 8000);
   overlay.flash();
   if (document.hidden) void send('BUYER_ALERT', { id: `shop:${id}`, title: notice, message: top.reason }).catch(() => undefined);

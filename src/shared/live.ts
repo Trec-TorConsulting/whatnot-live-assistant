@@ -3,6 +3,7 @@
 // auction socket carries lots, bids and sales for logged-in viewers. Commerce payloads are read
 // tolerantly by field name, and unrecognized events are sampled for diagnostics.
 import { BREAK_OPERATION, mergeWheel, parseBreakResponse, type BreakSnapshot } from './breaks';
+import { isTemplate, lotNumber, pinFrom, type EstateRun, wantFrom } from './estate';
 import { moneyValue } from './money';
 import { readShowNote, type ShowNote } from './showNotes';
 import type { ShopScan } from './shop';
@@ -83,6 +84,16 @@ export interface LiveSession {
   samples: EventSample[];
   graphqlOps: Record<string, number>;
   shop: ShopScan | null;
+  /** Lot number to a host, mod, or appraisal name. Dies with the session. */
+  estatePins: Record<string, string>;
+  /** Buyer requests, capped at 20. */
+  estateWants: string[];
+  /** Recent template hammers, newest first, capped at 12. */
+  estateRuns: EstateRun[];
+  /** Rules already shown, so the next lot does not add them again. */
+  estateRulesKey: string | null;
+  /** Shipping quote read off the page, so the side panel can show it. */
+  shippingQuote: number | null;
   updatedAt: number;
 }
 
@@ -121,8 +132,19 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
   samples: [],
   graphqlOps: {},
   shop: null,
+  estatePins: {},
+  estateWants: [],
+  estateRuns: [],
+  estateRulesKey: null,
+  shippingQuote: null,
   updatedAt: now,
 });
+
+export const sessionForPath = (prev: LiveSession | null, liveId: string | null): LiveSession | null => {
+  if (!liveId) return null;
+  if (!prev || prev.show.liveId !== liveId) return emptySession(liveId);
+  return prev;
+};
 
 export const decodePhoenixFrame = (raw: unknown): PhoenixMessage | null => {
   if (typeof raw !== 'string' || raw.length < 2 || raw.length > 5_000_000) return null;
@@ -339,8 +361,40 @@ const pushCapped = <T>(list: T[], item: T, max: number) => {
 const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[]) => {
   if (session.sales.some((s) => s.key === sale.key)) return session;
   signals.push({ kind: 'sale', sale });
-  return { ...session, sales: pushCapped(session.sales, sale, MAX_SALES) };
+  let estateRuns = session.estateRuns;
+  if (sale.kind !== 'giveaway' && sale.price != null && sale.price > 0 && sale.title && isTemplate(sale.title)) {
+    const number = lotNumber(sale.title);
+    estateRuns = [{ number, name: number != null ? (session.estatePins[String(number)] ?? null) : null, price: sale.price }, ...estateRuns].slice(0, 12);
+  }
+  return { ...session, sales: pushCapped(session.sales, sale, MAX_SALES), estateRuns };
 };
+
+const noteChat = (session: LiveSession, m: ChatMessage): LiveSession => {
+  let next = session;
+  const title = next.lot?.title;
+  const number = title && isTemplate(title) ? lotNumber(title) : null;
+  const pin = number != null ? pinFrom(m.text, m.isHost, m.isModerator) : null;
+  if (pin && number != null) next = { ...next, estatePins: { ...next.estatePins, [String(number)]: pin } };
+  if (!m.isHost && !m.isModerator) {
+    const want = wantFrom(m.text);
+    if (want) next = { ...next, estateWants: [...next.estateWants, want].slice(-20) };
+  }
+  return next;
+};
+
+export const noteEstateName = (session: LiveSession, name: string | null | undefined): LiveSession => {
+  const title = session.lot?.title;
+  const number = title && isTemplate(title) ? lotNumber(title) : null;
+  const clean = name?.trim();
+  if (number == null || !clean || isTemplate(clean)) return session;
+  return { ...session, estatePins: { ...session.estatePins, [String(number)]: clean } };
+};
+
+export const noteEstateRules = (session: LiveSession, key: string | null): LiveSession =>
+  key && key !== session.estateRulesKey ? { ...session, estateRulesKey: key } : session;
+
+export const noteShippingQuote = (session: LiveSession, shipping: number | null): LiveSession =>
+  shipping != null && shipping !== session.shippingQuote ? { ...session, shippingQuote: shipping } : session;
 
 const sampleEvent = (session: LiveSession, msg: PhoenixMessage): LiveSession => {
   const key = `${msg.topic.split(':')[0]}:${msg.event}`;
@@ -485,7 +539,10 @@ export const reduceSocket = (
         const m = parseChatMessage(raw, now);
         if (!m || next.chat.some((c) => c.id === m.id)) continue;
         next = { ...next, chat: pushCapped(next.chat, m, MAX_CHAT) };
-        if (msg.event === 'new_msg') signals.push({ kind: 'chat', message: m });
+        if (msg.event === 'new_msg') {
+          signals.push({ kind: 'chat', message: m });
+          next = noteChat(next, m);
+        }
         const sale = saleFromChat(m, next.show.liveId);
         if (sale) next = addSale(next, sale, signals);
       }

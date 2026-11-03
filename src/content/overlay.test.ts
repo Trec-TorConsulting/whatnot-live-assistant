@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildEstateView } from '../shared/estate';
 import { messageView } from './appraisalView';
 import { overlay, type WheelView } from './overlay';
 
@@ -264,6 +265,26 @@ describe('overlay', () => {
     expect(shadow().textContent).toContain('1 oz silver round');
     overlay.setShop(null);
     expect(shadow().textContent).not.toContain('1 oz silver round');
+  });
+
+  it('shows the template lot before an appraisal', () => {
+    overlay.mount({});
+    overlay.setEstate(
+      buildEstateView({
+        lotTitle: '*c - 2 oz Item on screen #57',
+        start: 4,
+        shipping: 4.47,
+        categories: ['Estate Sales'],
+      }),
+    );
+    const text = shadow().textContent ?? '';
+    expect(text).toContain('Lot 57');
+    expect(text).toContain('2 oz');
+    expect(text).toContain('$4');
+    expect(text).toContain('$4.47');
+    expect(text).not.toContain('Item on screen');
+    expect(text).not.toContain('Appraising');
+    overlay.setEstate(null);
   });
 
   it('hides Appraise while a wheel is running', () => {

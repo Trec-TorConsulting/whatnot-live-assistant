@@ -53,6 +53,29 @@ describe('appraisal prompt', () => {
     expect(ctx('coins')).toMatch(/slab or holder label/);
     for (const t of ['general', 'flea', 'cards'] as const) expect(ctx(t)).not.toMatch(/^Scan:/m);
   });
+
+  it('treats a template title as a shipping bucket', () => {
+    const random = appraisalContext({
+      pageText: 'E Random 1-2lb #10',
+      showTitle: 'Glass',
+      lotTitle: 'E Random 1-2lb #10',
+      categories: ['Estate Sales'],
+      showNotes: 'not washed. /coupon SAVE10',
+    });
+    expect(random).toMatch(/shipping bucket/);
+    expect(random).toMatch(/maker marks/);
+    expect(random).not.toMatch(/\bRandom\b/);
+    expect(random).not.toContain('SAVE10');
+    expect(random).toContain('lot 10');
+    const screen = appraisalContext({
+      pageText: '*c - 2 oz Item on screen #57',
+      showTitle: 'Estate',
+      lotTitle: '*c - 2 oz Item on screen #57',
+    });
+    expect(screen).not.toContain('Item on screen');
+    expect(screen).toContain('lot 57');
+    expect(screen).toContain('tier 2 oz');
+  });
 });
 
 describe('jewelry melt', () => {

@@ -1,11 +1,22 @@
 // Copy link (and the other share options) send a LogShare GraphQL request. A response without
 // GraphQL errors means Whatnot recorded the share.
-export const isLogShareUrl = (url: string, base = location.href) => {
+const operationFromBody = (init?: RequestInit) => {
+  if (typeof init?.body !== 'string') return null;
+  try {
+    const name = (JSON.parse(init.body) as { operationName?: unknown }).operationName;
+    return typeof name === 'string' ? name : null;
+  } catch {
+    return null;
+  }
+};
+
+// Whatnot puts operationName on the query string, or only in the POST body.
+export const isLogShareUrl = (url: string, base = location.href, init?: RequestInit) => {
   if (!url.includes('/services/graphql')) return false;
   try {
-    return new URL(url, base).searchParams.get('operationName') === 'LogShare';
+    return (new URL(url, base).searchParams.get('operationName') || operationFromBody(init)) === 'LogShare';
   } catch {
-    return false;
+    return operationFromBody(init) === 'LogShare';
   }
 };
 
@@ -20,7 +31,7 @@ export const watchLogShare = (onShare: () => void) => {
     const res = await nativeFetch.call(window, input, init);
     try {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (res.ok && isLogShareUrl(url)) {
+      if (res.ok && isLogShareUrl(url, location.href, init)) {
         res
           .clone()
           .json()

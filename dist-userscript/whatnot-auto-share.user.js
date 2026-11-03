@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Whatnot Auto Share (iPhone)
 // @namespace    whatnot-assistant
-// @version      0.12.2
+// @version      0.12.3
 // @description  Keeps Whatnot's Share menu open on a live show and taps Copy link on your delay.
 // @match        https://www.whatnot.com/*
 // @match        https://whatnot.com/*
@@ -220,12 +220,21 @@
 		}, true);
 	};
 	// src/userscript/logShare.ts
-	var isLogShareUrl = (url, base = location.href) => {
+	var operationFromBody = (init) => {
+		if (typeof init?.body !== "string") return null;
+		try {
+			const name = JSON.parse(init.body).operationName;
+			return typeof name === "string" ? name : null;
+		} catch {
+			return null;
+		}
+	};
+	var isLogShareUrl = (url, base = location.href, init) => {
 		if (!url.includes("/services/graphql")) return false;
 		try {
-			return new URL(url, base).searchParams.get("operationName") === "LogShare";
+			return (new URL(url, base).searchParams.get("operationName") || operationFromBody(init)) === "LogShare";
 		} catch {
-			return false;
+			return operationFromBody(init) === "LogShare";
 		}
 	};
 	var logShareSucceeded = (body) => {
@@ -238,7 +247,7 @@
 			const res = await nativeFetch.call(window, input, init);
 			try {
 				const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-				if (res.ok && isLogShareUrl(url)) res.clone().json().then((body) => logShareSucceeded(body) && onShare()).catch(() => void 0);
+				if (res.ok && isLogShareUrl(url, location.href, init)) res.clone().json().then((body) => logShareSucceeded(body) && onShare()).catch(() => void 0);
 			} catch {}
 			return res;
 		};
@@ -627,7 +636,7 @@
 			wakeLock = await navigator.wakeLock?.request("screen").catch(() => null) ?? null;
 		};
 		const panel = createPanel({
-			version: "0.12.2",
+			version: "0.12.3",
 			settings: () => settings,
 			onToggle: () => toggle(),
 			onSettings: (patch) => {

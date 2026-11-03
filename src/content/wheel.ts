@@ -1,8 +1,9 @@
 // On a wheel show each spin is its own auction, so the overlay shows whether the next spin is worth
 // its bid instead of an appraisal. Same values as the side panel: yours first, then automatic ones
 // at the low end of their range.
-import { spotsLeft, type BreakSnapshot } from '../shared/breaks';
-import { envelopeSummary, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
+import { isNumberedPrize, spotsLeft, type BreakSnapshot } from '../shared/breaks';
+import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
+import { parseManifest } from '../shared/prizeValue';
 import type { LiveSession, Lot } from '../shared/live';
 import { formatMoney } from '../shared/money';
 import type { PrizeValue } from '../shared/prizeValue';
@@ -35,7 +36,7 @@ export const wheelView = (
   const o = wheelOdds({
     ...emptyWheel(b.id, b.fetchedAt),
     price,
-    slots: rows.map((r) => ({ label: prizeSlotLabel(r), total: r.left, left: r.left, value: r.value })),
+    slots: rows.map((r) => ({ label: prizeSlotLabel(r), total: r.left, left: r.left, value: r.value, floor: r.floor })),
   });
   const left = spotsLeft(b);
   const hasPrice = price !== null && price > 0;
@@ -57,7 +58,10 @@ export const wheelView = (
   // A spin that sold but hasn't been spun yet only has its spot number, not a prize.
   const lastHit = b.hits?.filter((h) => !h.pending).pop() ?? null;
   const unpriced = rows.filter((r) => r.value === null).length;
-  const unread = board?.items.length ? 0 : unmatchedEnvelopes(b, values, autoValues).length;
+  const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
+  const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
+  const numberedUnread = numberedShare(b, autoValues) ? 0 : unreadRows.length - envelopeUnread;
+  const cutOff = parseManifest(b.description).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeFacts: WheelFact[] =
     pool.sealed > 0
@@ -101,7 +105,9 @@ export const wheelView = (
     ] satisfies WheelFact[],
     warnings: [
       unpriced ? `${unpriced} ${unpriced === 1 ? 'prize has' : 'prizes have'} no value yet (counted as $0).` : null,
-      unread ? `${unread} ${unread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; retrying while the board is on camera.` : null,
+      cutOff ? 'The break description was cut off, so the numbered hits are only a floor.' : null,
+      envelopeUnread ? `${envelopeUnread} ${envelopeUnread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; retrying while the board is on camera.` : null,
+      numberedUnread ? `${numberedUnread} numbered ${numberedUnread === 1 ? 'hit is' : 'hits are'} not matched to the board yet.` : null,
       rows.some((r) => r.inside && r.auto) ? 'Some prizes were AI-read from the video; check them against the board.' : null,
       !b.complete ? 'Whatnot sent only part of the prize list, so these odds are incomplete.' : null,
       age >= STALE_MS ? `Prize counts last updated ${Math.round(age / MINUTE)}m ago.` : null,

@@ -8,7 +8,9 @@ import {
   parseBreakResponse,
   pendingSpins,
   prizeDetail,
+  prizeIdentity,
   prizeKey,
+  prizePriceKey,
   prizeQuantity,
   prizeValueKey,
   spotsLeft,
@@ -71,6 +73,21 @@ describe('hidden prizes', () => {
     for (const t of ['BUFFALO NICKEL RANDOM YEAR ', 'VAULTBOX SELECT BOX RIP/SHIP', 'NOAHS ARK 1OZ GOLD CHASE BREAKMINT RIP/SHIP', '1 Kilo Silver Bar', 'Envelope of Wheat Pennies', 'Proof Quarter', 'Family Pack #7']) {
       expect(isHiddenPrize(t), t).toBe(false);
     }
+    for (const t of ['Item #1', 'Item #90', 'Spot #3', 'Spot 12']) {
+      expect(isHiddenPrize(t), t).toBe(true);
+    }
+  });
+
+  it('prices punctuation copies of one wheat cent as one prize', () => {
+    const a = prizePriceKey({ title: 'random (.01) Wheat cent (us mint) poor.://', detail: '' });
+    const b = prizePriceKey({ title: 'random (.01) Wheat cent (us .mint) poor‘.,)(()', detail: '' });
+    const c = prizePriceKey({ title: 'random (.01) Wheat cent (us ./mint) poor•••••••', detail: '' });
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+    expect(prizeIdentity('1.51 GRAMS GOLD NUGGETS')).toBe('1.51 grams gold nuggets');
+    expect(prizeIdentity('VAULTBOX SELECT BOX RIP/SHIP')).toBe('vaultbox select box rip/ship');
+    expect(prizeIdentity('1/10 oz gold')).toBe('1/10 oz gold');
+    expect(prizePriceKey({ title: 'Item #1', detail: '' })).not.toBe(prizePriceKey({ title: 'Item #2', detail: '' }));
   });
 
   it('treats a prize as hidden when the detail is the envelope, and matches sold hits by stem', () => {

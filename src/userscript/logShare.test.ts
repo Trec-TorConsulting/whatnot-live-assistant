@@ -12,6 +12,8 @@ describe('LogShare detection', () => {
     expect(isLogShareUrl('/services/graphql/?operationName=LogShare&ssr=0', base)).toBe(true);
     expect(isLogShareUrl('/services/graphql/?operationName=LiveStream', base)).toBe(false);
     expect(isLogShareUrl('/services/events/v1/t?operationName=LogShare', base)).toBe(false);
+    expect(isLogShareUrl('/services/graphql/?ssr=0', base, { body: JSON.stringify({ operationName: 'LogShare' }) })).toBe(true);
+    expect(isLogShareUrl('/services/graphql/?ssr=0', base, { body: JSON.stringify({ operationName: 'LiveStream' }) })).toBe(false);
   });
 
   it('treats GraphQL errors as not recorded', () => {
@@ -33,6 +35,7 @@ describe('LogShare detection', () => {
     watchLogShare(onShare);
 
     const ok = await window.fetch('/services/graphql/?operationName=LogShare');
+    await window.fetch('/services/graphql/?ssr=0', { body: JSON.stringify({ operationName: 'LogShare' }) });
     await window.fetch('/services/graphql/?operationName=LogShare&fail=1');
     await window.fetch('/services/graphql/?operationName=LogShare&500=1');
     await window.fetch('/services/graphql/?operationName=LiveStream');
@@ -40,6 +43,6 @@ describe('LogShare detection', () => {
 
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ data: {} });
-    expect(onShare).toHaveBeenCalledTimes(1);
+    expect(onShare).toHaveBeenCalledTimes(2);
   });
 });

@@ -4,6 +4,7 @@
 import { BREAK_OPERATION, BREAK_QUERY } from '../shared/breaks';
 import { CONTENT_SOURCE, HOOK_SOURCE, type ContentToHook, type HookToContent } from '../shared/hookProtocol';
 import { isShopOperation } from '../shared/shop';
+import { logShareSucceeded } from '../userscript/logShare';
 import { fetchShop, inspectGraphql, noteShopCall } from './shopFetch';
 import { installQuietPatches } from './quiet';
 
@@ -59,6 +60,12 @@ const install = () => {
       const gql = inspectGraphql(url, location.href, init);
       if (gql) {
         noteShopCall(gql.operation, gql.query, gql.variables);
+        // A click only counts once this response says Whatnot recorded the share.
+        if (gql.operation === 'LogShare') {
+          const report = (ok: boolean) => post({ kind: 'log_share', ok });
+          if (!res.ok) report(false);
+          else res.clone().json().then((body) => report(logShareSucceeded(body))).catch(() => report(false));
+        }
         if (WATCHED_OPERATIONS.has(gql.operation) || isShopOperation(gql.operation)) {
           res
             .clone()

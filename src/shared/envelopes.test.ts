@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BreakPrize, BreakSnapshot } from './breaks';
-import { boardIsCurrent, envelopeSummary, nextEnvelopeBoard, unmatchedEnvelopes, unseenPrizes, wheelRows, type EnvelopeBoard } from './envelopes';
+import { boardIsCurrent, envelopeSummary, nextEnvelopeBoard, numberedShare, unmatchedEnvelopes, unseenPrizes, wheelRows, type EnvelopeBoard } from './envelopes';
+import { prizePriceKey } from './breaks';
 import type { PrizeValue } from './prizeValue';
 import { emptyWheel, wheelOdds } from './wheel';
 
@@ -133,6 +134,43 @@ describe('nextEnvelopeBoard', () => {
     const b = wheel(1);
     const revealed = { ...board([item('floor', 20)], ['b1#envelope #2']), revealed: true };
     expect(envelopeSummary(b, {}, {}, revealed).share).toBe(20);
+  });
+});
+
+describe('numbered hits named in the break description', () => {
+  const disguised = (description: string): BreakSnapshot => ({
+    ...wheel(0),
+    description,
+    hits: [],
+    prizes: [prize('Item #1', 1), prize('Item #2', 1), prize('random (.01) Wheat cent (us mint) poor.://', 4)],
+  });
+
+  it('splits the listed coins across every Item #N and prices the wheat cent once', () => {
+    const description = '👉🏼1x 2024 1oz silver pr70 (temperance) (ngc) good 👉🏼1x 2024 1oz silver pr70 (temperance) (ngc) goo'.padEnd(1000, ' ');
+    const b = disguised(description);
+    const silver = prizePriceKey({ title: '2024 1oz silver pr70 (temperance) (ngc)', detail: '' });
+    const wheat = prizePriceKey({ title: 'random (.01) Wheat cent (us mint) poor.://', detail: '' });
+    const auto = { [silver]: item('2024 silver', 90, 'melt'), [wheat]: item('wheat', 1, 'sold') };
+    const rows = wheelRows(b, {}, auto);
+    expect(numberedShare(b, auto)).toMatchObject({ value: 45, floor: true });
+    expect(rows.find((r) => r.title === 'Item #1')).toMatchObject({ value: 45, floor: true });
+    expect(rows.find((r) => r.title.startsWith('random'))?.value).toBe(1);
+    const odds = wheelOdds({
+      ...emptyWheel('b1'),
+      price: 30,
+      slots: rows.map((r) => ({ label: r.title, total: r.left, left: r.left, value: r.value, floor: r.floor })),
+    });
+    expect(odds.expectedIsFloor).toBe(true);
+    expect(odds.verdict).toBe('unclear');
+  });
+
+  it('lets the sticker price that number and leaves the other numbers on the description', () => {
+    const b = disguised('👉🏼1x 2024 1oz silver pr70 (temperance) (ngc) good');
+    const silver = prizePriceKey({ title: '2024 1oz silver pr70 (temperance) (ngc)', detail: '' });
+    const auto = { [silver]: item('silver', 40, 'melt'), 'b1#seen|item #1': item('2024 Temperance PR70', 80) };
+    const rows = wheelRows(b, {}, auto);
+    expect(rows.find((r) => r.title === 'Item #1')).toMatchObject({ value: 80, inside: '2024 Temperance PR70' });
+    expect(rows.find((r) => r.title === 'Item #2')?.value).toBeCloseTo(20);
   });
 });
 

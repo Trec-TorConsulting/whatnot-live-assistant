@@ -2,7 +2,7 @@
 // Real prices come first (melt from spot, Whatnot sold comps); the AI only fills what's left.
 // Every range is valued at its low end so the wheel never looks better than the data backs.
 import type { Metal } from './appraisal';
-import { isHiddenPrize } from './breaks';
+import { isHiddenPrize, isNumberedPrize, prizeIdentity } from './breaks';
 import { DAY } from './time';
 
 export type PrizeSource = 'melt' | 'sold' | 'ai';
@@ -44,7 +44,8 @@ const KARAT: [RegExp, number][] = [
 // Natural nuggets run roughly 80-92% gold; the bottom of that keeps melt a floor.
 const NUGGET_PURITY = 0.8;
 // A box or pack with a chance at metal is not that metal: "1OZ GOLD CHASE RIP/SHIP" is a sealed box.
-const NOT_BULLION_RE = /\bchase\b|\brip\b|rip\s*\/\s*ship|\bbox\b|\bpacks?\b|\bbreak\b|\bmystery\b|\brandom\b|\bchance\b|\bspot\b/i;
+// Clad and gilt are base metal with a color, not the metal named beside them.
+const NOT_BULLION_RE = /\bchase\b|\brip\b|rip\s*\/\s*ship|\bbox\b|\bpacks?\b|\bbreak\b|\bmystery\b|\brandom\b|\bchance\b|\bspot\b|\bclad\b|\bgilt\b/i;
 const WEIGHT_RE = /(?<![\d/.])(\d+\/\d+|\d*\.?\d+)\s*(grams?|gr?|oz|ozt|troy\s*oz|kilos?|kg)\b/i;
 const METAL_RE = /\b(gold|silver|platinum|palladium)\b/i;
 
@@ -72,11 +73,70 @@ export const prizeMelt = (title: string): PrizeMelt | null => {
   return { metal, oz, purity: 1, note: null };
 };
 
+const GRADE_RE = /\b(?:pcgs|ngc|icg|anacs|pmg)\b|\b(?:ms|pf|pr|au|xf|ef|vf|vg)\s*-?\s*\d{1,2}\b/i;
+// "(.01)" before "Wheat" is the face value. ".10 gram" is a weight and is left alone.
+const FACE_RE = /\(?\.(?:01|05|10|25|50)\)?(?=\s*(?:lincoln|wheat|indian|cent|penny|roosevelt|rosevelt|dime|washington|quarter|kennedy|half)\b)/gi;
+
+// Seller shorthand, so melt and sold comps see the coin instead of the abbreviation.
+// A trailing "good" is Whatnot's condition bucket and does not replace PR70 or MS69.
+export const clarifyPrizeName = (title: string): string => {
+  let s = title.replace(/\s+/g, ' ').trim();
+  s = s.replace(FACE_RE, ' ');
+  s = s.replace(/\base\b/gi, 'American Silver Eagle');
+  s = s.replace(/\brosevelt\b/gi, 'Roosevelt');
+  s = s.replace(/\b(\d+\s*\/\s*\d+)\s*gold\b/gi, (_, frac: string) => `${frac.replace(/\s+/g, '')} oz gold`);
+  if (GRADE_RE.test(s)) s = s.replace(/\b(?:good|fair|poor)\b\s*$/i, '');
+  return s.replace(/\s+/g, ' ').trim();
+};
+
+export interface ManifestItem {
+  qty: number;
+  name: string;
+}
+
+export interface PrizeManifest {
+  items: ManifestItem[];
+  // Whatnot stores 1000 characters. A description that long, or one that ends mid-word, is not the whole list.
+  truncated: boolean;
+}
+
+const DESC_CAP = 1000;
+
+// "1x 2024 1oz silver pr70 (temperance) (ngc) good" lines, split on the seller's arrows.
+// A truncated description that starts the list over again stops at the first repeat.
+export const parseManifest = (description: string | null | undefined): PrizeManifest => {
+  const raw = description ?? '';
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (!text) return { items: [], truncated: false };
+  const truncated = raw.length >= DESC_CAP || text.length >= DESC_CAP;
+  const cutOff = truncated && !/\b(?:good|fair|poor)\s*$/i.test(text);
+  const parts = text.split(/👉🏼|➡️|\n+/).map((s) => s.trim()).filter(Boolean);
+  const items: ManifestItem[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+    if (cutOff && i === parts.length - 1) break;
+    const m = part.match(/(\d+)\s*[x×]\s*(.+)$/i);
+    if (!m?.[1] || !m[2]) continue;
+    const qty = parseInt(m[1], 10);
+    const name = clarifyPrizeName(m[2]);
+    if (!(qty > 0) || !name) continue;
+    const key = prizeIdentity(name);
+    if (!key) continue;
+    // The rest of a cut-off description is the list pasted a second time.
+    if (truncated && seen.has(key)) break;
+    seen.add(key);
+    items.push({ qty, name });
+  }
+  return { items, truncated };
+};
+
 export const PRIZE_INSTRUCTIONS = [
   'You value prizes on a Whatnot mystery wheel. For each numbered prize, give the per-prize US price range where recent sold copies land (eBay sold or Whatnot sold), not asking or retail prices.',
   '"RIP/SHIP" means the seller opens that sealed box or pack and ships what is inside: value it at what the sealed product sells for.',
   '"GENUINE ICG CERT" or similar means an authenticated slab of that item.',
-  'Conditions for raw coins are Whatnot groups: "Poor - Fair", "Good - Extremely Fine", or "Uncirculated - Mint"; a lone "Fair" or "Good" means that group. Value a group at its lowest grade, e.g. Good - Extremely Fine as Good. A listed grade like "MS 63" is exact.',
+  'Conditions for raw coins are Whatnot groups: "Poor - Fair", "Good - Extremely Fine", or "Uncirculated - Mint"; a lone "Fair" or "Good" means that group. Value a group at its lowest grade, e.g. Good - Extremely Fine as Good. A listed grade like "MS 63" or "PR70" is exact and is not lowered because the line also says good, fair, or poor.',
+  '"Clad" is a modern copper-nickel coin with no precious-metal melt. "Gilt copper" is copper, not gold. A face value such as "(.01)", ".10", ".25", or ".50" is the denomination, not a weight. "Ase" means American Silver Eagle.',
   'Be conservative: if unsure, lean low. Keep high at most 2x low. Never answer 0.',
 ].join('\n');
 
@@ -149,7 +209,7 @@ export const SOURCE_LABEL: Record<PrizeSource, string> = { melt: 'melt', sold: '
 export const ENVELOPE_INSTRUCTIONS = [
   'This is a frame from a Whatnot wheel show. Some wheel prizes are sealed envelopes (or bags, tickets) known only by a number. The seller shows on camera the items those envelopes hold, usually laid out on a board or shelf with sticky notes or labels.',
   'List each item the frame shows as an envelope prize, one entry per physical item. inside: a short item name with metal, weight, year, and grade when shown, e.g. "1 kilo silver Koala NGC MS 69", "1985 Liberty MS 67", "1/10 oz gold coin".',
-  'prize: the listed envelope name, copied exactly, only when that envelope\'s number or label is visibly tied to the item; otherwise "". Never pair an item with an envelope by guessing.',
+  'prize: the listed envelope name, copied exactly, only when that envelope\'s number or label is visibly tied to the item; otherwise "". Never pair an item with an envelope by guessing. A listed prize named "Item #N" or "Spot #N" is the sticky note or label showing that number: copy the listed name when N is on the note.',
   'Skip the named wheel prizes listed as not in envelopes, and skip displays, decor, and packaging. Only list items you can see; never add one from the wheel title.',
   'low / high: per-item US price range where recent sold copies land (eBay sold or Whatnot sold). Be conservative: if unsure, lean low. Keep high at most 2x low. Never answer 0.',
 ].join('\n');
@@ -290,6 +350,15 @@ export const parseEnvelopeAnswer = (
   const byName = new Map(titles.map((t) => [norm(t), t]));
   const namedByName = new Map((field === 'envelopes' ? named : titles).map((t) => [norm(t), t]));
   const wheelTags = new Set(titles.map((t) => tagOf(t)).filter((t): t is string => !!t));
+  // Item #12 is the sticker "12". Envelope #12 is not: that number stays in the pool.
+  const numberedByTag = new Map<string, string>();
+  if (field === 'envelopes') {
+    for (const t of titles) {
+      if (!isNumberedPrize(t)) continue;
+      const tag = tagOf(t);
+      if (tag && !numberedByTag.has(tag)) numberedByTag.set(tag, t);
+    }
+  }
   const matched = new Map<string, EnvelopeRead>();
   const board: BoardItem[] = [];
   const keep = (item: BoardItem) => {
@@ -313,6 +382,11 @@ export const parseEnvelopeAnswer = (
       continue;
     }
     const tag = prize ? tagOf(prize) : null;
+    const numbered = tag ? numberedByTag.get(tag) : undefined;
+    if (numbered && !matched.has(numbered)) {
+      matched.set(numbered, { title: numbered, ...item });
+      continue;
+    }
     const envelopeLike = !!prize && (isHiddenPrize(prize) || tag !== null);
     if (envelopeLike && tag && !wheelTags.has(tag) && !byName.has(norm(prize))) continue;
     keep(item);

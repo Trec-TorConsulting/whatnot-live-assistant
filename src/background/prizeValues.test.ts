@@ -73,6 +73,23 @@ describe('valuePrizes', () => {
     expect(values()['morgan dollar | uncirculated - mint']).toMatchObject({ low: 90 });
   });
 
+  it('prices punctuation copies of one wheat cent once, and skips Item #N', async () => {
+    stubFetch([{ i: 1, low: 1, high: 2 }]);
+    await valuePrizes(
+      [
+        p('random (.01) Wheat cent (us mint) poor.://'),
+        p('random (.01) Wheat cent (us .mint) poor‘.,)(()'),
+        p('Item #12'),
+      ],
+      ctx,
+    );
+    expect(geminiPrompts).toHaveLength(1);
+    expect(geminiPrompts[0]).not.toContain('Item #12');
+    const v = values();
+    expect(Object.keys(v)).toHaveLength(1);
+    expect(Object.values(v)[0]).toMatchObject({ source: 'ai', low: 1 });
+  });
+
   it('never values an envelope by its name', async () => {
     stubFetch([{ i: 1, low: 5, high: 8 }]);
     await valuePrizes([p('ENVELOPE #2', 'GOOD'), p('BUFFALO NICKEL RANDOM YEAR', 'FAIR')], ctx);

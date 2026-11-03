@@ -66,6 +66,32 @@ A prize whose title or detail is an envelope, lope, bag, mystery, or a similar h
 - **WHEN** a prize title is "Family Pack #7" and its description is "Envelope"
 - **THEN** that prize is an envelope and is not priced from the title
 
+#### Scenario: Numbered placeholder
+- **WHEN** a prize title is "Item #12" or "Spot #3"
+- **THEN** that prize is not priced from the title
+
+### Requirement: Punctuation is not a different prize
+Titles that match once punctuation and symbols are removed SHALL share one price. A decimal, a fraction, and a slash between words SHALL stay, so "1.51 grams", "1/10 oz", and "rip/ship" do not collapse into a different prize.
+
+#### Scenario: Wheat cent copied with junk characters
+- **WHEN** two spots are "random (.01) Wheat cent (us mint) poor.://" and "random (.01) Wheat cent (us .mint) poor"
+- **THEN** both use one price
+
+### Requirement: Break description lists the numbered hits
+The break description SHALL be read with the prize list. Lines of the form "2x 2024 1oz silver" SHALL be priced and split across the numbered spots still on the wheel. A trailing "good", "fair", or "poor" SHALL NOT replace a grade such as PR70 or MS69. "Ase" SHALL be read as American Silver Eagle. "Clad" and "gilt" SHALL NOT be melted. A face value such as "(.01)" or ".50" SHALL NOT be read as a weight. "1/1000 gold" SHALL be read as one one-thousandth of an ounce. Whatnot keeps 1000 characters: a description that long, or one that ends mid-word, is incomplete, the coins it does not list count as zero, and the numbered hits SHALL be labeled a floor. A repeated list after that cutoff SHALL NOT be added again. A sticker whose number is N SHALL price "Item #N" or "Spot #N" from the camera, and SHALL NOT price an envelope.
+
+#### Scenario: Description cut off
+- **WHEN** the wheel has Item #1 through Item #90 and the description names fewer coins before it is cut off
+- **THEN** each Item #N is worth the named coins divided by all 90, the unlisted coins count as zero, and the value is a floor
+
+#### Scenario: Sticker matches Item #N
+- **WHEN** the camera shows a note numbered 12 and the wheel lists Item #12
+- **THEN** that item prices Item #12
+
+#### Scenario: Sticker matches an envelope
+- **WHEN** the camera shows a note numbered 2 and the wheel lists Envelope #2
+- **THEN** that item stays in the envelope pool
+
 ### Requirement: Camera reads
 A visible item SHALL be tied to a named instant-hit prize only when its label matches that prize. A number on the shelf SHALL NOT assign an item to an envelope, including when that number matches an envelope on the wheel. Unmatched items SHALL become the shared envelope pool. The pool SHALL keep its highest-priced item when the photo shows more items than envelopes left. Items that were not on camera SHALL stay unpriced.
 

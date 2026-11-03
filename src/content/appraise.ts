@@ -6,7 +6,6 @@ import {
   type AppraisalItem,
   type AppraisalRecord,
   type OtherItem,
-  type PriceInfo,
 } from '../shared/appraisal';
 import { calibrated, calibrationFor } from '../shared/calibration';
 import { marketOf, verifiedName } from '../shared/refPrice';
@@ -48,6 +47,13 @@ const setLatest = (record: AppraisalRecord, forAuction: number) => {
 };
 
 export const latestAppraisal = () => (latestAuction === auction ? latest : null);
+
+// The bid guard reads the latest appraisal. The live page registers a refresh so a price that
+// arrives after the card is shown still updates the ceiling.
+let onShown: () => void = () => {};
+export const watchAppraisal = (fn: () => void) => {
+  onShown = fn;
+};
 
 // Auto clears the card for the new item. Manual keeps it on screen until you press Appraise, marked
 // as being about an earlier auction.
@@ -175,11 +181,15 @@ const showCached = async (record: AppraisalRecord) => {
   shownId = record.id;
 };
 
-// Table scans and reference prices fill in after the answer is on screen and don't hold up the
-// next Appraise. They finish in any order, so each merges into the newest copy of the record. A
-// newer appraisal on screen by then keeps its place; the fill is still saved to history.
-type Fill = 'table' | 'refs';
-const FILL_FOOTER: Record<Fill, string> = { table: 'Scanning the rest of the table…', refs: 'Checking card and record prices…' };
+// Sale prices, table scans, and reference prices fill in after the answer is on screen and don't
+// hold up the next Appraise. They finish in any order, so each merges into the newest copy of the
+// record. A newer appraisal on screen by then keeps its place; the fill is still saved to history.
+type Fill = 'market' | 'table' | 'refs';
+const FILL_FOOTER: Record<Fill, string> = {
+  market: 'Checking sale prices…',
+  table: 'Scanning the rest of the table…',
+  refs: 'Checking card and record prices…',
+};
 const MAX_FILLING = 10;
 const filling = new Map<string, { record: AppraisalRecord; pending: Set<Fill>; similar: string[] }>();
 
@@ -205,6 +215,7 @@ const finishFill = async (id: string, fill: Fill, patch: (r: AppraisalRecord) =>
   f.pending.delete(fill);
   if (latest?.id === id) latest = f.record;
   showFilled(id);
+  if (latest?.id === id && latestAuction === auction) onShown();
   await send('APPRAISAL_SAVE', { record: f.record }).catch(() => undefined);
 };
 
@@ -238,6 +249,14 @@ const addRefs = async (id: string, item: Partial<AppraisalItem>, others: OtherIt
 
 const needsRefs = (item: Partial<AppraisalItem>) =>
   Boolean(item.card?.name || (item.is_slabbed && /\bpsa\b/i.test(item.grading_service ?? '')) || item.item_type === 'vinyl_media');
+
+// A PCGS cert in the listing title beats one the model may have misread on camera.
+const applyListingCert = (item: Partial<AppraisalItem>, cert: string | null | undefined) => {
+  if (!cert || !isPcgsPriceable(item.item_type)) return;
+  if (!item.cert_number || item.cert_number.replace(/\D/g, '') === cert) {
+    Object.assign(item, { is_slabbed: true, grading_service: 'PCGS', cert_number: cert });
+  }
+};
 
 // auto: started by a new lot rather than a press, so a hidden or collapsed panel stays that way.
 export const appraiseNow = async ({ auto = false } = {}) => {
@@ -290,85 +309,105 @@ export const appraiseNow = async ({ auto = false } = {}) => {
   const fromListing = listingView(base.lotTitle);
   show(fromListing ?? messageView('pending', 'Appraising…', [], 'Reading the video frame'));
 
+  // Set once a model answer or an error is on screen, so a late listing melt cannot cover it.
+  let modelShown = false;
   try {
     const video = findStreamVideo();
     const pageText = [base.lotTitle, collectPlayerText(video, (el) => overlay.isOurs(el))].filter(Boolean).join('\n');
-    const guard = await getGuardSettings();
+    const guardPromise = getGuardSettings();
+    // Listing melt and the frame check run together. A slow spot fetch must not hold the model.
+    let quickNow: Awaited<ReturnType<typeof send<'QUICK_APPRAISE'>>> | null | undefined;
+    const quickPromise = send('QUICK_APPRAISE', { pageText })
+      .catch(() => null)
+      .then((quick) => {
+        quickNow = quick;
+        return quick;
+      });
 
-    const quick = await send('QUICK_APPRAISE', { pageText }).catch(() => null);
-    let quickRecord: AppraisalRecord | null = null;
-    if (quick?.read) {
-      const record: AppraisalRecord = {
-        ...base,
-        listing: quick.read.source,
-        name: quick.read.name,
-        slabbed: quick.read.grade !== null,
-        grade: quick.read.grade,
-        quantity: quick.read.quantity,
-        confidence: 'quick',
-        model: null,
-        melt: quick.melt,
-        price: null,
-        priceNote: null,
-        valuation: computeValue({ quantity: quick.read.quantity, melt: quick.melt, price: null }, guard.maxBidPercent),
-        notes: null,
-        elapsedMs: performance.now() - started,
-      };
-      if (current()) setLatest(record, forAuction);
-      quickRecord = record;
-      show(view(record, 'quick', await similarTo(record.name)));
-    }
+    const quickRecordFrom = (
+      quick: { read: { source: string; name: string; grade: string | null; quantity: number }; melt: AppraisalRecord['melt'] },
+      maxBidPercent: number,
+    ): AppraisalRecord => ({
+      ...base,
+      listing: quick.read.source,
+      name: quick.read.name,
+      slabbed: quick.read.grade !== null,
+      grade: quick.read.grade,
+      quantity: quick.read.quantity,
+      confidence: 'quick',
+      model: null,
+      melt: quick.melt,
+      price: null,
+      priceNote: null,
+      valuation: computeValue({ quantity: quick.read.quantity, melt: quick.melt, price: null }, maxBidPercent),
+      notes: null,
+      elapsedMs: performance.now() - started,
+    });
+
+    const showQuickMelt = async (
+      quick: { read: { source: string; name: string; grade: string | null; quantity: number } | null; melt: AppraisalRecord['melt'] },
+      status: 'quick' | 'done',
+      caution?: string,
+    ) => {
+      if (!quick.read) return;
+      const guard = await guardPromise;
+      if (!current() || (status === 'quick' && modelShown)) return;
+      const record = quickRecordFrom({ read: quick.read, melt: quick.melt }, guard.maxBidPercent);
+      if (!current() || (status === 'quick' && modelShown)) return;
+      setLatest(record, forAuction);
+      onShown();
+      const similar = await similarTo(record.name);
+      if (!current() || (status === 'quick' && modelShown)) return;
+      const v = view(record, status, similar);
+      if (caution) v.cautions.push(caution);
+      show(v);
+    };
+    void quickPromise.then((quick) => {
+      if (quick?.read) void showQuickMelt(quick, 'quick');
+    });
 
     const context = { pageText, showTitle: base.showTitle ?? '', lotTitle: base.lotTitle, categories, showType, showNotes: session?.show.note?.text ?? null };
     const image = (video ? captureFrame(video) : null) ?? (await captureScreenshot(video));
     if (!image) {
+      modelShown = true;
       const why = video ? "Couldn't read the video frame. Try the Alt+Shift+V shortcut, which allows a screenshot." : 'Open a live show first.';
-      if (quickRecord) {
-        const v = view({ ...quickRecord, elapsedMs: performance.now() - started }, 'done', await similarTo(quickRecord.name));
-        v.cautions.push(why);
-        show(v);
-      } else show(messageView('error', 'No video frame', [why]));
+      if (quickNow?.read) await showQuickMelt(quickNow, 'done', why);
+      else {
+        show(messageView('error', 'No video frame', [why]));
+        void quickPromise.then((quick) => {
+          if (quick?.read) void showQuickMelt(quick, 'done', why);
+        });
+      }
       return;
     }
     const res = await send('APPRAISE', { ...context, image });
-    if (!res.ok && quickRecord) {
-      // The listing-text read still gives a melt floor and max bid, so keep it on screen.
-      const v = view({ ...quickRecord, elapsedMs: performance.now() - started }, 'done', await similarTo(quickRecord.name));
-      v.cautions.push(`Video check failed: ${res.error}`);
-      show(v);
-      return;
-    }
+    modelShown = true;
+    const guard = await guardPromise;
     if (!res.ok) {
+      if (quickNow?.read) {
+        await showQuickMelt(quickNow, 'done', `Video check failed: ${res.error}`);
+        return;
+      }
       const lines = [res.error, res.needsKey ? 'Set up on-device AI, add a cloud AI key, or add an Ollama server in the side panel Settings tab.' : ''].filter(Boolean);
       // A key date read from the lot title is still worth keeping on screen.
       show(fromListing ? { ...fromListing, status: 'done', cautions: [...fromListing.cautions, ...lines], footer: null } : messageView('error', 'Appraisal failed', lines));
+      // The listing melt is still a floor if it arrives after the error.
+      void quickPromise.then((settled) => {
+        if (settled?.read) void showQuickMelt(settled, 'done', `Video check failed: ${res.error}`);
+      });
       return;
     }
 
     const item: Partial<AppraisalItem> = { ...res.item };
-    // A PCGS cert in the listing title beats one the model may have misread on camera.
-    if (isPcgsPriceable(item.item_type) && quick?.cert && (!item.cert_number || item.cert_number.replace(/\D/g, '') === quick.cert)) {
-      Object.assign(item, { is_slabbed: true, grading_service: 'PCGS', cert_number: quick.cert });
-    }
+    applyListingCert(item, quickNow?.cert);
     const rawEstimate = res.item.is_collectible ? estimateOf(res.item) : null;
-    const [price, comps, calibration] = res.item.is_collectible
-      ? await Promise.all([
-          send('PRICE_LOOKUP', { item }).catch(() => null),
-          compsFor([res.item.item_name, base.lotTitle], showType).catch(() => null),
-          rawEstimate ? calibrationNow(showType).catch(() => null) : null,
-        ])
-      : [null, null, null];
-    const priceInfo: PriceInfo | null = toPriceInfo(price);
-    const estimate = rawEstimate ? calibrated(rawEstimate, calibration) : null;
+    const melt = res.melt ?? quickNow?.melt ?? null;
     const name = res.item.is_collectible ? res.item.item_name : `No sellable item identified: ${res.item.item_name}`;
     if (res.item.is_collectible) {
       rememberEstateName(res.item.item_name);
       refreshEstate();
     }
-    const valuation = computeValue(
-      { quantity: res.item.quantity, melt: res.melt ?? quick?.melt ?? null, price: priceInfo, estimate, comps },
-      guard.maxBidPercent,
-    );
+    const valuation = computeValue({ quantity: res.item.quantity, melt, price: null, estimate: rawEstimate, comps: null }, guard.maxBidPercent);
     const record: AppraisalRecord = {
       ...base,
       name,
@@ -381,13 +420,12 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       quantity: res.item.quantity,
       confidence: res.item.confidence,
       model: res.model,
-      melt: res.melt ?? quick?.melt ?? null,
-      price: toPriceInfo(price),
-      priceNote: priceNote(price),
-      estimate,
+      melt,
+      price: null,
+      priceNote: null,
+      estimate: rawEstimate,
       rawEstimate,
-      calibration,
-      comps,
+      comps: null,
       valuation,
       // Only the presented item was looked up. The rest of its lot is already on the model answer, so this adds no wait.
       lot: lotRollup({ name, quantity: res.item.quantity, marketValue: valuation.marketValue, basis: valuation.basis }, res.others),
@@ -396,16 +434,58 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       elapsedMs: performance.now() - started,
     };
     if (current()) setLatest(record, forAuction);
-    const similar = await similarTo(record.name);
     const fills: Fill[] = [];
+    if (res.item.is_collectible) fills.push('market');
     if (scan) fills.push('table');
     if (res.item.is_collectible && needsRefs(item)) fills.push('refs');
     if (current()) shownId = record.id;
-    startFills(record, fills, similar, !auto);
+    startFills(record, fills, [], !auto);
+    void similarTo(record.name).then((similar) => {
+      const pending = filling.get(record.id);
+      if (!pending) return;
+      pending.similar = similar;
+      showFilled(record.id);
+    });
     await send('APPRAISAL_SAVE', { record }).catch(() => undefined);
+
+    if (fills.includes('market')) {
+      void (async () => {
+        const settled = await quickPromise;
+        const priced: Partial<AppraisalItem> = { ...res.item };
+        applyListingCert(priced, settled?.cert);
+        const [price, comps, calibration] = await Promise.all([
+          send('PRICE_LOOKUP', { item: priced }).catch(() => null),
+          compsFor([res.item.item_name, base.lotTitle], showType).catch(() => null),
+          rawEstimate ? calibrationNow(showType).catch(() => null) : null,
+        ]);
+        const priceInfo = toPriceInfo(price);
+        await finishFill(record.id, 'market', (r) => {
+          const estimate = r.rawEstimate ? calibrated(r.rawEstimate, calibration) : null;
+          const nextMelt = r.melt ?? settled?.melt ?? null;
+          const nextValuation = computeValue(
+            { quantity: r.quantity, melt: nextMelt, price: priceInfo, estimate, comps },
+            guard.maxBidPercent,
+          );
+          return {
+            ...r,
+            slabbed: Boolean(priced.is_slabbed),
+            grade: priced.grade ?? priced.grade_estimate ?? r.grade,
+            melt: nextMelt,
+            price: priceInfo,
+            priceNote: priceNote(price),
+            estimate,
+            calibration,
+            comps,
+            valuation: nextValuation,
+            lot: lotRollup({ name: r.name, quantity: r.quantity, marketValue: nextValuation.marketValue, basis: nextValuation.basis }, res.others),
+          };
+        });
+      })();
+    }
     if (fills.includes('table')) void addTableScan(record.id, { ...context, image, mainItem: res.item.item_name });
     if (fills.includes('refs')) void addRefs(record.id, item, res.others, guard.maxBidPercent);
   } catch (err) {
+    modelShown = true;
     const message = String((err as Error)?.message ?? err);
     show(messageView('error', 'Appraisal failed', [/context invalidated/i.test(message) ? STALE_CONTEXT : message]));
   } finally {

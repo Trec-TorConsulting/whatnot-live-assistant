@@ -10,7 +10,7 @@ import type { Purchase } from './purchases';
 import type { SoldItem } from './soldHistory';
 import type { RefLookupResult } from './refPrice';
 import type { TableItem } from './tableScan';
-import type { ShareSession } from './storage';
+import type { ShareSession, CloudProvider } from './storage';
 import type { ActionKind, Halt, JobKind, SellerReport, SellerTask, ShareTarget, UndoOptions } from './types';
 
 export type Result = { ok: true } | { ok: false; error: string };
@@ -119,6 +119,7 @@ export interface MessageMap {
   PRIZE_READ: { req: { breakId: string; image: string; prizes: PrizeItem[]; context: PrizeContext }; res: EnvelopeResult };
   CAPTURE_TAB: { req: Record<string, never>; res: { ok: true; dataUrl: string } | { ok: false; error: string } };
   TEST_GEMINI: { req: Record<string, never>; res: TestResult };
+  TEST_PROVIDER: { req: { provider: CloudProvider }; res: TestResult };
   TEST_OLLAMA: { req: Record<string, never>; res: TestResult };
   ON_DEVICE_STATUS: { req: { recheck?: boolean }; res: { status: OnDeviceStatus } };
   TEST_PCGS: { req: Record<string, never>; res: TestResult };

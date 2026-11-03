@@ -427,18 +427,26 @@
           <button id="ondevice-setup" class="secondary" type="button" hidden>Set up on-device AI</button>
           <button id="ondevice-recheck" class="secondary" type="button" hidden>Check again</button>
         </div>
-        <label>Gemini API key (used when on-device AI is missing or fails)<input id="gemini-key" type="password" autocomplete="off" placeholder="AIza…" /></label>
-        <label>Gemini model (blank = automatic)<input id="gemini-model" type="text" placeholder="gemini-2.5-flash-lite (cheapest)" /></label>
+        <label>Cloud AI
+          <select id="cloud-provider">
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
+        </label>
+        <label>API key<input id="cloud-key" type="password" autocomplete="off" placeholder="AIza…" /></label>
+        <label>Model (blank = automatic)<input id="cloud-model" type="text" autocomplete="off" placeholder="Cheapest vision model" /></label>
         <label>PCGS API token (optional, for real sale prices)<input id="pcgs-token" type="password" autocomplete="off" /></label>
         <label>PSA API token (optional, free: checks graded-card certs)<input id="psa-token" type="password" autocomplete="off" /></label>
         <label>Discogs token (optional, free: record prices)<input id="discogs-token" type="password" autocomplete="off" /></label>
         <label>Ollama server (backup when Gemini is slow or down)<input id="ollama-url" type="url" autocomplete="off" placeholder="http://192.168.4.10:31434" /></label>
         <label>Ollama vision model<input id="ollama-model" type="text" autocomplete="off" placeholder="qwen3-vl:4b" /></label>
-        <label class="check"><input id="ollama-only" type="checkbox" /> Use Ollama only (skip cloud Gemini)</label>
-        <p class="muted small">Checked: appraisals go straight to this server. Cloud Gemini and Chrome's on-device model are not called. Unchecked: Ollama starts only after Gemini has had 5 seconds. The model has to accept images.</p>
+        <label class="check"><input id="ollama-only" type="checkbox" /> Use Ollama only (skip cloud AI)</label>
+        <p class="muted small">Checked: appraisals go straight to this server. Cloud AI and Chrome's on-device model are not called. Unchecked: Ollama starts only after the preferred cloud AI has had 5 seconds. The model has to accept images.</p>
         <div class="row">
           <button id="appraisal-save" class="primary" type="button">Save keys</button>
-          <button id="gemini-test" class="secondary" type="button">Test Gemini</button>
+          <button id="cloud-test" class="secondary" type="button">Test</button>
           <button id="ollama-test" class="secondary" type="button">Test Ollama</button>
           <button id="pcgs-test" class="secondary" type="button">Test PCGS</button>
         </div>

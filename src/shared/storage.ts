@@ -20,10 +20,44 @@ import type { Job, ShareTarget } from './types';
 import type { PrizeValue } from './prizeValue';
 import type { WheelState } from './wheel';
 
+export const CLOUD_PROVIDERS = ['gemini', 'openai', 'anthropic', 'openrouter'] as const;
+export type CloudProvider = (typeof CLOUD_PROVIDERS)[number];
+
+export const CLOUD_PROVIDER_LABEL: Record<CloudProvider, string> = {
+  gemini: 'Gemini',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  openrouter: 'OpenRouter',
+};
+
+const isCloudProvider = (value: unknown): value is CloudProvider =>
+  value === 'gemini' || value === 'openai' || value === 'anthropic' || value === 'openrouter';
+
+const providerKeyField = {
+  gemini: 'geminiApiKey',
+  openai: 'openaiApiKey',
+  anthropic: 'anthropicApiKey',
+  openrouter: 'openrouterApiKey',
+} as const;
+
+const providerModelField = {
+  gemini: 'geminiModel',
+  openai: 'openaiModel',
+  anthropic: 'anthropicModel',
+  openrouter: 'openrouterModel',
+} as const;
+
 export interface AppraisalSettings {
+  preferredProvider: CloudProvider;
   geminiApiKey: string;
   geminiModel: string;
   resolvedModel: string;
+  openaiApiKey: string;
+  openaiModel: string;
+  anthropicApiKey: string;
+  anthropicModel: string;
+  openrouterApiKey: string;
+  openrouterModel: string;
   pcgsToken: string;
   // Free tokens for PSA cert checks and Discogs record prices; blank skips them.
   psaToken: string;
@@ -160,18 +194,52 @@ export const getOverrides = async () => (await getItem('overrides')) ?? EMPTY_OV
 export const getProfile = async (): Promise<Profile> => ({ username: '', ...(await getItem('profile')) });
 export const getOverlayPrefs = async (): Promise<OverlayPrefs> => ({ ...DEFAULT_OVERLAY_PREFS, ...(await getItem('overlay')) });
 
-export const getAppraisalSettings = async (): Promise<AppraisalSettings> => ({
-  geminiApiKey: '',
-  geminiModel: '',
-  resolvedModel: '',
-  pcgsToken: '',
-  psaToken: '',
-  discogsToken: '',
-  ollamaBaseUrl: '',
-  ollamaModel: '',
-  ollamaOnly: false,
-  ...(await getItem('appraisalSettings')),
+export const providerKey = (settings: AppraisalSettings, provider: CloudProvider) => settings[providerKeyField[provider]];
+
+export const providerModel = (settings: AppraisalSettings, provider: CloudProvider) => settings[providerModelField[provider]];
+
+// Preferred provider first, then the dropdown order, skipping blank keys.
+export const providersWithKeys = (settings: AppraisalSettings): CloudProvider[] => {
+  const rest = CLOUD_PROVIDERS.filter((provider) => provider !== settings.preferredProvider);
+  return [settings.preferredProvider, ...rest].filter((provider) => providerKey(settings, provider).trim());
+};
+
+export const withProviderCredentials = (
+  settings: AppraisalSettings,
+  provider: CloudProvider,
+  key: string,
+  model: string,
+): AppraisalSettings => ({
+  ...settings,
+  preferredProvider: provider,
+  [providerKeyField[provider]]: key,
+  [providerModelField[provider]]: model,
 });
+
+export const getAppraisalSettings = async (): Promise<AppraisalSettings> => {
+  const stored = await getItem('appraisalSettings');
+  const settings: AppraisalSettings = {
+    preferredProvider: 'gemini',
+    geminiApiKey: '',
+    geminiModel: '',
+    resolvedModel: '',
+    openaiApiKey: '',
+    openaiModel: '',
+    anthropicApiKey: '',
+    anthropicModel: '',
+    openrouterApiKey: '',
+    openrouterModel: '',
+    pcgsToken: '',
+    psaToken: '',
+    discogsToken: '',
+    ollamaBaseUrl: '',
+    ollamaModel: '',
+    ollamaOnly: false,
+    ...stored,
+  };
+  settings.preferredProvider = isCloudProvider(stored?.preferredProvider) ? stored.preferredProvider : 'gemini';
+  return settings;
+};
 
 // Session storage: per-tab live state and short-lived caches that shouldn't outlive the browser.
 interface SessionSchema {

@@ -338,7 +338,7 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       return;
     }
     if (!res.ok) {
-      const lines = [res.error, res.needsKey ? 'Set up on-device AI, add a Gemini API key, or add an Ollama server in the side panel Settings tab.' : ''].filter(Boolean);
+      const lines = [res.error, res.needsKey ? 'Set up on-device AI, add a cloud AI key, or add an Ollama server in the side panel Settings tab.' : ''].filter(Boolean);
       // A key date read from the lot title is still worth keeping on screen.
       show(fromListing ? { ...fromListing, status: 'done', cautions: [...fromListing.cautions, ...lines], footer: null } : messageView('error', 'Appraisal failed', lines));
       return;

@@ -1,6 +1,6 @@
 # Whatnot Live Assistant
 
-Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.12.3. In Chrome the extension is named **Whatnot Assistant**.
+Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.13.0. In Chrome the extension is named **Whatnot Assistant**.
 
 It runs on a show you already have open. API keys stay in the browser. Nothing in this repository is a key, a login, or a bid.
 

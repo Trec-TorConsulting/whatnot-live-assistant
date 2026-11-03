@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clarifyPrizeName, envelopePrompt, isFresh, parseEnvelopeAnswer, parseManifest, parsePrizeAnswer, prizeMelt, prizePrompt, prizeReadPrompt } from './prizeValue';
+import { clarifyPrizeName, envelopePrompt, isFresh, manifestFrom, parseEnvelopeAnswer, parseManifest, parsePrizeAnswer, prizeMelt, prizePrompt, prizeReadPrompt } from './prizeValue';
 import { DAY } from './time';
 
 describe('prizeMelt', () => {
@@ -91,6 +91,23 @@ describe('envelopes', () => {
       [1, '2024 1oz silver pr70 (temperance) (ngc)'],
       [2, '1/1000 oz gold (patriot) good'],
     ]);
+  });
+
+  it('reads a line list from show notes and does not repeat a complete break description', () => {
+    expect(manifestFrom('', '298x 1964 90% silver dime\n16x old holder chase').items).toEqual([
+      { qty: 298, name: '1964 90% silver dime' },
+      { qty: 16, name: 'old holder chase' },
+    ]);
+    const description = '👉🏼1x 2024 1oz silver pr70 (temperance) (ngc) good';
+    expect(manifestFrom(description, '1x 2024 1oz silver pr70 (temperance) (ngc)\n5x gold bar').items.map((item) => item.name)).toEqual([
+      '2024 1oz silver pr70 (temperance) (ngc)',
+    ]);
+  });
+
+  it('tells the model the show rules', () => {
+    expect(prizePrompt([{ title: 'A', detail: '' }], { showTitle: 'S', wheelTitle: null, categories: [], notes: 'Sudden death. Everything is 90% silver.' })).toContain(
+      'Show notes: Sudden death. Everything is 90% silver.',
+    );
   });
 
   it('matches a labeled instant hit and leaves a shelf number in the pool', () => {

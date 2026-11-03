@@ -13,4 +13,5 @@ export type ContentToHook =
   | { kind: 'ready' }
   | { kind: 'quiet'; ms: number }
   | { kind: 'fetch_break'; id: string; soldAfter: string | null; optionsAfter: string | null }
-  | { kind: 'fetch_shop'; id: string; after: string | null };
+  | { kind: 'fetch_shop'; id: string; after: string | null }
+  | { kind: 'fetch_notes'; id: string };

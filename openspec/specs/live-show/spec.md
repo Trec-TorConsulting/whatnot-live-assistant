@@ -34,11 +34,19 @@ The first livestream update SHALL be a baseline. A giveaway already active in th
 - **THEN** no giveaway-started alert is emitted for that id
 
 ### Requirement: Show type
-The system SHALL label a show as coins, cards, jewelry, collectibles, flea, or general from its title and category tags. Category matches SHALL outweigh title matches, and flea-market wording SHALL outweigh item words. The label SHALL be a hint for sold history, appraisal, and the flea table scan. It SHALL NOT choose a bid.
+The system SHALL label a show as coins, cards, jewelry, collectibles, flea, or general from its title, category tags, and published show notes. Category matches SHALL outweigh title and note matches. Notes SHALL fill in the type when the title and tags match nothing. Flea-market wording, including in the notes, SHALL outweigh item words. The label SHALL be a hint for sold history, appraisal, and the flea table scan. It SHALL NOT choose a bid.
 
 #### Scenario: No match
-- **WHEN** the title and categories match none of the known wording
+- **WHEN** the title and categories match none of the known wording and the notes do not either
 - **THEN** the show type is general
+
+#### Scenario: Notes name the items
+- **WHEN** the title and categories match nothing and the notes name silver coins
+- **THEN** the show type is coins
+
+#### Scenario: Tags already decided
+- **WHEN** the categories are sports cards and the notes mention silver coins
+- **THEN** the show type stays cards
 
 ### Requirement: Share worker silence
 A tab marked as the auto-share worker SHALL NOT forward live signals, refetch break data, or request prize values.
@@ -61,6 +69,17 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 #### Scenario: Fractional ounce
 - **WHEN** a buy-it-now title says 1/1000 oz gold and the price is above that fraction of spot
 - **THEN** it is not listed as under melt
+
+### Requirement: Show notes
+The system SHALL read the seller's published show notes for the open show and SHALL read a later edit. The Live panel SHALL show the note and any coupon code in it. A code SHALL NOT be claimed. The note text SHALL be included in appraisal and wheel prompts. Lines of the form "2x 2024 1oz silver" in the notes SHALL price numbered wheel hits when the break description has no such list or was cut off. An unpublished note SHALL be ignored.
+
+#### Scenario: Coupon in the notes
+- **WHEN** the published note contains "/coupon SAVE10"
+- **THEN** the Live panel shows SAVE10 and the extension does not claim it
+
+#### Scenario: Note removed
+- **WHEN** a later show-notes response has no published note
+- **THEN** the stored note is cleared
 
 ### Requirement: Seller note on the live show
 The Live panel SHALL show the current host's saved profile numbers, the user's private note, and a one-time warning when that seller is blocked. Profile numbers SHALL be fetched at most about once a day and SHALL NOT be the bulk-follow target by themselves.

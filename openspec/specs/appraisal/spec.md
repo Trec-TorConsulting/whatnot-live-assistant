@@ -59,6 +59,13 @@ Automatic appraisal SHALL run for each new auction only when that overlay prefer
 - **WHEN** the show type is not flea and the user has not turned scan on
 - **THEN** no table scan is requested
 
+### Requirement: Show notes as context
+Appraisal and a flea table scan SHALL include the seller's published show notes when the show has them. The notes SHALL be labeled as rules for the show, and the image SHALL still decide what the item is. A coupon code in the notes SHALL NOT be sent to the model.
+
+#### Scenario: Notes and a coupon
+- **WHEN** the show notes name the kind of item and contain a coupon code
+- **THEN** the appraisal request includes the item wording and omits the code
+
 ### Requirement: Calibration
 Show-type calibration SHALL scale only the AI estimate range, and only after enough comparable sales for that show type. It SHALL NOT scale PCGS, card, Whatnot, or melt values.
 

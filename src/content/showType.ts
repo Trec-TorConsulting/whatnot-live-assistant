@@ -11,7 +11,7 @@ let shown = '';
 const current = () => {
   const s = liveSession();
   const liveId = s?.show.liveId ?? null;
-  const detected = detectShowType(s?.show.title ?? document.title.split(' · ')[0], s?.show.categories ?? []);
+  const detected = detectShowType(s?.show.title ?? document.title.split(' · ')[0], s?.show.categories ?? [], s?.show.note?.text ?? '');
   const pick = liveId ? picks[liveId]?.scan : undefined;
   return { liveId, detected, scan: typeof pick === 'boolean' ? pick : scansByDefault(detected) };
 };

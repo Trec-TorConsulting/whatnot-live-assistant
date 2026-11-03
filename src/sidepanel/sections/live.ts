@@ -43,6 +43,9 @@ const el = {
   title: $('#live-title'),
   meta: $('#live-meta'),
   lot: $('#live-lot'),
+  notesCard: $('#notes-card'),
+  notesCoupons: $('#notes-coupons'),
+  notesText: $('#notes-text'),
   shopCard: $('#shop-card'),
   shopSummary: $('#shop-summary'),
   shopHits: $('#shop-hits'),
@@ -194,6 +197,23 @@ const addMonitorFromInput = async () => {
   if (await runCommand(send('MONITOR_ADD', { liveId }), 'Watching in the background.')) el.monitorInput.value = '';
 };
 
+const renderNotes = () => {
+  const note = session?.show.note;
+  const text = note?.text?.trim() ?? '';
+  const coupons = note?.coupons ?? [];
+  el.notesCard.hidden = !text && !coupons.length;
+  if (el.notesCard.hidden) return;
+  el.notesCoupons.replaceChildren(
+    ...coupons.map((code) => {
+      const line = document.createElement('div');
+      line.className = 'good';
+      line.textContent = `Coupon ${code}`;
+      return line;
+    }),
+  );
+  el.notesText.textContent = text;
+};
+
 const renderLot = () => {
   const lot = session?.lot;
   el.lot.hidden = !lot;
@@ -281,6 +301,7 @@ export const renderLive = () => {
       .join(' · ');
   }
   el.appraise.disabled = tabId === null;
+  renderNotes();
   renderLot();
   renderShop();
   renderAppraisal();

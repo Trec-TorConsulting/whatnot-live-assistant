@@ -538,6 +538,16 @@ pre {
   min-width: 0;
 }
 
+.note-text {
+  white-space: pre-wrap;
+  max-height: 9em;
+  overflow: auto;
+}
+
+#notes-coupons:not(:empty) {
+  margin-bottom: 6px;
+}
+
 .toast {
   position: fixed;
   left: 12px;

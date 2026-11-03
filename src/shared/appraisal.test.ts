@@ -41,6 +41,9 @@ describe('appraisal prompt', () => {
     expect(APPRAISAL_INSTRUCTIONS).toMatch(/grade_number: the numeric 1-70 grade printed on the slab/);
     expect(APPRAISAL_INSTRUCTIONS).not.toMatch(/midpoint of grade_estimate/);
     expect(appraisalContext({ pageText: '', showTitle: '' })).not.toContain('Whatnot category');
+    const noted = appraisalContext({ pageText: '', showTitle: 'S', showNotes: 'All raw Morgan dollars. /coupon SAVE10' });
+    expect(noted).toContain('All raw Morgan dollars');
+    expect(noted).not.toContain('SAVE10');
   });
 
   it('appraises only the presented item on every show type', () => {

@@ -1,5 +1,5 @@
 import { isNumberedPrize, MAX_HITS, pendingSpins, prizeKey, scopedKey, spotsLeft, wheelTitleKey, type BreakSnapshot } from '../../shared/breaks';
-import { parseManifest } from '../../shared/prizeValue';
+import { manifestFrom } from '../../shared/prizeValue';
 import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
 import { UNUSUAL, bigHitCheck, chanceWorthWithin, nextSpinTurnsWorth, spinPrices, type StatPrize } from '../../shared/wheelStats';
 import type { LiveSession } from '../../shared/live';
@@ -237,8 +237,9 @@ const renderHistory = (b: BreakSnapshot | null) => {
 
 const renderAuto = (b: BreakSnapshot) => {
   const { price, label } = spinPrice(b);
+  const notes = session?.show.note?.text ?? null;
   const board = boards[b.id] ?? null;
-  const rows = wheelRows(b, values, autoValues, board);
+  const rows = wheelRows(b, values, autoValues, board, notes);
   const state: WheelState = {
     ...emptyWheel(b.id, b.fetchedAt),
     price,
@@ -268,8 +269,8 @@ const renderAuto = (b: BreakSnapshot) => {
         : null;
   const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
   const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
-  const numberedUnread = numberedShare(b, autoValues) ? 0 : unreadRows.length - envelopeUnread;
-  const cutOff = parseManifest(b.description).truncated && rows.some((r) => isNumberedPrize(r.title));
+  const numberedUnread = numberedShare(b, autoValues, notes) ? 0 : unreadRows.length - envelopeUnread;
+  const cutOff = manifestFrom(b.description, notes).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeLine =
     envelopeStatus?.state === 'running' && Date.now() - envelopeStatus.at < 60 * SECOND

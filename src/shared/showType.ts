@@ -27,12 +27,13 @@ export const scansByDefault = (type: ShowType) => type === 'flea';
 export const isShowType = (v: unknown): v is ShowType => typeof v === 'string' && v in SHOW_TYPES;
 
 // Whatnot tags shows with category slugs ("us_coins", "numismatics"); the title fills in when
-// they're missing. Flea-market words describe the whole show, so they outweigh item words: a
-// "garage sale: coins, cards, toys" show is a garage sale.
+// they're missing, and the seller's show notes fill in when both are silent. Flea-market words
+// describe the whole show, so they outweigh item words: a "garage sale: coins, cards, toys" show
+// is a garage sale, including when that wording is only in the notes.
 const PATTERNS: [Exclude<ShowType, 'general'>, RegExp, number][] = [
   [
     'flea',
-    /\b(?:flea|yard ?sales?|garage ?sales?|estate ?sales?|estates?|storage ?units?|storage ?wars|thrift\w*|rummage|swap ?meets?|junk\w*|pickers?|picking|pallets?|liquidations?|antique ?malls?|treasure ?hunt\w*|mixed ?lots?|a little of everything|everything ?sale)\b/g,
+    /\b(?:flea|yard ?sales?|garage ?sales?|estate ?sales?|estates?|storage ?units?|storage ?wars|thrift\w*|rummage|swap ?meets?|junk(?!\s+(?:silver|gold))\w*|pickers?|picking|pallets?|liquidations?|antique ?malls?|treasure ?hunt\w*|mixed ?lots?|a little of everything|everything ?sale)\b/g,
     3,
   ],
   [
@@ -59,14 +60,21 @@ const PATTERNS: [Exclude<ShowType, 'general'>, RegExp, number][] = [
 
 const words = (s: string) => s.toLowerCase().replace(/_/g, ' ');
 
-export const detectShowType = (title: string | null | undefined, categories: string[] = []): ShowType => {
+const hits = (re: RegExp, text: string) => text.match(re)?.length ?? 0;
+
+export const detectShowType = (title: string | null | undefined, categories: string[] = [], notes = ''): ShowType => {
   const tags = words(categories.join(' | '));
   const name = words(title ?? '');
+  const note = words(notes);
+  // A Whatnot tag already named the show. Notes still count for flea wording, which describes
+  // the whole show, and they fill in when no tag matched.
+  const tagged = PATTERNS.some(([, re]) => hits(re, tags) > 0);
   let best: ShowType = 'general';
   let bestScore = 0;
   for (const [type, re, weight] of PATTERNS) {
+    const noteHits = !tagged || type === 'flea' ? hits(re, note) : 0;
     // Whatnot's own tags count double: sellers' titles are often loose.
-    const score = ((tags.match(re)?.length ?? 0) * 2 + (name.match(re)?.length ?? 0)) * weight;
+    const score = (hits(re, tags) * 2 + hits(re, name) + noteHits) * weight;
     if (score > bestScore) {
       best = type;
       bestScore = score;

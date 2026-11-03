@@ -1,6 +1,7 @@
 // The show's shop, read when you open it. Buy-it-now listings and named one-off auctions are kept.
-// Giveaways, sold listings, and template auctions are skipped. A hit is a price under melt or under
-// sales you've watched, a watchlist match, or a known key date. Nothing here buys.
+// Giveaways, sold listings, and template auctions are skipped. A $1 auction price is the pre-bid
+// opener, not a price you pay, so it is not scored. A hit is a price under melt or under sales
+// you've watched, a watchlist match, or a known key date. Nothing here buys.
 import { quickRead, type AuctionSummary } from './appraisal';
 import { isTemplate } from './estate';
 import { matchWatch, type WatchItem } from './buyer';
@@ -147,6 +148,9 @@ export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, 
   const hits: (ShopHit & { edge: number })[] = [];
   for (const item of listings) {
     if (isTemplate(item.title) || item.quantity >= 20) continue;
+    // Whatnot's Pre-bid button is an auction that has not started. $1 is the opener, so it is
+    // under melt for every ounce of silver and is not a price you can pay.
+    if (item.mode === 'auction' && item.price <= 1) continue;
     const comps = summarizeComps(findComps([item.title], sold, now, 8, showType));
     const median = comps && comps.count >= 2 ? comps.median : null;
     const melt = meltOf(item);

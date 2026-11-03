@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Whatnot Assistant",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "Follow and bookmark the current show, auto sharing, collectible appraisal, live show stats, a max-bid guard, purchase tracking, and alerts for Whatnot.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -81,7 +81,7 @@
     },
     {
       "js": [
-        "assets/index.ts-loader-W99volbt.js"
+        "assets/index.ts-loader-B3x38Ja4.js"
       ],
       "matches": [
         "https://*.whatnot.com/*"
@@ -96,8 +96,8 @@
       ],
       "resources": [
         "assets/envelopes-CsC7hHwY.js",
-        "assets/wheel-Csp7YvVC.js",
-        "assets/src-content-index.ts-DxJ82PB7.js"
+        "assets/wheel-CdK3zhRW.js",
+        "assets/src-content-index.ts-CNKamGBc.js"
       ],
       "use_dynamic_url": false
     }

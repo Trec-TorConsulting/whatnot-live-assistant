@@ -111,6 +111,21 @@ describe('scoreShop', () => {
     expect(score([list(title, 1)], { meltOf: (item) => shopMelt(item, spot) })[0]).toMatchObject({ kind: 'steal', price: 1 });
   });
 
+  it('leaves a $1 pre-bid out and still flags a $1 buy-it-now under melt', () => {
+    const title = '2023 1OZ .999 SILVER LIBERTAD';
+    const spot = { gold: null, silver: 49.81 };
+    const hits = score(
+      [
+        { ...list(title, 1), mode: 'auction' },
+        { ...list(`${title} bin`, 1), mode: 'bin' },
+      ],
+      { meltOf: (item) => shopMelt(item, spot) },
+    );
+    expect(hits.map((h) => h.title)).toEqual([`${title} bin`]);
+    expect(hits[0]).toMatchObject({ kind: 'steal', mode: 'bin', price: 1 });
+    expect(hits[0]!.reason).toContain('Under melt');
+  });
+
   it('calls a price under melt a steal and ignores a price at melt', () => {
     const hits = score([list('1 oz silver round', 20), list('1 oz silver round #2', 30)]);
     expect(hits.map((h) => h.title)).toEqual(['1 oz silver round']);

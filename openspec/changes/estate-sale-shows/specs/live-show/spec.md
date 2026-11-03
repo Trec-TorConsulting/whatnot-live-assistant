@@ -3,10 +3,14 @@
 ## MODIFIED Requirements
 
 ### Requirement: Shop buy-it-now scan
-When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key date. A named one-off auction has a title that is not a template and a quantity under 20. Template auctions, giveaways, and other pre-bid listings SHALL be ignored. The scan SHALL NOT buy or place a bid.
+When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key date. A named one-off auction has a title that is not a template and a quantity under 20. A $1 auction price is the pre-bid opener and SHALL NOT be listed. Template auctions, giveaways, and other pre-bid listings SHALL be ignored. The scan SHALL NOT buy or place a bid.
 
 #### Scenario: Pre-bid next to a cheap buy-it-now
 - **WHEN** the shop has a template auction that can be pre-bid and a buy-it-now coin priced under melt
+- **THEN** only the buy-it-now coin is listed
+
+#### Scenario: Dollar pre-bid next to a cheap buy-it-now
+- **WHEN** the shop has a named auction at the $1 pre-bid start and a buy-it-now coin of the same kind priced under melt
 - **THEN** only the buy-it-now coin is listed
 
 #### Scenario: Named auction next to a template

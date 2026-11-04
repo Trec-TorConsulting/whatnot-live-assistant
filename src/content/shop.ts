@@ -5,7 +5,7 @@ import { formatMoney } from '../shared/money';
 import { applyShopWorth, isShopOperation, readShopPage, scoreShop, shopMelt, shopSummary, shopWorthLine, type ShopHit, type ShopListing, type ShopScan } from '../shared/shop';
 import { getBuyerSettings, getGuardSettings, getItem } from '../shared/storage';
 import { send } from '../shared/messages';
-import { isShareWorker, publishShop, postToHook } from './live';
+import { isShareWorker, publishShop, postToHook, rememberRunnerGiveawayStems } from './live';
 import { overlay, type ShopView } from './overlay';
 import { liveIdFromPath } from './selectors';
 import { currentShowType } from './showType';
@@ -53,6 +53,7 @@ const ingest = (operation: string, raw: string) => {
   } catch {
     return;
   }
+  rememberRunnerGiveawayStems(body);
   const id = liveId;
   const read = readShopPage(body);
   if (!read.listings.length && !isShopOperation(operation)) return;

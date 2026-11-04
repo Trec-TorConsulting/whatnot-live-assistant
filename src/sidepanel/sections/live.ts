@@ -14,6 +14,7 @@ import {
 import { checksFor } from '../../shared/counterfeit';
 import { electronicsViewFromSession, isPullBucket } from '../../shared/electronics';
 import { estateViewFromSession, isTemplate } from '../../shared/estate';
+import { runnerViewFromSession } from '../../shared/runner';
 import { flipLine, flipProfit } from '../../shared/costs';
 import { closesLine, profileCaution, profileLine, sellerCloses, type SellerProfile } from '../../shared/sellerInfo';
 import { DEFAULT_GUARD_SETTINGS, guardStatus, sanitizeGuardSettings, type GuardSettings } from '../../shared/guard';
@@ -65,6 +66,10 @@ const el = {
   electronicsRules: $('#electronics-rules'),
   electronicsWants: $('#electronics-wants'),
   electronicsRuns: $('#electronics-runs'),
+  runnerCard: $('#runner-card'),
+  runnerLadder: $('#runner-ladder'),
+  runnerQuote: $('#runner-quote'),
+  runnerShip: $('#runner-ship'),
   shopSummary: $('#shop-summary'),
   shopHits: $('#shop-hits'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
@@ -284,6 +289,7 @@ const renderEstate = () => {
   if (!session) {
     el.estateCard.hidden = true;
     el.electronicsCard.hidden = true;
+    el.runnerCard.hidden = true;
     return;
   }
   const named = appraisal && session.lot && (!appraisal.lotId || appraisal.lotId === session.lot.id) ? appraisal.name : null;
@@ -321,6 +327,14 @@ const renderEstate = () => {
       ...eView.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
     );
     el.electronicsRuns.replaceChildren(...eView.runs.map((r) => li(r)));
+  }
+
+  const rView = runnerViewFromSession(session, { purchases });
+  el.runnerCard.hidden = !rView;
+  if (rView) {
+    el.runnerLadder.textContent = rView.ladder;
+    el.runnerQuote.textContent = rView.quote ?? '';
+    el.runnerShip.textContent = rView.shippingNote ?? '';
   }
 };
 

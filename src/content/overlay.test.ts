@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildElectronicsView } from '../shared/electronics';
 import { buildEstateView } from '../shared/estate';
+import { buildRunnerView } from '../shared/runner';
 import { messageView } from './appraisalView';
 import { overlay, type WheelView } from './overlay';
 
@@ -335,6 +336,40 @@ describe('overlay', () => {
     expect(specText).toContain('250GB');
     expect(specText).toContain('13 inch');
     overlay.setElectronics(null);
+  });
+
+  it('renders the runner ladder, vendor quote, and sum without sending chat or showing R/P actions', () => {
+    const sent: string[] = [];
+    overlay.mount({ chatText: (t) => sent.push(t) });
+    overlay.setRunner(
+      buildRunnerView({
+        notes: [
+          'Put in the chat R for Run and P for Pass.',
+          'Vendor price $1 will run for $6, $2 will run for $7, $3 will run for $8, $4 will run for $9, and anything $5 and up is doubled.',
+          'Large glass items or multiple items add $5 for bubble wrap.',
+        ].join('\n'),
+        quote: { vendor: 8, text: 'vendor wants $8' },
+        shipping: 7.75,
+        hasActiveLot: false,
+      }),
+    );
+    const runnerEl = shadow().querySelector('[data-runner]')!;
+    const text = runnerEl.textContent ?? '';
+    expect(text).toContain('$1 → $6');
+    expect(text).toContain('$2 → $7');
+    expect(text).toContain('$3 → $8');
+    expect(text).toContain('$4 → $9');
+    expect(text).toContain('$5+ doubled');
+    expect(text).toContain('+$5');
+    expect(text).toContain('Vendor $8');
+    expect(text).toContain('start $16');
+    expect(text).toContain('$7.75');
+    expect(text).toContain('$23.75');
+    expect(sent).toEqual([]);
+    expect(runnerEl.querySelectorAll('button')).toHaveLength(0);
+    expect(shadow().querySelector('[data-action="chat"]')).toBeNull();
+    expect(text).not.toMatch(/\bR\s*\/\s*P\b/);
+    overlay.setRunner(null);
   });
 
   it('hides Appraise while a wheel is running', () => {

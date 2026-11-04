@@ -1,6 +1,7 @@
 // A small shadow-DOM panel on live pages: bid guard, wheel status or appraisal card, share status.
 import type { ElectronicsView } from '../shared/electronics';
 import type { EstateView } from '../shared/estate';
+import type { RunnerView } from '../shared/runner';
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from '../shared/storage';
 
 const HOST_ID = 'wn2-overlay';
@@ -111,6 +112,7 @@ interface State {
   shop: ShopView | null;
   estate: EstateView | null;
   electronics: ElectronicsView | null;
+  runner: RunnerView | null;
   tools: ToolsView | null;
   quickBids: QuickBidButton[];
   checksOpen: boolean;
@@ -131,6 +133,7 @@ const state: State = {
   shop: null,
   estate: null,
   electronics: null,
+  runner: null,
   tools: null,
 };
 let host: HTMLElement | null = null;
@@ -446,6 +449,15 @@ const electronicsRow = (v: ElectronicsView | null) => {
     </div>`;
 };
 
+const runnerRow = (v: RunnerView | null) => {
+  if (!v) return '';
+  return `<div class="row" data-runner>
+      <div>${esc(v.ladder)}</div>
+      ${v.quote ? `<div>${esc(v.quote)}</div>` : ''}
+      ${v.shippingNote ? `<div class="notice">${esc(v.shippingNote)}</div>` : ''}
+    </div>`;
+};
+
 const shopRow = (s: ShopView | null) => {
   if (!s) return '';
   const worth = s.hits.some((h) => h.kind === 'steal');
@@ -469,7 +481,8 @@ const render = () => {
         ${g?.pusher ? `<div class="notice" title="From who led and won lots in this show; the feed shows leaders, not every bid">${esc(g.pusher)}</div>` : ''}
         ${sellerRow(state.seller)}
         ${estateRow(state.estate)}
-        ${electronicsRow(state.electronics)}`;
+        ${electronicsRow(state.electronics)}
+        ${runnerRow(state.runner)}`;
   const body = state.collapsed
     ? ''
     : `<div class="body">
@@ -667,6 +680,10 @@ export const overlay = {
   },
   setElectronics(view: ElectronicsView | null) {
     state.electronics = view;
+    if (host) render();
+  },
+  setRunner(view: RunnerView | null) {
+    state.runner = view;
     if (host) render();
   },
   setTools(view: ToolsView | null) {

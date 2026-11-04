@@ -17,9 +17,10 @@ import { findComps, summarizeComps } from '../shared/soldHistory';
 import { collectionLine, compareToCollection, type CollectionSettings } from '../shared/collection';
 import { getCollection, getGuardSettings, getItem } from '../shared/storage';
 import { MINUTE } from '../shared/time';
-import { appraisalView, listingView, messageView } from './appraisalView';
+import { emptyIdleScanGate, isIdleScanResultCurrent, runnerPassOn, stepIdleScanGate } from '../shared/runner';
+import { appraisalView, idleTableView, listingView, messageView } from './appraisalView';
 import { refreshEstate } from './estate';
-import { liveSession, rememberElectronicsName, rememberEstateName } from './live';
+import { isShareWorker, liveSession, rememberElectronicsName, rememberEstateName } from './live';
 import { overlay, type AppraisalView } from './overlay';
 import { collectPlayerText, findStreamVideo } from './selectors';
 import { contextAlive } from './lifecycle';
@@ -57,13 +58,56 @@ export const watchAppraisal = (fn: () => void) => {
 
 // Auto clears the card for the new item. Manual keeps it on screen until you press Appraise, marked
 // as being about an earlier auction.
+let idleGate = emptyIdleScanGate();
+
 export const newAuction = (clearCard: boolean) => {
   auction++;
+  idleGate = stepIdleScanGate(idleGate, {
+    runnerOn: false,
+    scanOn: false,
+    hasActiveLot: true,
+    documentVisible: false,
+    isShareWorker: false,
+  }).state;
   if (clearCard) {
     generation++;
     shownId = null;
     overlay.setAppraisal(null);
   } else overlay.markAppraisalOld('From an earlier auction. Press Appraise for this one.');
+};
+
+export const maybeRunIdleScan = async () => {
+  if (!contextAlive()) return;
+  const session = liveSession();
+  const notes = session?.show.note?.text ?? null;
+  const hasActiveLot = Boolean(session?.lot && session.lot.status !== 'sold');
+  const step = stepIdleScanGate(idleGate, {
+    runnerOn: runnerPassOn(notes),
+    scanOn: currentScan(),
+    hasActiveLot,
+    documentVisible: !document.hidden,
+    isShareWorker: isShareWorker(),
+  });
+  idleGate = step.state;
+  if (!step.shouldScan) return;
+  const video = findStreamVideo();
+  const image = video ? captureFrame(video) : null;
+  if (!image) return;
+  const gapId = step.gapId;
+  const res = await send('TABLE_SCAN', {
+    pageText: '',
+    showTitle: session?.show.title ?? '',
+    lotTitle: null,
+    categories: session?.show.categories ?? [],
+    showType: currentShowType(),
+    showNotes: notes,
+    image,
+    mainItem: '',
+  }).catch(() => null);
+  const nowSession = liveSession();
+  const nowActive = Boolean(nowSession?.lot && nowSession.lot.status !== 'sold');
+  if (!res?.ok || !res.items.length || !isIdleScanResultCurrent(idleGate, gapId, nowActive) || busyGen !== null) return;
+  overlay.setAppraisal(idleTableView(res.items), false);
 };
 
 // 1280px is a full portrait stream (720x1280), so small items like 1 g bars and their stamped

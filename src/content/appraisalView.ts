@@ -6,6 +6,7 @@ import { keyDateCallouts } from '../shared/keyDates';
 import { formatMoney } from '../shared/money';
 import { REF_LABEL } from '../shared/refPrice';
 import { SHOW_TYPES } from '../shared/showType';
+import type { TableItem } from '../shared/tableScan';
 import type { AppraisalView, Fact } from './overlay';
 
 const MAX_REASONS = 3;
@@ -56,6 +57,22 @@ export const messageView = (status: AppraisalView['status'], title: string, caut
   footer: null,
   similar: [],
 });
+
+export const idleTableView = (items: TableItem[]): AppraisalView => {
+  const facts: Fact[] = items.slice(0, MAX_TABLE_FACTS).map((t, i) => {
+    const rest = i === MAX_TABLE_FACTS - 1 && items.length > MAX_TABLE_FACTS ? ` · +${items.length - MAX_TABLE_FACTS} more` : '';
+    return {
+      label: i === 0 ? 'On the stall' : '',
+      value: `${t.source === 'melt' ? `≥ ${formatMoney(t.low)}` : range(t.low, t.high)}${t.quantity > 1 ? ` each ×${t.quantity}` : ''}`,
+      detail: [t.name, t.where, TABLE_SOURCE[t.source]].filter(Boolean).join(' · ') + rest,
+    };
+  });
+  return {
+    ...messageView('done', 'On the stall'),
+    facts,
+    footer: items.length ? 'Idle stall scan while waiting for R/P.' : 'Stall scan found nothing worth calling out.',
+  };
+};
 
 // Before the video is read: a key date in the lot title is a fact worth showing right away, even
 // for coins with no metal value (the quick read only covers precious metal).

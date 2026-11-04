@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWatchLine } from './buyer';
+import { giveawayMatchesStem, giveawayShippingStems } from './runner';
 import type { SoldItem } from './soldHistory';
 import {
   applyShopWorth,
@@ -75,6 +76,32 @@ describe('parseShopListings', () => {
 
   it('treats a response with errors and no listings as a failed read', () => {
     expect(readShopPage({ errors: [{ message: 'nope' }], data: null })).toMatchObject({ listings: [], cursor: null, error: true });
+  });
+
+  it('records a shipping giveaway stem from the shop body while parseShopListings drops giveaways', () => {
+    const shopBody = {
+      data: {
+        liveShop: {
+          edges: [
+            {
+              node: {
+                id: 'givvy-1',
+                title: 'Follower Giveaway #1',
+                description: 'Seller pays shipping for the winner!',
+                transactionType: 'GIVEAWAY',
+                status: 'ACTIVE',
+                price: { amount: 0, currency: 'USD' },
+              },
+            },
+            { node: bin('1 oz silver round', 2500) },
+          ],
+        },
+      },
+    };
+    const stems = giveawayShippingStems(shopBody);
+    expect(stems).toEqual(['follower giveaway']);
+    expect(giveawayMatchesStem('Follower Giveaway #4', stems)).toBe(true);
+    expect(parseShopListings(shopBody).map((l) => l.title)).toEqual(['1 oz silver round']);
   });
 });
 

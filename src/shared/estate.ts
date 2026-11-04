@@ -1,6 +1,7 @@
 // Estate and grab-bag shows sell through a reusable shipping-tier listing. The title is not the item.
 import { electronicsPassOn } from './electronics';
 import { formatMoney } from './money';
+import { runnerItemName, runnerPassOn } from './runner';
 import type { ShowType } from './showType';
 
 const GRAB = /\b(?:item on screen|random\.?\s*pulls?|junk bags?|random beauties)\b/i;
@@ -71,6 +72,7 @@ export const estatePassOn = (p: {
   showType?: ShowType;
 }): boolean => {
   if (electronicsPassOn(p)) return false;
+  if (p.lotTitle && runnerItemName(p.lotTitle, runnerPassOn(p.notes))) return false;
   if (p.lotTitle && isTemplate(p.lotTitle)) return true;
   const blob = [p.showTitle, ...(p.categories ?? []), p.notes].filter(Boolean).join('\n');
   return /\bestate\s+(?:sales?|shows?)\b/i.test(blob);

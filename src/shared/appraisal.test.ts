@@ -124,6 +124,38 @@ describe('appraisal prompt', () => {
     expect(toolsLot).not.toContain('revolt');
     expect(toolsLot).not.toContain('83QT8R');
     expect(toolsLot).toContain('All tools tested.');
+
+    const longRunnerNotes = [
+      `${'Welcome to our weekly outdoor flea walk! '.repeat(20)}\nPut in R for Run and P for Pass.`,
+      'Vendor price $1 will run for $6, $2 for $7, $3 for $8, $4 for $9, anything $5 and up will be doubled.',
+      'No cancellations, no refunds, no returns. Everything sold as-is, untested, not cleaned. /coupon SAVE10',
+    ].join('\n');
+    const runnerCtx = appraisalContext({
+      pageText: 'Cannons As seen',
+      showTitle: 'Deal Hunting at Leesport',
+      lotTitle: 'Cannons As seen',
+      showType: 'flea',
+      showNotes: longRunnerNotes,
+    });
+    expect(runnerCtx).toContain('Current lot title: Cannons');
+    expect(runnerCtx).not.toContain('Cannons As seen');
+    expect(runnerCtx).not.toContain('shipping bucket');
+    expect(runnerCtx).toContain('anything $5 and up will be doubled');
+    expect(runnerCtx).toContain('No cancellations, no refunds, no returns');
+    expect(runnerCtx).not.toContain('SAVE10');
+
+    const longOrdinaryNotes = [
+      'Welcome to our vintage show! '.repeat(30),
+      'No cancellations or returns on any lot.',
+    ].join('\n');
+    const ordinaryCtx = appraisalContext({
+      pageText: 'Vintage lamp',
+      showTitle: 'Vintage Show',
+      lotTitle: 'Vintage lamp',
+      showType: 'flea',
+      showNotes: longOrdinaryNotes,
+    });
+    expect(ordinaryCtx).not.toContain('No cancellations or returns on any lot.');
   });
 });
 

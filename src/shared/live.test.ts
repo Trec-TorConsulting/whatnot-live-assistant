@@ -371,6 +371,77 @@ describe('estate session', () => {
     expect(next?.electronicsPins).toEqual({});
     expect(next?.electronicsWants).toEqual([]);
   });
+
+  it('stores a host vendor price, replaces it with a newer host price, ignores viewer prices, clears on a new lot, and records matching giveaway shipping wins', () => {
+    let s = emptySession(LIVE);
+    s = reduceGraphql(s, 'LiveShopFeed', {
+      data: {
+        liveShop: {
+          edges: [
+            {
+              node: {
+                title: 'Follower Giveaway #1',
+                transactionType: 'GIVEAWAY',
+                description: 'Seller pays shipping on giveaways!',
+              },
+            },
+            {
+              node: {
+                title: 'Sticker Giveaway #1',
+                transactionType: 'GIVEAWAY',
+                description: 'Free sticker only.',
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(s.runnerGiveawayStems).toEqual(['follower giveaway']);
+
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('q1', 'vendor wants $8'))).session;
+    expect(s.runnerQuote?.vendor).toBe(8);
+
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('q2', 'actually vendor wants $2'))).session;
+    expect(s.runnerQuote?.vendor).toBe(2);
+
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', chatMsg('q3', 'viewer1', 'I would pay $50'))).session;
+    expect(s.runnerQuote?.vendor).toBe(2);
+
+    s = apply(s, lot('lot-99', 'Cannons As seen', 700)).session;
+    expect(s.runnerQuote).toBeNull();
+
+    // Unmatched giveaway win does not set runnerGiveawayShippingWon
+    const unmatchedFrame = decodePhoenixFrame(
+      frame(`commerce:${LIVE}`, 'giveaway_won', {
+        product: { id: 'g-sticker', name: 'Sticker Giveaway #2', transactionType: 'GIVEAWAY', soldPrice: { amount: 0 }, purchaserUser: { username: 'alice' } },
+      }),
+    )!;
+    s = reduceSocket(s, unmatchedFrame, 2000, 'alice').session;
+    expect(s.runnerGiveawayShippingWon).toBe(false);
+
+    // Matching giveaway win by another user does not set it
+    const otherUserFrame = decodePhoenixFrame(
+      frame(`commerce:${LIVE}`, 'giveaway_won', {
+        product: { id: 'g-follow-1', name: 'Follower Giveaway #3', transactionType: 'GIVEAWAY', soldPrice: { amount: 0 }, purchaserUser: { username: 'bob' } },
+      }),
+    )!;
+    s = reduceSocket(s, otherUserFrame, 2100, 'alice').session;
+    expect(s.runnerGiveawayShippingWon).toBe(false);
+
+    // Matching giveaway win by signed-in user sets runnerGiveawayShippingWon
+    const matchFrame = decodePhoenixFrame(
+      frame(`commerce:${LIVE}`, 'giveaway_won', {
+        product: { id: 'g-follow-2', name: 'Follower Giveaway #4', transactionType: 'GIVEAWAY', soldPrice: { amount: 0 }, purchaserUser: { username: 'alice' } },
+      }),
+    )!;
+    s = reduceSocket(s, matchFrame, 2200, 'alice').session;
+    expect(s.runnerGiveawayShippingWon).toBe(true);
+
+    const reset = sessionForPath(s, 'other-show');
+    expect(reset?.runnerQuote).toBeNull();
+    expect(reset?.runnerGiveawayStems).toEqual([]);
+    expect(reset?.runnerGiveawayShippingWon).toBe(false);
+  });
 });
 
 describe('isNewLot', () => {

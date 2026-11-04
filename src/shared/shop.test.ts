@@ -297,6 +297,45 @@ describe('scoreShop', () => {
     expect(toolHits.map((h) => h.id)).toEqual(['ratchet-kit']);
     expect(toolHits[0]).toMatchObject({ kind: 'deal', price: 169, mode: 'auction' });
   });
+
+  it('converts a CA$20 row with est. $14.34 at $14.34 and skips a CAD row with no rate', () => {
+    const sales = [sold('1921 Morgan dollar', 30), sold('1921 Morgan dollar', 32, 2)];
+    const parsed = parseShopListings({
+      data: {
+        liveShop: {
+          edges: [
+            {
+              node: {
+                id: 'cad-with-est',
+                title: '1921 Morgan dollar',
+                transactionType: 'BUY_IT_NOW',
+                status: 'ACTIVE',
+                quantity: 1,
+                price: { amount: 2000, currency: 'CAD' },
+                priceText: 'CA$20.00 (est. $14.34)',
+              },
+            },
+            {
+              node: {
+                id: 'cad-no-rate',
+                title: '1921 Morgan dollar',
+                transactionType: 'BUY_IT_NOW',
+                status: 'ACTIVE',
+                quantity: 1,
+                price: { amount: 1500, currency: 'CAD' },
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(parsed[0]).toMatchObject({ id: 'cad-with-est', price: 20, currency: 'CAD', usdPrice: 14.34 });
+    expect(parsed[1]).toMatchObject({ id: 'cad-no-rate', price: 15, currency: 'CAD' });
+
+    const hits = score(parsed, { sold: sales, meltOf: () => null, currencyRate: null });
+    expect(hits.map((h) => h.id)).toEqual(['cad-with-est']);
+    expect(hits[0]).toMatchObject({ id: 'cad-with-est', kind: 'steal', price: 14.34 });
+  });
 });
 
 describe('shop query text', () => {

@@ -1,3 +1,4 @@
+import { toUsd } from './currency';
 import { DAY } from './time';
 
 export interface Purchase {
@@ -8,6 +9,8 @@ export interface Purchase {
   host: string | null;
   title: string;
   price: number;
+  currency?: string | null;
+  priceUsd?: number | null;
   kind: 'auction' | 'buy_now' | 'giveaway' | 'manual' | 'unknown';
   appraisedValue: number | null;
   meltValue: number | null;
@@ -17,6 +20,13 @@ export interface Purchase {
   metal?: string | null;
   oz?: number | null;
 }
+
+export const purchaseUsd = (p: Pick<Purchase, 'price' | 'currency' | 'priceUsd'>, rate?: number | null): number | null => {
+  if (p.priceUsd !== undefined) return p.priceUsd;
+  const code = (p.currency ?? 'USD').toUpperCase();
+  if (code !== 'USD') return rate ? toUsd(p.price, code, rate) : null;
+  return p.price;
+};
 
 export const MAX_PURCHASES = 2000;
 
@@ -47,6 +57,7 @@ export interface SpendSummary {
   thisMonth: number;
   allTime: number;
   count: number;
+  unconvertedCount?: number;
   days: { day: number; total: number }[];
   shows: { liveId: string; title: string; total: number; count: number }[];
   appraisedPaid: number;
@@ -63,21 +74,27 @@ export const summarizeSpend = (list: Purchase[], now: number): SpendSummary => {
   let allTime = 0;
   let appraisedPaid = 0;
   let appraisedValue = 0;
+  let unconvertedCount = 0;
 
   for (const p of list) {
-    allTime += p.price;
-    if (p.at >= today) todayTotal += p.price;
-    if (p.at >= month) monthTotal += p.price;
+    const usd = purchaseUsd(p);
+    if (usd === null) {
+      unconvertedCount += 1;
+      continue;
+    }
+    allTime += usd;
+    if (p.at >= today) todayTotal += usd;
+    if (p.at >= month) monthTotal += usd;
     const bucket = days.find((d) => p.at >= d.day && p.at < d.day + DAY);
-    if (bucket) bucket.total += p.price;
+    if (bucket) bucket.total += usd;
     if (p.liveId) {
       const s = shows.get(p.liveId) ?? { liveId: p.liveId, title: p.showTitle ?? p.host ?? p.liveId, total: 0, count: 0 };
-      s.total += p.price;
+      s.total += usd;
       s.count += 1;
       shows.set(p.liveId, s);
     }
     if (p.appraisedValue !== null) {
-      appraisedPaid += p.price;
+      appraisedPaid += usd;
       appraisedValue += p.appraisedValue;
     }
   }
@@ -87,6 +104,7 @@ export const summarizeSpend = (list: Purchase[], now: number): SpendSummary => {
     thisMonth: round(monthTotal),
     allTime: round(allTime),
     count: list.length,
+    unconvertedCount,
     days: days.map((d) => ({ ...d, total: round(d.total) })),
     shows: Array.from(shows.values())
       .sort((a, b) => b.total - a.total)
@@ -98,7 +116,14 @@ export const summarizeSpend = (list: Purchase[], now: number): SpendSummary => {
 };
 
 export const spentInShow = (list: Purchase[], liveId: string) =>
-  list.filter((p) => p.liveId === liveId).reduce((n, p) => n + p.price, 0);
+  Math.round(
+    list
+      .filter((p) => p.liveId === liveId)
+      .reduce((n, p) => {
+        const usd = purchaseUsd(p);
+        return usd !== null ? n + usd : n;
+      }, 0) * 100,
+  ) / 100;
 
 const STOP = new Set(['the', 'a', 'of', 'and', 'with', 'coin', 'coins', 'lot', 'oz', 'us', 'usa', 'one', 'in', 'for']);
 export const titleTokens = (s: string) =>

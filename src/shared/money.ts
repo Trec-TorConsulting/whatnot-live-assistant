@@ -36,3 +36,11 @@ export const moneyValue = (v: unknown, keyHint = ''): number | null => {
   if (n === null) return null;
   return /cents/i.test(keyHint) ? n / 100 : n;
 };
+
+export const moneyCurrency = (v: unknown): string | null => {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const raw = o.currency ?? o.currencyCode ?? o.code;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  return raw.trim().toUpperCase();
+};

@@ -1,5 +1,7 @@
 // Paid sales seen in shows you watched, kept as real Whatnot comps for appraisals. Buyers aren't
 // stored; giveaways and $0 sales are dropped since they say nothing about value.
+import { isGenericCaseLot, packCount } from './casePack';
+import { toUsd } from './currency';
 import { specsConflict } from './deviceSpecs';
 import { isGenericDeviceClass, isPullBucket, stripMsrp } from './electronics';
 import { isTemplate } from './estate';
@@ -24,7 +26,7 @@ export interface SoldItem {
 
 // Shows that sell one kind of thing. A "Morgan" sold on a card show is a different item than one
 // sold on a coin show; flea-market and general shows sell anything, so they match every type.
-const SPECIALTY = new Set<ShowType>(['coins', 'cards', 'jewelry', 'collectibles', 'electronics', 'tools']);
+const SPECIALTY = new Set<ShowType>(['coins', 'cards', 'jewelry', 'collectibles', 'electronics', 'tools', 'wholesale']);
 const sameKind = (a: ShowType | undefined, b: ShowType | undefined) => !a || !b || a === b || !SPECIALTY.has(a) || !SPECIALTY.has(b);
 
 export const MAX_SOLD = 5000;
@@ -32,15 +34,25 @@ const COMP_MAX_AGE_MS = 180 * DAY;
 // Words sellers sprinkle on every title; matching on them would pair unrelated items.
 const NOISE = new Set(['vintage', 'rare', 'nice', 'new', 'used', 'great', 'old', 'antique', 'nib', 'mint', 'look', 'wow', 'set', 'item']);
 
-export const soldFromSale = (sale: Sale, liveId: string, showTitle: string | null, showType?: ShowType, host?: string | null): SoldItem | null => {
+export const soldFromSale = (
+  sale: Sale,
+  liveId: string,
+  showTitle: string | null,
+  showType?: ShowType,
+  host?: string | null,
+  currencyRate?: number | null,
+): SoldItem | null => {
   if (sale.kind === 'giveaway' || !sale.title || !sale.price || sale.price <= 0) return null;
+  const code = (sale.currency ?? 'USD').toUpperCase();
+  const usdPrice = code === 'USD' ? sale.price : toUsd(sale.price, code, currencyRate ?? null);
+  if (usdPrice === null || usdPrice <= 0) return null;
   return {
     key: sale.key,
     at: sale.at,
     liveId,
     showTitle,
     title: sale.title.slice(0, 160),
-    price: sale.price,
+    price: usdPrice,
     productId: sale.productId,
     showType,
     ...(host ? { host } : {}),
@@ -58,10 +70,13 @@ export const addSold = (list: SoldItem[], items: SoldItem[]): SoldItem[] => {
 const isYear = (t: string) => /^(1[6-9]\d\d|20\d\d)$/.test(t);
 const meaningful = (s: string) => new Set([...titleTokens(s)].filter((t) => !NOISE.has(t)));
 
-// Share of the wanted words found in a sale title. Conflicting years or device specs rule a sale out;
+// Share of the wanted words found in a sale title. Conflicting years, device specs, or pack counts rule a sale out;
 // a title with a missing spec can still match, since sellers often leave it off.
 const matchScore = (wantText: string, want: Set<string>, title: string) => {
   if (specsConflict(wantText, title)) return 0;
+  const wantPack = packCount(wantText).count ?? 1;
+  const havePack = packCount(title).count ?? 1;
+  if (wantPack !== havePack) return 0;
   const have = meaningful(title);
   const wantYears = [...want].filter(isYear);
   const haveYears = [...have].filter(isYear);
@@ -76,7 +91,7 @@ export const findComps = (names: (string | null | undefined)[], list: SoldItem[]
   const wants = names
     .filter((n): n is string => Boolean(n))
     .map((n) => stripMsrp(n))
-    .filter((n) => Boolean(n) && !isTemplate(n) && !isPullBucket(n) && !isGenericDeviceClass(n))
+    .filter((n) => Boolean(n) && !isTemplate(n) && !isPullBucket(n) && !isGenericDeviceClass(n) && !isGenericCaseLot(n))
     .map((text) => ({ text, tokens: meaningful(text) }))
     .filter((w) => w.tokens.size >= 2);
   if (!wants.length) return [];
@@ -86,6 +101,7 @@ export const findComps = (names: (string | null | undefined)[], list: SoldItem[]
         !isTemplate(s.title) &&
         !isPullBucket(s.title) &&
         !isGenericDeviceClass(s.title) &&
+        !isGenericCaseLot(s.title) &&
         now - s.at < COMP_MAX_AGE_MS &&
         sameKind(showType, s.showType),
     )

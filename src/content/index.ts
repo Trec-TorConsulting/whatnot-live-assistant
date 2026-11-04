@@ -9,6 +9,7 @@ import { CHAT_MAX, chatLine, pasteToChat, type ChatResult } from './chat';
 import { diagnose } from './diagnostics';
 import { claimPage, contextAlive, every, onRetire } from './lifecycle';
 import { isShareWorker, markShareWorker, onLive, resetForPath, startLiveBridge } from './live';
+import { startCasePack } from './casePack';
 import { startEstate } from './estate';
 import { ensureShopListener, resetShop, startShopWatch } from './shop';
 import { overlay } from './overlay';
@@ -158,6 +159,7 @@ const main = async () => {
   await startBuyer({ onChange: refreshGuard });
   await startBidGuard();
   startEstate();
+  startCasePack();
   await startWheelStatus();
   await startShowType();
   overlay.setPrefs(await getOverlayPrefs());

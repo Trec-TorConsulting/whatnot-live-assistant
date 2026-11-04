@@ -3,11 +3,13 @@
 // opener, not a price you pay, so it is not scored. A hit is a price under melt or under sales
 // you've watched, a watchlist match, or a known key date. Nothing here buys.
 import { quickRead, type AuctionSummary } from './appraisal';
+import type { PerPieceShopRow } from './casePack';
+import { readAmountText, toUsd } from './currency';
 import { isGenericDeviceClass, isPartsCondition, isPullBucket, isSpecificDevice } from './electronics';
 import { isTemplate } from './estate';
 import { matchWatch, type WatchItem } from './buyer';
 import { keyDateCallouts, keyDatePrice } from './keyDates';
-import { formatMoney } from './money';
+import { formatMoney, moneyCurrency } from './money';
 import { findComps, summarizeComps, type SoldItem } from './soldHistory';
 import type { ShowType } from './showType';
 
@@ -18,6 +20,8 @@ export interface ShopListing {
   price: number;
   quantity: number;
   mode?: 'bin' | 'auction';
+  currency?: string | null;
+  usdPrice?: number | null;
 }
 
 export type ShopHitKind = 'steal' | 'deal' | 'must';
@@ -37,6 +41,7 @@ export interface ShopScan {
   binCount: number;
   auctionCount?: number;
   hits: ShopHit[];
+  perPieceRows?: PerPieceShopRow[];
 }
 
 const obj = (v: unknown): Record<string, unknown> | null =>
@@ -82,6 +87,29 @@ const readListing = (o: Record<string, unknown>): ShopListing | null => {
   const quantity = Math.max(1, Math.min(999, Math.round(rawQty)));
   const id = str(o.id ?? o.uuid ?? o.listingId ?? o.productId) ?? `${title}|${price}`;
   const subtitle = str(o.subtitle ?? o.subTitle ?? o.condition ?? obj(o.product)?.subtitle ?? obj(o.listing)?.subtitle);
+  let currency =
+    moneyCurrency(o.price) ??
+    moneyCurrency(o.buyNowPrice) ??
+    moneyCurrency(o.binPrice) ??
+    str(o.currency ?? o.currencyCode)?.toUpperCase() ??
+    null;
+  let usdPrice: number | null = num(o.usdPrice);
+  const priceTextCandidates = [
+    str(o.priceText),
+    str(o.formattedPrice),
+    str(obj(o.price)?.formatted),
+    str(obj(o.price)?.display),
+    subtitle,
+    str(o.description),
+  ];
+  for (const candidate of priceTextCandidates) {
+    if (!candidate) continue;
+    const parsed = readAmountText(candidate);
+    if (parsed && parsed.code !== 'USD') {
+      currency = currency ?? parsed.code;
+      if (parsed.usd !== null && usdPrice === null) usdPrice = parsed.usd;
+    }
+  }
   return {
     id,
     title: title.slice(0, 160),
@@ -89,6 +117,8 @@ const readListing = (o: Record<string, unknown>): ShopListing | null => {
     price,
     quantity,
     mode: auction ? 'auction' : 'bin',
+    ...(currency && currency !== 'USD' ? { currency } : {}),
+    ...(usdPrice !== null ? { usdPrice } : {}),
   };
 };
 
@@ -152,6 +182,7 @@ export interface ShopScoreInput {
   maxBidPercent: number;
   meltOf: (listing: ShopListing) => number | null;
   now: number;
+  currencyRate?: number | null;
 }
 
 const shopOpenerPrice = (listings: ShopListing[]): number => {
@@ -174,13 +205,19 @@ const shopOpenerPrice = (listings: ShopListing[]): number => {
   return 1;
 };
 
-export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, meltOf, now }: ShopScoreInput): ShopHit[] => {
+export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, meltOf, now, currencyRate }: ShopScoreInput): ShopHit[] => {
   const openerPrice = shopOpenerPrice(listings);
   const hits: (ShopHit & { edge: number })[] = [];
   for (const item of listings) {
     if (isTemplate(item.title) || isPullBucket(item.title) || isGenericDeviceClass(item.title)) continue;
     if (/\b(?:giveaway|givvy|givy)\b/i.test(item.title)) continue;
-    if (item.price >= 10_000 && item.quantity >= 20) continue;
+    const code = (item.currency ?? 'USD').toUpperCase();
+    const effectivePrice =
+      code === 'USD'
+        ? item.price
+        : (item.usdPrice ?? toUsd(item.price, code, currencyRate ?? null));
+    if (effectivePrice === null || !Number.isFinite(effectivePrice) || effectivePrice <= 0) continue;
+    if (effectivePrice >= 10_000 && item.quantity >= 20) continue;
     if (item.quantity >= 20 && !isSpecificDevice(item.title)) continue;
     // Whatnot's Pre-bid button is an auction that has not started. $1 (or the shared low start
     // across at least half the shop's auctions at $5 or less) is the opener, not a price you can pay.
@@ -191,12 +228,12 @@ export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, 
     const melt = meltOf(item);
     const watch = matchWatch(item.title, watchlist);
     const keys = keyDateCallouts({ text: item.title }).filter((c) => c.kind === 'key');
-    const underMelt = !parts && melt !== null && item.price < melt;
-    const stealComps = !parts && median !== null && item.price <= median * STEAL_RATIO;
+    const underMelt = !parts && melt !== null && effectivePrice < melt;
+    const stealComps = !parts && median !== null && effectivePrice <= median * STEAL_RATIO;
     const max = median !== null ? (median * maxBidPercent) / 100 : null;
-    const dealComps = !parts && max !== null && item.price <= max && !stealComps;
-    const watchDeal = !parts && watch?.max != null && item.price <= watch.max;
-    const pricedFair = median !== null && item.price > median;
+    const dealComps = !parts && max !== null && effectivePrice <= max && !stealComps;
+    const watchDeal = !parts && watch?.max != null && effectivePrice <= watch.max;
+    const pricedFair = median !== null && effectivePrice > median;
     const keyMust = keys.length > 0 && !pricedFair;
     let kind: ShopHitKind | null = null;
     if (underMelt || stealComps) kind = 'steal';
@@ -207,19 +244,19 @@ export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, 
     if (underMelt && melt !== null) notes.push(`Under melt (${formatMoney(melt)})`);
     if (stealComps && median !== null && comps) notes.push(`Under ${formatMoney(median)} median of ${comps.count} sales`);
     if (kind === 'deal' && dealComps && max !== null && comps) notes.push(`Under your max ${formatMoney(max)} (${comps.count} sales around ${formatMoney(median)})`);
-    if (watch?.max != null && item.price <= watch.max && kind !== 'steal') notes.push(`At your watchlist max ${formatMoney(watch.max)}`);
+    if (watch?.max != null && effectivePrice <= watch.max && kind !== 'steal') notes.push(`At your watchlist max ${formatMoney(watch.max)}`);
     else if (watch) notes.push('On your watchlist');
     if (keys[0] && (kind === 'must' || kind === 'steal' || kind === 'deal')) notes.push(keys[0].text);
     const reference = Math.max(melt ?? 0, median ?? 0);
     hits.push({
       id: item.id,
       title: item.title,
-      price: item.price,
+      price: effectivePrice,
       quantity: item.quantity,
       kind,
       mode: item.mode ?? 'bin',
       reason: notes.filter((n, i) => notes.indexOf(n) === i).join('. '),
-      edge: reference > 0 ? (reference - item.price) / reference : 0,
+      edge: reference > 0 ? (reference - effectivePrice) / reference : 0,
     });
   }
   return hits

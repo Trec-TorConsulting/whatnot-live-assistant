@@ -12,9 +12,11 @@ import {
   type SellerNote,
 } from '../../shared/buyer';
 import { checksFor } from '../../shared/counterfeit';
+import { casePackViewFromSession } from '../../shared/casePack';
 import { electronicsViewFromSession, isPullBucket } from '../../shared/electronics';
 import { estateViewFromSession, isTemplate } from '../../shared/estate';
 import { runnerViewFromSession } from '../../shared/runner';
+import { detectShowType } from '../../shared/showType';
 import { flipLine, flipProfit } from '../../shared/costs';
 import { closesLine, profileCaution, profileLine, sellerCloses, type SellerProfile } from '../../shared/sellerInfo';
 import { DEFAULT_GUARD_SETTINGS, guardStatus, sanitizeGuardSettings, type GuardSettings } from '../../shared/guard';
@@ -70,6 +72,15 @@ const el = {
   runnerLadder: $('#runner-ladder'),
   runnerQuote: $('#runner-quote'),
   runnerShip: $('#runner-ship'),
+  casePackCard: $('#casepack-card'),
+  casePackLine: $('#casepack-line'),
+  casePackConflict: $('#casepack-conflict'),
+  casePackSizeRun: $('#casepack-sizerun'),
+  casePackClaims: $('#casepack-claims'),
+  casePackBreakeven: $('#casepack-breakeven'),
+  casePackRules: $('#casepack-rules'),
+  casePackCurrency: $('#casepack-currency'),
+  casePackRuns: $('#casepack-runs'),
   shopSummary: $('#shop-summary'),
   shopHits: $('#shop-hits'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
@@ -257,6 +268,8 @@ const renderLot = () => {
     spentByPeriod: spentByPeriod(purchases, Date.now()),
     watchMax: matchWatch(lot.title, buyer.watchlist)?.max ?? null,
     appraisal: appraisal && (!appraisal.lotId || appraisal.lotId === lot.id) ? appraisal.valuation : null,
+    currency: lot.currency ?? session.currency?.code ?? null,
+    rate: session.currency?.rate ?? null,
   });
   el.lot.className = `lot ${status.level}`;
   const left = lot.endsAt ? lot.endsAt - Date.now() : null;
@@ -290,14 +303,17 @@ const renderEstate = () => {
     el.estateCard.hidden = true;
     el.electronicsCard.hidden = true;
     el.runnerCard.hidden = true;
+    el.casePackCard.hidden = true;
     return;
   }
+  const showType = detectShowType(session.show.title, session.show.categories, session.show.note?.text ?? '');
   const named = appraisal && session.lot && (!appraisal.lotId || appraisal.lotId === session.lot.id) ? appraisal.name : null;
   const shippingPaid = purchases.some((p) => p.liveId === session!.show.liveId);
   const view = estateViewFromSession(session, {
     shippingPaid,
     recognizedName: named && !isTemplate(named) ? named : null,
     appraisalNotes: appraisal?.notes,
+    showType,
   });
   el.estateCard.hidden = !view;
   if (view) {
@@ -314,6 +330,7 @@ const renderEstate = () => {
   const eView = electronicsViewFromSession(session, {
     shippingPaid,
     recognizedName: named && !isPullBucket(named) ? named : null,
+    showType,
   });
   el.electronicsCard.hidden = !eView;
   if (eView) {
@@ -336,6 +353,29 @@ const renderEstate = () => {
     el.runnerQuote.textContent = rView.quote ?? '';
     el.runnerShip.textContent = rView.shippingNote ?? '';
   }
+
+  const appraisedPerPiece =
+    appraisal && appraisal.valuation.marketValue !== null && appraisal.quantity > 0
+      ? appraisal.valuation.marketValue / appraisal.quantity
+      : null;
+  const cView = casePackViewFromSession(session, {
+    showType,
+    hasWinThisShow: shippingPaid,
+    taxPercent: buyer.taxPercent,
+    feePercent: buyer.feePercent,
+    appraisedPerPiece,
+  });
+  el.casePackCard.hidden = !cView;
+  if (cView) {
+    el.casePackLine.textContent = cView.line ?? '';
+    el.casePackConflict.textContent = cView.conflict ?? '';
+    el.casePackSizeRun.textContent = cView.sizeRun ?? '';
+    el.casePackClaims.textContent = cView.claims ?? '';
+    el.casePackBreakeven.textContent = cView.breakEven ?? '';
+    el.casePackRules.textContent = cView.shippingRules ?? '';
+    el.casePackCurrency.textContent = cView.currencyNote ?? '';
+    el.casePackRuns.replaceChildren(...cView.runs.map((r) => li(r)));
+  }
 };
 
 const renderShop = () => {
@@ -343,9 +383,12 @@ const renderShop = () => {
   el.shopCard.hidden = !shop;
   if (!shop) return;
   el.shopSummary.textContent = shopSummary(shop);
-  const rows = shop.hits.map((h) =>
-    li(`${shopLabel(h)}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : ''),
-  );
+  const rows = [
+    ...shop.hits.map((h) =>
+      li(`${shopLabel(h)}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : ''),
+    ),
+    ...(shop.perPieceRows ?? []).map((r) => li(`${r.title} — ${r.label}`, 'muted')),
+  ];
   if (!rows.length && shop.status === 'ready' && shop.binCount) {
     rows.push(li(shop.auctionCount ? 'No deals in the shop.' : 'No deals in the buy-it-now shop.', 'muted'));
   }

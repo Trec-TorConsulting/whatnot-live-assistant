@@ -1,6 +1,6 @@
 # Whatnot Live Assistant
 
-Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.14.0. In Chrome the extension is named **Whatnot Assistant**.
+Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.19.0. In Chrome the extension is named **Whatnot Assistant**.
 
 It runs on a show you already have open. API keys stay in the browser. Nothing in this repository is a key, a login, or a bid.
 
@@ -33,7 +33,7 @@ Open the side panel on a live show.
 
 | Area | What it does |
 | --- | --- |
-| Live | Show title, lot, viewers, revenue, orders, giveaways, and top buyers from the show feed. On entry, check the shop for buy-it-now steals, deals, and must-haves. Appraise the item on screen. Track wheel odds. Watch up to four other shows in muted tabs. |
+| Live | Show title, lot, viewers, revenue, orders, giveaways, and top buyers from the show feed. On entry, check the shop for buy-it-now steals, deals, must-haves, and wholesale per-piece prices. On case-pack and wholesale shows, read the piece count, per-piece price, landed per-piece cost, break-even resale, size run, shipping caps, non-bundling tiers, pallet freight by time zone, and host/mod lot pins before an appraisal. Convert non-USD prices (such as CA$) from Whatnot's own `(est. $…)` shipping estimate. Appraise the item on screen. Track wheel odds. Watch up to four other shows in muted tabs. |
 | Share | Copy link, X, or Facebook on a delay, once, for a count, or until you stop. Sharing runs in a muted background tab, so the tab you are watching is left alone. |
 | Bulk | Follow the host and bookmark upcoming shows that are not bookmarked yet. Unfollow or remove those bookmarks. Preview mode clicks nothing. |
 | Buys | Record purchases, cost, and what an appraisal said the item was worth. |
@@ -50,12 +50,13 @@ The extension reads the listing first, then fills in prices it can actually look
 - Chrome's on-device model runs first when Chrome says it is available.
 - Gemini runs when the on-device model is missing or fails. An optional Ollama server can stand in when Gemini is slow, or handle every appraisal if you turn that on.
 - Coin prices come from PCGS when you add a token. Graded-card certs can use a PSA token. Record prices can use a Discogs token. Card prices also use Scryfall, Pokémon TCG, and YGOPRODeck after the item is identified.
+- On case-pack and wholesale shows, the appraisal values one piece and reconciles the stated piece count against the visible count to compute the pack total and per-piece cost. Seller MSRP, retail, comp, and struck-through flash prices are labeled as seller claims rather than market value.
 
 A figure with no sale behind it is labeled as an estimate. The extension does not invent certification numbers.
 
 ### Max-bid guard
 
-Set a ceiling for the current lot, a default, and show, day, week, and month budgets. The guard warns when a bid would pass a ceiling or the appraised market value. It can hold that click until you click again. It never places a bid.
+Set a ceiling for the current lot, a default, and show, day, week, and month budgets. The guard warns when a bid would pass a ceiling or the appraised market value, accounts for show shipping caps, non-bundling tiers, and pallet freight, and converts non-USD bids from Whatnot's own `(est. $…)` rate without contacting any exchange-rate service. It can hold that click until you click again. It never places a bid or buys anything.
 
 ### Shortcuts
 
@@ -67,7 +68,7 @@ Set a ceiling for the current lot, a default, and show, day, week, and month bud
 
 ## What it will not do
 
-- It does not bid, and it does not enter giveaways.
+- It does not bid, buy anything, or enter giveaways.
 - Quick bid types an amount into Whatnot's custom bid box. You press Set Max Bid.
 - Quick chat puts a line in the chat box. You press Enter.
 - Sharing pauses when Whatnot shows a warning.
@@ -85,7 +86,7 @@ Save keys in **Settings**. They stay in Chrome's local extension storage on that
 | Discogs token | Record prices |
 | Ollama URL | A model you run yourself |
 
-The extension talks only to Whatnot, the price and model hosts named above, and an Ollama server if you set one. Optional host permission is requested when that server is not on this machine. Spot metal prices come from gold-api.com.
+The extension talks only to Whatnot, the price and model hosts named above, and an Ollama server if you set one. No new host is contacted for case-pack pricing, shipping rules, or currency conversion. Optional host permission is requested when that server is not on this machine. Spot metal prices come from gold-api.com.
 
 Do not commit tokens, `.env` files, or a Chrome profile. None of those belong in this repository.
 

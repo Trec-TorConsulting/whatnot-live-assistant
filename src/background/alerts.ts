@@ -1,9 +1,10 @@
 import { dueShows, matchKeywords, mergeWatched, type WatchedShow } from '../shared/alerts';
+import { toUsd } from '../shared/currency';
 import { createLock } from '../shared/lock';
 import type { LiveSignal } from '../shared/live';
 import { formatMoney } from '../shared/money';
 import { addPurchase, purchaseKey, type Purchase } from '../shared/purchases';
-import { getAlertSettings, getItem, getTabAppraisal, setItem } from '../shared/storage';
+import { getAlertSettings, getItem, getTabAppraisal, getTabLive, setItem } from '../shared/storage';
 import { DAY, MINUTE } from '../shared/time';
 
 export const ALARM_WATCH = 'wn2-watch';
@@ -49,15 +50,20 @@ export const onNotificationClicked = async (id: string) => {
 };
 
 const recordWin = async (
-  p: { liveId: string; showTitle: string | null; host: string | null },
+  p: { liveId: string; showTitle: string | null; host: string | null; currencyRate?: number | null },
   sale: Extract<LiveSignal, { kind: 'sale' }>['sale'],
   tabId: number | undefined,
   photo: string | undefined,
 ) => {
-  const appraisal = tabId !== undefined ? await getTabAppraisal(tabId) : undefined;
+  const [appraisal, tabLive] =
+    tabId !== undefined ? await Promise.all([getTabAppraisal(tabId), getTabLive(tabId)]) : [undefined, undefined];
   const fresh = appraisal && Date.now() - appraisal.at < APPRAISAL_MATCH_MS && (!appraisal.lotId || !sale.productId || appraisal.lotId === sale.productId);
   const melt = fresh ? appraisal.melt : null;
   const base = { at: sale.at, liveId: p.liveId, title: sale.title ?? 'Unknown item', price: sale.price ?? 0 };
+  const currency = sale.currency ?? tabLive?.currency?.code ?? null;
+  const rate = p.currencyRate !== undefined ? p.currencyRate : (tabLive?.currency?.rate ?? null);
+  const code = (currency ?? 'USD').toUpperCase();
+  const priceUsd = code === 'USD' ? base.price : toUsd(base.price, code, rate);
   const purchase: Purchase = {
     ...base,
     key: purchaseKey({ ...base, productId: sale.productId }),
@@ -68,6 +74,7 @@ const recordWin = async (
     meltValue: fresh ? appraisal.valuation.meltValue : null,
     appraisalId: fresh ? appraisal.id : null,
     source: 'auto',
+    ...(currency ? { currency, priceUsd } : {}),
     ...(melt?.spot ? { metal: melt.metal, oz: Math.round((melt.total / melt.spot) * 10000) / 10000 } : {}),
   };
   return withData(async () => {
@@ -86,7 +93,7 @@ const recordWin = async (
 const MAX_PHOTOS = 150;
 
 export const handleSignal = async (
-  p: { liveId: string; showTitle: string | null; host: string | null; signal: LiveSignal; photo?: string },
+  p: { liveId: string; showTitle: string | null; host: string | null; signal: LiveSignal; photo?: string; currencyRate?: number | null },
   tabId: number | undefined,
 ) => {
   const settings = await getAlertSettings();

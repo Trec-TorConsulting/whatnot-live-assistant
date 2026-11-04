@@ -6,7 +6,7 @@ Appraisal reads the listing and the item on screen, then fills in prices it can 
 ## Requirements
 
 ### Requirement: Model order
-Unless Ollama-only is on, the on-device model SHALL be asked immediately. An answer from it within about two seconds SHALL be final and SHALL NOT call a cloud provider. If it is missing, fails, or is still running after about two seconds, saved cloud providers SHALL run, preferred first, and the first good answer SHALL win. Another saved provider and Ollama, when configured, SHALL start if the preferred provider fails or has not answered within about five seconds. Ollama-only SHALL skip the on-device model and cloud providers, and SHALL fail without calling them when the Ollama URL or model is blank.
+Unless Ollama-only is on, the on-device model SHALL be asked immediately. An answer from it within about two seconds SHALL be final and SHALL NOT call a cloud provider. If it is missing, fails, or is still running after about two seconds, saved cloud providers SHALL run, preferred first, and the first good answer SHALL win. Another saved provider and Ollama, when configured, SHALL start if the preferred provider fails or has not answered within about five seconds. Ollama-only SHALL skip on-device and cloud providers, and SHALL fail without calling them when the Ollama URL or model is blank.
 
 #### Scenario: On-device answers quickly
 - **WHEN** the on-device model answers within about two seconds
@@ -17,12 +17,28 @@ Unless Ollama-only is on, the on-device model SHALL be asked immediately. An ans
 - **THEN** that cloud answer is the one shown
 
 #### Scenario: No model available
-- **WHEN** the on-device model is unavailable, no Gemini key is saved, and Ollama is not configured
-- **THEN** appraisal fails and asks for one of those three
+- **WHEN** the on-device model is unavailable, no cloud provider key is saved, and Ollama is not configured
+- **THEN** appraisal fails and asks for on-device AI, a cloud key, or Ollama
 
 #### Scenario: Ollama only without a server
 - **WHEN** Ollama-only is on and the URL or model is blank
-- **THEN** Gemini is not called
+- **THEN** no cloud provider is called
+
+#### Scenario: Preferred answer is fast
+- **WHEN** the preferred provider answers before about five seconds
+- **THEN** no other cloud provider is called
+
+#### Scenario: Preferred provider is overloaded
+- **WHEN** the preferred provider is overloaded and another provider has a saved key
+- **THEN** that other provider is asked on the same click and a good answer from it wins
+
+#### Scenario: Preferred key is blank
+- **WHEN** the preferred provider has no key and another provider has a key
+- **THEN** the provider with a key is asked
+
+#### Scenario: Every saved provider is overloaded
+- **WHEN** every saved cloud provider is overloaded through the deadline
+- **THEN** appraisal fails and names the providers it tried
 
 ### Requirement: No invented certs
 The extension SHALL NOT create a PCGS number or a certification number when the model omits them. A cert SHALL be used only when it was read. Instructions SHALL tell the model not to invent a PCGS number, not to guess jewelry weight, and not to supply mintage or population.
@@ -91,3 +107,36 @@ Show-type calibration SHALL scale only the AI estimate range, and only after eno
 #### Scenario: Realized price basis
 - **WHEN** the market value comes from a PCGS median or Whatnot comps
 - **THEN** calibration does not change that value
+
+### Requirement: Automatic models
+A blank model SHALL use that provider's cheapest vision model that returns JSON, then one fallback. Gemini's automatic order SHALL be gemini-2.5-flash-lite, gemini-3.1-flash-lite, gemini-3.5-flash-lite, then gemini-2.5-flash. A model the user typed SHALL be tried first. When that model is overloaded, missing, or too slow, the provider's automatic models SHALL be tried. A good answer from the first model before the hedge SHALL NOT call a later model.
+
+#### Scenario: Gemini overload reaches 3.5 Flash-Lite
+- **WHEN** the Gemini model is blank and gemini-2.5-flash-lite and gemini-3.1-flash-lite are overloaded
+- **THEN** gemini-3.5-flash-lite is tried before the deadline
+
+#### Scenario: Typed model answers
+- **WHEN** the user sets a Gemini model and that model answers
+- **THEN** that model is the one that answered
+
+### Requirement: Estate reading hint
+When the estate pass is on, the appraisal request SHALL say that a template title is only a shipping bucket, that the image decides the item, and that the model should read maker marks, pattern names, clothing brand, size, and flaws, and hallmarks. The hint SHALL NOT add a model call. A coupon in the notes SHALL still be omitted.
+
+#### Scenario: Template lot on an estate show
+- **WHEN** the active lot is "E Random 1-2lb #10" and the estate pass is on
+- **THEN** the appraisal request includes that hint and does not call a second model for it
+
+#### Scenario: Coupon stays out
+- **WHEN** the estate notes contain a coupon code
+- **THEN** the appraisal request omits the code
+
+### Requirement: Template title is not the item
+When the active lot is a template, the appraisal request SHALL NOT present that title as the item's name. It MAY include the lot number and the weight tier as listing context. The identified name SHALL come from the image. The request SHALL NOT ask the model to invent a size, weight, or certification number.
+
+#### Scenario: Item on screen
+- **WHEN** the lot title is "*c - 2 oz Item on screen #57"
+- **THEN** the appraisal request does not call the item "Item on screen" and may include lot 57 and the 2 oz tier
+
+#### Scenario: No name in the title
+- **WHEN** the image shows a sticker sheet and the title is "Junk bag #70"
+- **THEN** the identified name comes from the image

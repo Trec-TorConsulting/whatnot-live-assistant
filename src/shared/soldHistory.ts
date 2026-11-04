@@ -1,5 +1,6 @@
 // Paid sales seen in shows you watched, kept as real Whatnot comps for appraisals. Buyers aren't
 // stored; giveaways and $0 sales are dropped since they say nothing about value.
+import { isGenericDeviceClass, isPullBucket, stripMsrp } from './electronics';
 import { isTemplate } from './estate';
 import type { Sale } from './live';
 import { titleTokens } from './purchases';
@@ -22,7 +23,7 @@ export interface SoldItem {
 
 // Shows that sell one kind of thing. A "Morgan" sold on a card show is a different item than one
 // sold on a coin show; flea-market and general shows sell anything, so they match every type.
-const SPECIALTY = new Set<ShowType>(['coins', 'cards', 'jewelry', 'collectibles']);
+const SPECIALTY = new Set<ShowType>(['coins', 'cards', 'jewelry', 'collectibles', 'electronics']);
 const sameKind = (a: ShowType | undefined, b: ShowType | undefined) => !a || !b || a === b || !SPECIALTY.has(a) || !SPECIALTY.has(b);
 
 export const MAX_SOLD = 5000;
@@ -70,11 +71,26 @@ const matchScore = (want: Set<string>, title: string) => {
 
 // Names with fewer than two meaningful words ("Lot #12") would match almost anything.
 export const findComps = (names: (string | null | undefined)[], list: SoldItem[], now: number, limit = 8, showType?: ShowType): SoldItem[] => {
-  const wants = names.filter((n): n is string => Boolean(n)).map(meaningful).filter((w) => w.size >= 2);
+  const wants = names
+    .filter((n): n is string => Boolean(n))
+    .map((n) => stripMsrp(n))
+    .filter((n) => Boolean(n) && !isTemplate(n) && !isPullBucket(n) && !isGenericDeviceClass(n))
+    .map(meaningful)
+    .filter((w) => w.size >= 2);
   if (!wants.length) return [];
   return list
-    .filter((s) => !isTemplate(s.title) && now - s.at < COMP_MAX_AGE_MS && sameKind(showType, s.showType))
-    .map((s) => ({ s, score: Math.max(...wants.map((w) => matchScore(w, s.title))) }))
+    .filter(
+      (s) =>
+        !isTemplate(s.title) &&
+        !isPullBucket(s.title) &&
+        !isGenericDeviceClass(s.title) &&
+        now - s.at < COMP_MAX_AGE_MS &&
+        sameKind(showType, s.showType),
+    )
+    .map((s) => {
+      const cleanTitle = stripMsrp(s.title);
+      return { s, score: Math.max(...wants.map((w) => matchScore(w, cleanTitle))) };
+    })
     .filter((x) => x.score >= 0.6)
     .sort((a, b) => b.score - a.score || b.s.at - a.s.at)
     .slice(0, limit)

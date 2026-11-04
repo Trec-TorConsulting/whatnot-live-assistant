@@ -1,6 +1,7 @@
 // Coin and bullion appraisal logic: series weights, listing-text pre-appraisal, the Gemini answer
 // schema, PCGS sale summaries, and the market value / suggested max bid that comes out of them.
 import { formatMoney } from './money';
+import { ELECTRONICS_HINT, electronicsPassOn, isPullBucket, pullContext, readMsrp } from './electronics';
 import { ESTATE_HINT, estatePassOn, isTemplate, templateContext } from './estate';
 import { noteForPrompt } from './showNotes';
 import { SHOW_TYPES, type ShowType } from './showType';
@@ -425,16 +426,33 @@ export interface AppraisalContext {
 // Per request rather than in the cached instructions, so every show type shares one cache entry.
 export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [], showType = 'general', showNotes }: AppraisalContext) => {
   const notes = noteForPrompt(showNotes);
-  const template = Boolean(lotTitle && isTemplate(lotTitle));
-  const page = template && lotTitle ? pageText.split(lotTitle).join(' ').replace(/[ \t]{2,}/g, ' ').trim() : pageText;
-  const pass = estatePassOn({ lotTitle, showTitle, categories, notes: showNotes });
+  const electronics = electronicsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
+  const pull = Boolean(lotTitle && isPullBucket(lotTitle));
+  const template = !electronics && Boolean(lotTitle && isTemplate(lotTitle));
+  const msrp = !pull && lotTitle ? readMsrp(lotTitle) : null;
+  let page = pageText;
+  if ((pull || template) && lotTitle) {
+    page = page.split(lotTitle).join(' ').replace(/[ \t]{2,}/g, ' ').trim();
+  } else if (msrp && lotTitle) {
+    page = page.split(lotTitle).join(msrp.cleanTitle).replace(/[ \t]{2,}/g, ' ').trim();
+  }
+  const pass = !electronics && estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
+  const lotLine = pull
+    ? (pullContext(lotTitle) ?? '')
+    : template
+      ? (templateContext(lotTitle) ?? '')
+      : msrp
+        ? (pullContext(lotTitle) ?? '')
+        : lotTitle
+          ? `Current lot title: ${lotTitle}`
+          : '';
   return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',
-    template ? (templateContext(lotTitle) ?? '') : lotTitle ? `Current lot title: ${lotTitle}` : '',
+    lotLine,
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
     SHOW_TYPES[showType].hint ?? '',
-    pass ? ESTATE_HINT : '',
+    electronics ? ELECTRONICS_HINT : pass ? ESTATE_HINT : '',
     'Listing text (title, bid, grade, or cert):',
     page || '(none)',
   ]

@@ -203,6 +203,29 @@ describe('scoreShop', () => {
     const sales = [sold('1909-S VDB Lincoln cent', 30), sold('1909-S VDB Lincoln cent', 32, 2)];
     expect(score([list('1909-S VDB Lincoln cent', 80)], { sold: sales, meltOf: () => null })).toEqual([]);
   });
+
+  it('scores a stocked specific model, skips generic classes and joke giveaway rows, and does not score parts as a steal', () => {
+    const eSold = [
+      { ...sold('XGIMI MoGo Pro+ 1080P Portable Projector', 250), showType: 'electronics' as const },
+      { ...sold('XGIMI MoGo Pro+ Portable Projector', 270, 2), showType: 'electronics' as const },
+    ];
+    const items: ShopListing[] = [
+      { id: 'xgimi', title: 'XGIMI MoGo Pro+ 1080P Portable Projector', price: 110, quantity: 26, mode: 'bin', subtitle: 'Open-box' },
+      { id: 'ipad', title: 'APPLE IPAD', price: 25, quantity: 250, mode: 'auction' },
+      { id: 'givvy', title: 'GIVEAWAY NOW! DO NOT BUY', price: 999999, quantity: 999, mode: 'bin' },
+      {
+        id: 'parts',
+        title: 'XGIMI MoGo Pro+ 1080P Portable Projector',
+        subtitle: 'For parts, not fully functioning, or untested',
+        price: 40,
+        quantity: 1,
+        mode: 'bin',
+      },
+    ];
+    const hits = score(items, { sold: eSold, showType: 'electronics', meltOf: () => null });
+    expect(hits.map((h) => h.id)).toEqual(['xgimi']);
+    expect(hits[0]).toMatchObject({ kind: 'steal', price: 110, quantity: 26 });
+  });
 });
 
 describe('shop query text', () => {

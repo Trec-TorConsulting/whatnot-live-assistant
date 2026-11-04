@@ -3,6 +3,14 @@
 // auction socket carries lots, bids and sales for logged-in viewers. Commerce payloads are read
 // tolerantly by field name, and unrecognized events are sampled for diagnostics.
 import { BREAK_OPERATION, mergeWheel, parseBreakResponse, type BreakSnapshot } from './breaks';
+import {
+  electronicsPinFrom,
+  electronicsWantFrom,
+  isGenericDeviceClass,
+  isPullBucket,
+  lotNumber as electronicsLotNumber,
+  type PullRun,
+} from './electronics';
 import { isTemplate, lotNumber, pinFrom, type EstateRun, wantFrom } from './estate';
 import { moneyValue } from './money';
 import { readShowNote, type ShowNote } from './showNotes';
@@ -29,6 +37,7 @@ export type LotStatus = 'active' | 'sold' | 'unsold' | 'unknown';
 export interface Lot {
   id: string | null;
   title: string | null;
+  subtitle?: string | null;
   currentBid: number | null;
   bidCount: number | null;
   leader: string | null;
@@ -92,6 +101,14 @@ export interface LiveSession {
   estateRuns: EstateRun[];
   /** Rules already shown, so the next lot does not add them again. */
   estateRulesKey: string | null;
+  /** Pull lot number to a host, mod, or appraisal name. Dies with the session. */
+  electronicsPins: Record<string, string>;
+  /** Electronics buyer requests, capped at 20. */
+  electronicsWants: string[];
+  /** Recent pull-bucket hammers, newest first, capped at 12. */
+  electronicsRuns: PullRun[];
+  /** Electronics rules already shown, so the next lot does not add them again. */
+  electronicsRulesKey: string | null;
   /** Shipping quote read off the page, so the side panel can show it. */
   shippingQuote: number | null;
   updatedAt: number;
@@ -136,6 +153,10 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
   estateWants: [],
   estateRuns: [],
   estateRulesKey: null,
+  electronicsPins: {},
+  electronicsWants: [],
+  electronicsRuns: [],
+  electronicsRulesKey: null,
   shippingQuote: null,
   updatedAt: now,
 });
@@ -268,6 +289,7 @@ const BID_KEYS = ['currentBid', 'current_bid', 'highBid', 'high_bid', 'currentPr
 const SOLD_PRICE_KEYS = ['soldPrice', 'sold_price', 'salePrice', 'finalPrice', 'final_price', 'winningBid', 'winning_bid', 'price'];
 const ID_KEYS = ['liveProductId', 'productId', 'product_id', 'listingId', 'listing_id', 'id'];
 const TITLE_KEYS = ['title', 'productName', 'listingTitle', 'name'];
+const SUBTITLE_KEYS = ['subtitle', 'subTitle', 'condition', 'productCondition'];
 const END_KEYS = ['endTime', 'end_time', 'endsAt', 'ends_at', 'auctionEndTime', 'endAt'];
 const REMAINING_KEYS = ['timeRemaining', 'secondsRemaining', 'secondsLeft', 'time_left'];
 const BUYER_KEYS = ['purchaserUser', 'buyer', 'winner', 'winningUser', 'purchaser', 'buyerUser', 'winnerUser'];
@@ -321,9 +343,11 @@ export const readCommerce = (event: string, payload: unknown, now: number): Comm
 
     if (!read.lot && (bidHit || top.bid !== null || endHit || remainingHit || titleHit)) {
       const nextBidHit = first(o, NEXT_BID_KEYS);
+      const subtitleHit = first(o, SUBTITLE_KEYS);
       read.lot = {
         id,
         title,
+        subtitle: subtitleHit ? str(subtitleHit[1]) : null,
         currentBid: bid,
         nextBid: nextBidHit ? moneyValue(nextBidHit[1], nextBidHit[0]) : null,
         breakId,
@@ -362,11 +386,18 @@ const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[]) => {
   if (session.sales.some((s) => s.key === sale.key)) return session;
   signals.push({ kind: 'sale', sale });
   let estateRuns = session.estateRuns;
-  if (sale.kind !== 'giveaway' && sale.price != null && sale.price > 0 && sale.title && isTemplate(sale.title)) {
-    const number = lotNumber(sale.title);
-    estateRuns = [{ number, name: number != null ? (session.estatePins[String(number)] ?? null) : null, price: sale.price }, ...estateRuns].slice(0, 12);
+  let electronicsRuns = session.electronicsRuns;
+  if (sale.kind !== 'giveaway' && sale.price != null && sale.price > 0 && sale.title) {
+    if (isPullBucket(sale.title)) {
+      const number = electronicsLotNumber(sale.title);
+      electronicsRuns = [{ number, name: number != null ? (session.electronicsPins[String(number)] ?? null) : null, price: sale.price }, ...electronicsRuns].slice(0, 12);
+    }
+    if (isTemplate(sale.title)) {
+      const number = lotNumber(sale.title);
+      estateRuns = [{ number, name: number != null ? (session.estatePins[String(number)] ?? null) : null, price: sale.price }, ...estateRuns].slice(0, 12);
+    }
   }
-  return { ...session, sales: pushCapped(session.sales, sale, MAX_SALES), estateRuns };
+  return { ...session, sales: pushCapped(session.sales, sale, MAX_SALES), estateRuns, electronicsRuns };
 };
 
 const noteChat = (session: LiveSession, m: ChatMessage): LiveSession => {
@@ -375,9 +406,14 @@ const noteChat = (session: LiveSession, m: ChatMessage): LiveSession => {
   const number = title && isTemplate(title) ? lotNumber(title) : null;
   const pin = number != null ? pinFrom(m.text, m.isHost, m.isModerator) : null;
   if (pin && number != null) next = { ...next, estatePins: { ...next.estatePins, [String(number)]: pin } };
+  const eNumber = title && isPullBucket(title) ? electronicsLotNumber(title) : null;
+  const ePin = eNumber != null ? electronicsPinFrom(m.text, m.isHost, m.isModerator) : null;
+  if (ePin && eNumber != null) next = { ...next, electronicsPins: { ...next.electronicsPins, [String(eNumber)]: ePin } };
   if (!m.isHost && !m.isModerator) {
     const want = wantFrom(m.text);
     if (want) next = { ...next, estateWants: [...next.estateWants, want].slice(-20) };
+    const eWant = electronicsWantFrom(m.text);
+    if (eWant) next = { ...next, electronicsWants: [...next.electronicsWants, eWant].slice(-20) };
   }
   return next;
 };
@@ -392,6 +428,17 @@ export const noteEstateName = (session: LiveSession, name: string | null | undef
 
 export const noteEstateRules = (session: LiveSession, key: string | null): LiveSession =>
   key && key !== session.estateRulesKey ? { ...session, estateRulesKey: key } : session;
+
+export const noteElectronicsName = (session: LiveSession, name: string | null | undefined): LiveSession => {
+  const title = session.lot?.title;
+  const number = title && isPullBucket(title) ? electronicsLotNumber(title) : null;
+  const clean = name?.trim();
+  if (number == null || !clean || isPullBucket(clean) || isGenericDeviceClass(clean)) return session;
+  return { ...session, electronicsPins: { ...session.electronicsPins, [String(number)]: clean } };
+};
+
+export const noteElectronicsRules = (session: LiveSession, key: string | null): LiveSession =>
+  key && key !== session.electronicsRulesKey ? { ...session, electronicsRulesKey: key } : session;
 
 export const noteShippingQuote = (session: LiveSession, shipping: number | null): LiveSession =>
   shipping != null && shipping !== session.shippingQuote ? { ...session, shippingQuote: shipping } : session;
@@ -490,6 +537,7 @@ const applyLot = (session: LiveSession, patch: Partial<Lot>, signals: LiveSignal
     : {
         id: null,
         title: null,
+        subtitle: null,
         currentBid: null,
         bidCount: null,
         leader: null,
@@ -502,6 +550,7 @@ const applyLot = (session: LiveSession, patch: Partial<Lot>, signals: LiveSignal
   const lot: Lot = {
     id: patch.id ?? base.id,
     title: patch.title ?? base.title,
+    subtitle: patch.subtitle ?? base.subtitle ?? null,
     currentBid: patch.currentBid ?? base.currentBid,
     bidCount: patch.bidCount ?? base.bidCount,
     leader: patch.leader ?? base.leader,

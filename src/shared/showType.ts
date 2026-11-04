@@ -2,7 +2,7 @@
 // kind of show. It never widens what gets appraised: that is always the item being presented. The
 // rest of a flea-market table is a separate Scan pass, on by default only for flea shows.
 
-export type ShowType = 'coins' | 'cards' | 'jewelry' | 'collectibles' | 'flea' | 'general';
+export type ShowType = 'coins' | 'cards' | 'jewelry' | 'collectibles' | 'flea' | 'electronics' | 'general';
 
 export const SHOW_TYPES: Record<ShowType, { label: string; hint: string | null }> = {
   coins: {
@@ -19,6 +19,7 @@ export const SHOW_TYPES: Record<ShowType, { label: string; hint: string | null }
   },
   collectibles: { label: 'Collectibles', hint: null },
   flea: { label: 'Flea market / yard sale', hint: null },
+  electronics: { label: 'Electronics', hint: null },
   general: { label: 'General', hint: null },
 };
 
@@ -56,7 +57,14 @@ const PATTERNS: [Exclude<ShowType, 'general'>, RegExp, number][] = [
     /\b(?:comics?|funko|toys?|action ?figures?|figures?|lego|hot ?wheels|video ?games?|retro ?gaming|nintendo|sega|playstation|vinyl|records?|stamps?|philatel\w*|sneakers?|memorabilia|autographs?|collectibles?)\b/g,
     1,
   ],
+  [
+    'electronics',
+    /\b(?:everyday ?electronics?|electronics?|laptops?|phones?|smartphones?|tablets?|computers?|macbooks?|ipads?|iphones?|airpods?|monitors?|drones?)\b/g,
+    1,
+  ],
 ];
+
+const ELECTRONICS_TAG_RE = /\b(?:everyday ?electronics?|electronics?|laptops?|phones?|smartphones?|tablets?|computers?)\b/;
 
 const words = (s: string) => s.toLowerCase().replace(/_/g, ' ');
 
@@ -66,12 +74,14 @@ export const detectShowType = (title: string | null | undefined, categories: str
   const tags = words(categories.join(' | '));
   const name = words(title ?? '');
   const note = words(notes);
+  const electronicsTagged = ELECTRONICS_TAG_RE.test(tags);
   // A Whatnot tag already named the show. Notes still count for flea wording, which describes
   // the whole show, and they fill in when no tag matched.
   const tagged = PATTERNS.some(([, re]) => hits(re, tags) > 0);
   let best: ShowType = 'general';
   let bestScore = 0;
   for (const [type, re, weight] of PATTERNS) {
+    if (type === 'flea' && electronicsTagged) continue;
     const noteHits = !tagged || type === 'flea' ? hits(re, note) : 0;
     // Whatnot's own tags count double: sellers' titles are often loose.
     const score = (hits(re, tags) * 2 + hits(re, name) + noteHits) * weight;

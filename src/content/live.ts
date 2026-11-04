@@ -3,6 +3,8 @@ import { CONTENT_SOURCE, HOOK_SOURCE, type ContentToHook, type HookToContent } f
 import {
   decodePhoenixFrame,
   emptySession,
+  noteElectronicsName,
+  noteElectronicsRules,
   noteEstateName,
   noteEstateRules,
   noteShippingQuote,
@@ -85,6 +87,22 @@ export const rememberRules = (key: string | null) => {
 export const rememberEstateName = (name: string | null | undefined) => {
   if (!session || shareWorker) return;
   const next = noteEstateName(session, name);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
+export const rememberElectronicsRules = (key: string | null) => {
+  if (!session || shareWorker) return;
+  const next = noteElectronicsRules(session, key);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
+export const rememberElectronicsName = (name: string | null | undefined) => {
+  if (!session || shareWorker) return;
+  const next = noteElectronicsName(session, name);
   if (next === session) return;
   session = next;
   schedulePush();

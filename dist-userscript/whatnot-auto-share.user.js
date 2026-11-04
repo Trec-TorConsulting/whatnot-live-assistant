@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Whatnot Auto Share (iPhone)
 // @namespace    whatnot-assistant
-// @version      0.19.0
+// @version      0.19.1
 // @description  Keeps Whatnot's Share menu open on a live show and taps Copy link on your delay.
 // @match        https://www.whatnot.com/*
 // @match        https://whatnot.com/*
@@ -636,7 +636,7 @@
 			wakeLock = await navigator.wakeLock?.request("screen").catch(() => null) ?? null;
 		};
 		const panel = createPanel({
-			version: "0.19.0",
+			version: "0.19.1",
 			settings: () => settings,
 			onToggle: () => toggle(),
 			onSettings: (patch) => {

@@ -284,6 +284,39 @@ describe('Ollama backup', () => {
     expect(!res.ok && res.error).toMatch(/Ollama backup: model 'qwen2\.5vl' not found/);
     expect(calls.some((url) => url.includes('/api/chat'))).toBe(true);
   });
+
+  it('sends the compact schema, aborts a previous in-flight Ollama call on a new click, and reports a timeout at 60s', async () => {
+    useSettings({ ...ollamaSettings, ollamaOnly: true });
+    let firstAborted = false;
+    let callCount = 0;
+    scriptBoth(ok, (init) => {
+      callCount += 1;
+      if (callCount === 1) {
+        init?.signal?.addEventListener('abort', () => {
+          firstAborted = true;
+        });
+        return hang(init);
+      }
+      return hang(init);
+    });
+    const first = appraise({ image: 'BBBB', pageText: '', showTitle: 'Show' });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const second = appraise({ image: 'CCCC', pageText: '', showTitle: 'Show' });
+    await expect(first).resolves.toMatchObject({ ok: false, error: 'Ollama stopped' });
+    expect(firstAborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(61_000);
+    await expect(second).resolves.toMatchObject({ ok: false, error: 'Ollama took too long' });
+
+    const chat = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/api/chat'));
+    const body = JSON.parse(String((chat?.[1] as RequestInit).body)) as {
+      options: { num_predict: number };
+      format: { additionalProperties?: boolean; properties: Record<string, unknown> };
+    };
+    expect(body.options.num_predict).toBe(256);
+    expect(body.format.additionalProperties).toBe(false);
+    expect(body.format.properties).not.toHaveProperty('notes');
+    expect(body.format.properties).not.toHaveProperty('special');
+  });
 });
 
 describe('appraise with the on-device model', () => {

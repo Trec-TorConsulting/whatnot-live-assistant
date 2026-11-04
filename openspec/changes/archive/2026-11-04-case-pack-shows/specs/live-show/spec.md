@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Show type
-The system SHALL label a show as coins, cards, jewelry, collectibles, flea, wholesale, or general from its title, category tags, and published show notes. Category matches SHALL outweigh title and note matches. Notes SHALL fill in the type when the title and tags match nothing. Flea-market wording, including in the notes, SHALL outweigh item words. A Case Packs & Bundles category SHALL make the show wholesale, whatever its other tags say. Reseller Bundles and Wholesale/Lots tags SHALL outweigh flea and item words in the tags. Inside "case pack", the word "pack" SHALL NOT count as a card word. The label SHALL be a hint for sold history, appraisal, and the flea table scan. It SHALL NOT choose a bid.
+The system SHALL label a show as coins, cards, jewelry, collectibles, flea, electronics, tools, wholesale, or general from its title, category tags, and published show notes. Category matches SHALL outweigh title and note matches. Notes SHALL fill in the type when the title and tags match nothing. Flea-market wording, including in the notes, SHALL outweigh item words. Electronics and tools tags SHALL outrank flea. A Case Packs & Bundles category SHALL make the show wholesale, whatever its other tags say. Reseller Bundles and Wholesale/Lots tags SHALL outweigh flea and item words in the tags. Inside "case pack", the word "pack" SHALL NOT count as a card word. The label SHALL be a hint for sold history, appraisal, and the flea table scan. It SHALL NOT choose a bid.
 
 #### Scenario: No match
 - **WHEN** the title and categories match none of the known wording and the notes do not either
@@ -16,6 +16,26 @@ The system SHALL label a show as coins, cards, jewelry, collectibles, flea, whol
 #### Scenario: Tags already decided
 - **WHEN** the categories are sports cards and the notes mention silver coins
 - **THEN** the show type stays cards
+
+#### Scenario: Electronics category with a pallet tag
+- **WHEN** the categories include Everyday Electronics and Pallet Pulls
+- **THEN** the show type is electronics
+
+#### Scenario: Laptops category
+- **WHEN** the categories include Laptops, Phones & Tablets
+- **THEN** the show type is electronics
+
+#### Scenario: Garage sale stays flea
+- **WHEN** the title is a garage sale that mentions a laptop and the categories are not an electronics category
+- **THEN** the show type is flea
+
+#### Scenario: Tools with a pallet tag
+- **WHEN** the categories are Tools, Pallet Pulls, and Ryobi Tools
+- **THEN** the show type is tools
+
+#### Scenario: Milwaukee tag
+- **WHEN** the categories are Tools, DIY, and Milwaukee Tools
+- **THEN** the show type is tools
 
 #### Scenario: Case pack is not a card pack
 - **WHEN** the categories are Case Packs & Bundles, Reseller Bundles, Wholesale/Lots, and Squishy Toys, and the title is "12/$12 SB Casepack:Novelties,Keychains,Jewelry,Accessories"

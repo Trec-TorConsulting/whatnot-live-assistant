@@ -13,6 +13,10 @@ A prize whose title or detail is an envelope, lope, bag, mystery, or a similar h
 - **WHEN** a prize title is "Family Pack #7" and its description is "Envelope"
 - **THEN** that prize is an envelope and is not priced from the title
 
+#### Scenario: Numbered placeholder
+- **WHEN** a prize title is "Item #12" or "Spot #3"
+- **THEN** that prize is not priced from the title
+
 ### Requirement: Camera reads
 A visible item SHALL be tied to a named instant-hit prize only when its label matches that prize. A number on the shelf SHALL NOT assign an item to an envelope, including when that number matches an envelope on the wheel. Unmatched items SHALL become the shared envelope pool. The pool SHALL keep its highest-priced item when the photo shows more items than envelopes left. Items that were not on camera SHALL stay unpriced.
 

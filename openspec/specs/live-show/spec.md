@@ -56,14 +56,22 @@ A tab marked as the auto-share worker SHALL NOT forward live signals, refetch br
 - **THEN** no win signal is sent from that tab
 
 ### Requirement: Shop buy-it-now scan
-When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items priced under melt, under watched sales, on the watchlist, or a known key date. Auction, giveaway, and pre-bid listings SHALL be ignored. The scan SHALL NOT buy anything.
+When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key date. A named one-off auction has a title that is not a template and a quantity under 20. A $1 auction price is the pre-bid opener and SHALL NOT be listed. Template auctions, giveaways, and other pre-bid listings SHALL be ignored. The scan SHALL NOT buy or place a bid.
 
 #### Scenario: Pre-bid next to a cheap buy-it-now
-- **WHEN** the shop has a pre-bid auction and a buy-it-now coin priced under melt
+- **WHEN** the shop has a template auction that can be pre-bid and a buy-it-now coin priced under melt
 - **THEN** only the buy-it-now coin is listed
 
+#### Scenario: Dollar pre-bid next to a cheap buy-it-now
+- **WHEN** the shop has a named auction at the $1 pre-bid start and a buy-it-now coin of the same kind priced under melt
+- **THEN** only the buy-it-now coin is listed
+
+#### Scenario: Named auction next to a template
+- **WHEN** the shop has a template auction, a named one-off auction priced under its watched sales, and a buy-it-now coin priced under melt
+- **THEN** the named auction and the buy-it-now coin are listed and the template auction is not
+
 #### Scenario: Nothing under market
-- **WHEN** every buy-it-now price is at or above melt and the watched sale median, and none match the watchlist or a key date
+- **WHEN** every buy-it-now price and every named one-off auction price is at or above melt and the watched sale median, and none match the watchlist or a key date
 - **THEN** the shop note says there are no deals
 
 #### Scenario: Fractional ounce
@@ -73,6 +81,10 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 #### Scenario: Copper Libertad
 - **WHEN** a buy-it-now title names a Libertad as copper, cobre, bronze, or brass
 - **THEN** it is not listed as under silver melt
+
+#### Scenario: Category placeholder
+- **WHEN** the shop has a template titled "*z - Category - Coins" at $1 with a quantity in the hundreds
+- **THEN** that listing is not listed as a deal
 
 ### Requirement: Show notes
 The system SHALL read the seller's published show notes for the open show and SHALL read a later edit. The Live panel SHALL show the note and any coupon code in it. A code SHALL NOT be claimed. The note text SHALL be included in appraisal and wheel prompts. Lines of the form "2x 2024 1oz silver" in the notes SHALL price numbered wheel hits when the break description has no such list or was cut off. An unpublished note SHALL be ignored.

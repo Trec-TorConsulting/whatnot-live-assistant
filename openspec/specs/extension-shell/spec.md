@@ -13,7 +13,7 @@ The extension SHALL be Manifest V3, named Whatnot Assistant, with its version ta
 - **THEN** the side panel opens
 
 ### Requirement: Permissions and hosts
-The extension SHALL request storage, alarms, side panel, notifications, active tab, and scripting. It SHALL be allowed to call Whatnot, Gemini, gold-api.com, PCGS, Scryfall, Pokémon TCG, YGOPRODeck, PSA, and Discogs, plus loopback HTTP for a local Ollama server. Any other Ollama origin SHALL require an optional host permission granted from Settings.
+The extension SHALL request storage, alarms, side panel, notifications, active tab, and scripting. It SHALL be allowed to call Whatnot, Gemini, gold-api.com, PCGS, Scryfall, Pokémon TCG, YGOPRODeck, PSA, and Discogs, plus loopback HTTP for a local Ollama server. Saving a key for OpenAI, Anthropic, or OpenRouter SHALL require an optional host permission for that provider. Any other Ollama origin SHALL require an optional host permission granted from Settings.
 
 #### Scenario: Loopback Ollama
 - **WHEN** the user saves an Ollama URL on localhost or 127.0.0.1
@@ -21,6 +21,10 @@ The extension SHALL request storage, alarms, side panel, notifications, active t
 
 #### Scenario: Remote Ollama denied
 - **WHEN** the user saves a non-loopback Ollama URL and denies the permission prompt
+- **THEN** the settings are not saved
+
+#### Scenario: Backup provider denied
+- **WHEN** the user saves an OpenAI, Anthropic, or OpenRouter key and denies the permission prompt
 - **THEN** the settings are not saved
 
 ### Requirement: Shortcuts
@@ -45,7 +49,7 @@ The on-page assistant SHALL mount only while the top page path is a live show, a
 - **THEN** the on-page assistant is removed within about one second
 
 ### Requirement: Local credentials
-Gemini, PCGS, PSA, Discogs, and Ollama settings, plus the Whatnot username, SHALL be stored in chrome.storage.local under the wn2_ prefix. The extension SHALL NOT write those values to chrome.storage.sync.
+Gemini, OpenAI, Anthropic, OpenRouter, PCGS, PSA, Discogs, and Ollama settings, plus the Whatnot username, SHALL be stored in chrome.storage.local under the wn2_ prefix. The extension SHALL NOT write those values to chrome.storage.sync.
 
 #### Scenario: Fresh profile
 - **WHEN** no appraisal settings are stored

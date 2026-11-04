@@ -9,6 +9,10 @@ Saved sales SHALL drop giveaways and non-positive prices and SHALL NOT store buy
 - **WHEN** only one watched Whatnot sale matches the item
 - **THEN** it does not set the appraisal market value
 
+#### Scenario: Reused junk bag
+- **WHEN** several watched sales are titled "Junk bag" at different prices and the current lot is also a junk bag
+- **THEN** those sales do not set or move the market value
+
 #### Scenario: Reused size pull
 - **WHEN** several watched sales are titled "SMALL Random Item" at different prices and the current lot is also a small random item
 - **THEN** those sales do not set or move the market value

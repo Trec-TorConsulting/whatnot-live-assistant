@@ -45,4 +45,20 @@ describe('show notes', () => {
   it('finds a promo code written out, once', () => {
     expect(couponsIn('promo code: SAVE10 and coupon code SAVE10')).toEqual(['SAVE10']);
   });
+
+  it('drops password and passcode lines, referral codes, and URLs from noteForPrompt while keeping the rest', () => {
+    const raw = [
+      'No cancellations. All devices tested.',
+      'Some devices may have a password — just use “revolt”',
+      'Use my code 83QT8R at https://whatnot.com/invite/voltage',
+      '1-Year Warranty included.',
+    ].join('\n');
+    const prompt = noteForPrompt(raw);
+    expect(prompt).not.toContain('revolt');
+    expect(prompt).not.toContain('password');
+    expect(prompt).not.toContain('83QT8R');
+    expect(prompt).not.toContain('https://whatnot.com/invite/voltage');
+    expect(prompt).toContain('No cancellations. All devices tested.');
+    expect(prompt).toContain('1-Year Warranty included.');
+  });
 });

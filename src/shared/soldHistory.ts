@@ -1,5 +1,6 @@
 // Paid sales seen in shows you watched, kept as real Whatnot comps for appraisals. Buyers aren't
 // stored; giveaways and $0 sales are dropped since they say nothing about value.
+import { specsConflict } from './deviceSpecs';
 import { isGenericDeviceClass, isPullBucket, stripMsrp } from './electronics';
 import { isTemplate } from './estate';
 import type { Sale } from './live';
@@ -23,7 +24,7 @@ export interface SoldItem {
 
 // Shows that sell one kind of thing. A "Morgan" sold on a card show is a different item than one
 // sold on a coin show; flea-market and general shows sell anything, so they match every type.
-const SPECIALTY = new Set<ShowType>(['coins', 'cards', 'jewelry', 'collectibles', 'electronics']);
+const SPECIALTY = new Set<ShowType>(['coins', 'cards', 'jewelry', 'collectibles', 'electronics', 'tools']);
 const sameKind = (a: ShowType | undefined, b: ShowType | undefined) => !a || !b || a === b || !SPECIALTY.has(a) || !SPECIALTY.has(b);
 
 export const MAX_SOLD = 5000;
@@ -57,9 +58,10 @@ export const addSold = (list: SoldItem[], items: SoldItem[]): SoldItem[] => {
 const isYear = (t: string) => /^(1[6-9]\d\d|20\d\d)$/.test(t);
 const meaningful = (s: string) => new Set([...titleTokens(s)].filter((t) => !NOISE.has(t)));
 
-// Share of the wanted words found in a sale title. Conflicting years rule a sale out; a title with
-// no year can still match, since sellers often leave it off.
-const matchScore = (want: Set<string>, title: string) => {
+// Share of the wanted words found in a sale title. Conflicting years or device specs rule a sale out;
+// a title with a missing spec can still match, since sellers often leave it off.
+const matchScore = (wantText: string, want: Set<string>, title: string) => {
+  if (specsConflict(wantText, title)) return 0;
   const have = meaningful(title);
   const wantYears = [...want].filter(isYear);
   const haveYears = [...have].filter(isYear);
@@ -75,8 +77,8 @@ export const findComps = (names: (string | null | undefined)[], list: SoldItem[]
     .filter((n): n is string => Boolean(n))
     .map((n) => stripMsrp(n))
     .filter((n) => Boolean(n) && !isTemplate(n) && !isPullBucket(n) && !isGenericDeviceClass(n))
-    .map(meaningful)
-    .filter((w) => w.size >= 2);
+    .map((text) => ({ text, tokens: meaningful(text) }))
+    .filter((w) => w.tokens.size >= 2);
   if (!wants.length) return [];
   return list
     .filter(
@@ -89,7 +91,7 @@ export const findComps = (names: (string | null | undefined)[], list: SoldItem[]
     )
     .map((s) => {
       const cleanTitle = stripMsrp(s.title);
-      return { s, score: Math.max(...wants.map((w) => matchScore(w, cleanTitle))) };
+      return { s, score: Math.max(...wants.map((w) => matchScore(w.text, w.tokens, cleanTitle))) };
     })
     .filter((x) => x.score >= 0.6)
     .sort((a, b) => b.score - a.score || b.s.at - a.s.at)

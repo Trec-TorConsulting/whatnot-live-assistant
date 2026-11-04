@@ -66,11 +66,23 @@ export const readShowNote = (body: unknown, liveId: string): ShowNote | null | u
   return { text: full.slice(0, NOTE_CAP), coupons: couponsIn(full), updatedAt };
 };
 
-// Coupon codes are not part of the game. The image and the prize list still win over this text.
+// Coupon codes, device passwords, referral codes, and links are not sent to the model.
+// The image and the prize list still win over this text.
+const PASSWORD_LINE_RE = /\b(?:passwords?|passcodes?)\b/i;
+const REFERRAL_RE = /\b(?:use\s+(?:my\s+)?code|referral\s+code|invite\s+code)\s*[:\-]?\s*[A-Za-z0-9_-]{3,20}\b/gi;
+const URL_RE = /\bhttps?:\/\/\S+|\b(?:www\.|whatnot\.com\/invite\/)\S+/gi;
+
 export const noteForPrompt = (text: string | null | undefined) =>
   (text ?? '')
+    .split(/\r?\n/)
+    .filter((line) => !PASSWORD_LINE_RE.test(line))
+    .join('\n')
     .replace(couponPattern(), ' ')
+    .replace(REFERRAL_RE, ' ')
+    .replace(URL_RE, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, NOTE_PROMPT_CAP);

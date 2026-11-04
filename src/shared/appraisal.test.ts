@@ -109,6 +109,21 @@ describe('appraisal prompt', () => {
     });
     expect(msrpLot).toContain('claim, not a sold price');
     expect(msrpLot).toContain('Viaim Black RecDot AI Voice Recorder Earbuds');
+
+    const toolsLot = appraisalContext({
+      pageText: 'Milwaukee M12 Fuel Hammer Drill #3',
+      showTitle: 'Milwaukee Tool Blowout',
+      lotTitle: 'Milwaukee M12 Fuel Hammer Drill #3',
+      categories: ['Tools', 'Milwaukee Tools'],
+      showType: 'tools',
+      showNotes: 'Some devices may have a password — just use “revolt”\nUse my code 83QT8R https://whatnot.com/invite/tools\nAll tools tested.',
+    });
+    expect(toolsLot).toContain('Tools show:');
+    expect(toolsLot).not.toContain('Electronics show:');
+    expect(toolsLot).not.toContain('maker marks');
+    expect(toolsLot).not.toContain('revolt');
+    expect(toolsLot).not.toContain('83QT8R');
+    expect(toolsLot).toContain('All tools tested.');
   });
 });
 

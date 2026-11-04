@@ -34,7 +34,7 @@ The first livestream update SHALL be a baseline. A giveaway already active in th
 - **THEN** no giveaway-started alert is emitted for that id
 
 ### Requirement: Show type
-The system SHALL label a show as coins, cards, jewelry, collectibles, flea, or general from its title, category tags, and published show notes. Category matches SHALL outweigh title and note matches. Notes SHALL fill in the type when the title and tags match nothing. Flea-market wording, including in the notes, SHALL outweigh item words. The label SHALL be a hint for sold history, appraisal, and the flea table scan. It SHALL NOT choose a bid.
+The system SHALL label a show as coins, cards, jewelry, collectibles, flea, electronics, or general from its title, category tags, and published show notes. Category matches SHALL outweigh title and note matches. Notes SHALL fill in the type when the title and tags match nothing. Flea-market wording, including in the notes, SHALL outweigh item words. Electronics tags SHALL outrank flea. The label SHALL be a hint for sold history, appraisal, and the flea table scan. It SHALL NOT choose a bid.
 
 #### Scenario: No match
 - **WHEN** the title and categories match none of the known wording and the notes do not either
@@ -48,6 +48,18 @@ The system SHALL label a show as coins, cards, jewelry, collectibles, flea, or g
 - **WHEN** the categories are sports cards and the notes mention silver coins
 - **THEN** the show type stays cards
 
+#### Scenario: Electronics category with a pallet tag
+- **WHEN** the categories include Everyday Electronics and Pallet Pulls
+- **THEN** the show type is electronics
+
+#### Scenario: Laptops category
+- **WHEN** the categories include Laptops, Phones & Tablets
+- **THEN** the show type is electronics
+
+#### Scenario: Garage sale stays flea
+- **WHEN** the title is a garage sale that mentions a laptop and the categories are not an electronics category
+- **THEN** the show type is flea
+
 ### Requirement: Share worker silence
 A tab marked as the auto-share worker SHALL NOT forward live signals, refetch break data, or request prize values.
 
@@ -56,7 +68,7 @@ A tab marked as the auto-share worker SHALL NOT forward live signals, refetch br
 - **THEN** no win signal is sent from that tab
 
 ### Requirement: Shop buy-it-now scan
-When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key date. A named one-off auction has a title that is not a template and a quantity under 20. A $1 auction price is the pre-bid opener and SHALL NOT be listed. Template auctions, giveaways, and other pre-bid listings SHALL be ignored. The scan SHALL NOT buy or place a bid.
+When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key date. A specific title still qualifies at quantity 20 or more. A $1 price, a template, a pull bucket, a generic device class, a giveaway, a joke-priced giveaway row, and a parts or untested row SHALL NOT be listed as a steal or a deal. The scan SHALL NOT buy or place a bid.
 
 #### Scenario: Pre-bid next to a cheap buy-it-now
 - **WHEN** the shop has a template auction that can be pre-bid and a buy-it-now coin priced under melt
@@ -85,6 +97,22 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 #### Scenario: Category placeholder
 - **WHEN** the shop has a template titled "*z - Category - Coins" at $1 with a quantity in the hundreds
 - **THEN** that listing is not listed as a deal
+
+#### Scenario: Stocked model
+- **WHEN** the shop has an "XGIMI MoGo Pro+" buy-it-now with quantity 26 priced under its watched sales
+- **THEN** that listing is listed
+
+#### Scenario: Generic device class
+- **WHEN** the shop has an "APPLE IPAD" auction with quantity in the hundreds
+- **THEN** that listing is not listed as a deal
+
+#### Scenario: Joke giveaway price
+- **WHEN** the shop has a buy-it-now titled as a giveaway and priced at $999,999
+- **THEN** that listing is not listed as a deal
+
+#### Scenario: Parts row
+- **WHEN** a shop row is subtitled for parts or untested and working sales of a similar device are higher
+- **THEN** it is not listed as a steal or a deal
 
 ### Requirement: Show notes
 The system SHALL read the seller's published show notes for the open show and SHALL read a later edit. The Live panel SHALL show the note and any coupon code in it. A code SHALL NOT be claimed. The note text SHALL be included in appraisal and wheel prompts. Lines of the form "2x 2024 1oz silver" in the notes SHALL price numbered wheel hits when the break description has no such list or was cut off. An unpublished note SHALL be ignored.

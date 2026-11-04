@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildElectronicsView,
   conditionLabel,
   electronicsPassOn,
   electronicsPinFrom,
@@ -10,9 +11,11 @@ import {
   isGenericDeviceClass,
   isPullBucket,
   lotNumber,
+  missingAccessory,
   pullTier,
   readCondition,
   readMsrp,
+  retailMismatch,
   shippingCallout,
   stripMsrp,
   suddenDeathOn,
@@ -115,5 +118,67 @@ describe('condition, MSRP, rules, sudden death, shipping, pins, and wants', () =
     expect(electronicsPinFrom('Apple AirPods Pro 1', false, true)).toBe('Apple AirPods Pro 1');
     expect(electronicsPinFrom('👑👑🔥', false, true)).toBeNull();
     expect(electronicsPinFrom('Apple AirPods Pro 1', false, false)).toBeNull();
+  });
+
+  it('reads extended MSRP forms, leading (X), notes retail mismatch, missing accessories, promises, and extra pull shapes', () => {
+    const mil = readMsrp('(RETAIL26.00)Milwaukee Red Helix Drill Bit Set');
+    expect(mil).toEqual({
+      msrp: 26,
+      cleanTitle: 'Milwaukee Red Helix Drill Bit Set',
+    });
+    expect(stripMsrp('(X) (Retail 39.99) Anker Charger')).toBe('Anker Charger');
+
+    const boku = readMsrp('BOKU $1999 DRONE WITH SCREEN');
+    expect(boku).toEqual({
+      msrp: 1999,
+      cleanTitle: 'BOKU DRONE WITH SCREEN',
+    });
+
+    const val58 = readMsrp('$58 value! Bluetooth Speaker');
+    expect(val58?.msrp).toBe(58);
+
+    const mismatch = retailMismatch(
+      'Audien ION Rechargeable Hearing Aids MSRP $489',
+      'ION — Retail $295\nAtom Pro 2 — Retail $289',
+    );
+    expect(mismatch).toEqual({
+      titleRetail: 489,
+      notesRetail: 295,
+      model: 'ION',
+    });
+    const view = buildElectronicsView({
+      lotTitle: 'Audien ION Rechargeable Hearing Aids MSRP $489',
+      notes: 'ION — Retail $295',
+      categories: ['Everyday Electronics'],
+    });
+    expect(view?.msrp).toContain('$489');
+    expect(view?.msrp).toContain('$295');
+    expect(view?.msrp).toMatch(/stated retail/i);
+
+    expect(missingAccessory('*NO CHARGER* Samsung 500C Chromebook 4GB 16GB Black')).toBe('No charger');
+
+    const rules = electronicsRules(
+      'No cancellations. 1-Year Warranty. 45-Day Return Policy. Everything is fully unlocked and chargers are listed separately in Buy It Now.',
+      'iPhone 13 128GB',
+    );
+    expect(rules).toContain('No returns or cancellations');
+    expect(rules).toContain('1-year warranty');
+    expect(rules).toContain('45-day return window');
+    expect(rules).toContain('Fully unlocked');
+    expect(rules).toContain('Charger sold separately');
+
+    expect(isPullBucket('10-14')).toBe(true);
+    expect(pullTier('10-14')).toBe('10-14');
+    expect(
+      electronicsPassOn({
+        lotTitle: '10-14',
+        categories: ['Pallet Pulls'],
+      }),
+    ).toBe(true);
+
+    expect(isPullBucket('HD TOOLS & MORE (NO CANCELLATIONS) #44', 'HD TOOLS & MORE')).toBe(true);
+    expect(isPullBucket('Batteries (2)')).toBe(true);
+    expect(isPullBucket('Chargers')).toBe(true);
+    expect(isPullBucket('Small item')).toBe(true);
   });
 });

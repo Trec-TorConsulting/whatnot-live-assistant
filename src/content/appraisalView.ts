@@ -172,7 +172,14 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
     .filter((c): c is string => Boolean(c))
     .slice(0, MAX_CAUTIONS);
 
-  const checks = checksFor({ itemType: record.itemType, slabbed: Boolean(record.slabbed), metal: record.melt?.metal ?? null, keyDate: isKnown });
+  const checks = checksFor({
+    itemType: record.itemType,
+    slabbed: Boolean(record.slabbed),
+    metal: record.melt?.metal ?? null,
+    keyDate: isKnown,
+    showType: record.showType,
+    title: [record.name, record.lotTitle].filter(Boolean).join(' '),
+  });
   const kind = record.itemType && record.itemType !== 'other' ? ITEM_TYPE_LABEL[record.itemType] : null;
   const confidence = record.confidence === 'quick' ? 'from the listing' : record.confidence !== 'high' ? `${record.confidence} confidence` : null;
   const more = lot && lot.pieces.length > 1 ? `+${lot.pieces.length - 1} more` : null;

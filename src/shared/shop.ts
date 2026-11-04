@@ -154,16 +154,37 @@ export interface ShopScoreInput {
   now: number;
 }
 
+const shopOpenerPrice = (listings: ShopListing[]): number => {
+  const auctions = listings.filter((l) => l.mode === 'auction');
+  if (!auctions.length) return 1;
+  const counts = new Map<number, number>();
+  let modePrice = 1;
+  let modeCount = 0;
+  for (const a of auctions) {
+    const c = (counts.get(a.price) ?? 0) + 1;
+    counts.set(a.price, c);
+    if (c > modeCount) {
+      modeCount = c;
+      modePrice = a.price;
+    }
+  }
+  if (modePrice <= 5 && modeCount * 2 >= auctions.length) {
+    return Math.max(1, modePrice);
+  }
+  return 1;
+};
+
 export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, meltOf, now }: ShopScoreInput): ShopHit[] => {
+  const openerPrice = shopOpenerPrice(listings);
   const hits: (ShopHit & { edge: number })[] = [];
   for (const item of listings) {
     if (isTemplate(item.title) || isPullBucket(item.title) || isGenericDeviceClass(item.title)) continue;
     if (/\b(?:giveaway|givvy|givy)\b/i.test(item.title)) continue;
     if (item.price >= 10_000 && item.quantity >= 20) continue;
     if (item.quantity >= 20 && !isSpecificDevice(item.title)) continue;
-    // Whatnot's Pre-bid button is an auction that has not started. $1 is the opener, so it is
-    // under melt for every ounce of silver and is not a price you can pay.
-    if (item.mode === 'auction' && item.price <= 1) continue;
+    // Whatnot's Pre-bid button is an auction that has not started. $1 (or the shared low start
+    // across at least half the shop's auctions at $5 or less) is the opener, not a price you can pay.
+    if (item.mode === 'auction' && item.price <= openerPrice) continue;
     const parts = isPartsCondition(item.subtitle, item.title);
     const comps = summarizeComps(findComps([item.title], sold, now, 8, showType));
     const median = comps && comps.count >= 2 ? comps.median : null;

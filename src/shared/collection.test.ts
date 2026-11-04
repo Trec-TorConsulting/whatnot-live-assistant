@@ -33,4 +33,56 @@ describe('counterfeit checks', () => {
     expect(checksFor({ itemType: 'bullion', slabbed: false, metal: 'gold', keyDate: false }).join(' ')).toMatch(/magnet/);
     expect(checksFor({ itemType: 'other', slabbed: false, metal: null, keyDate: false })).toEqual([]);
   });
+
+  it('lists electronics checks, tools checks, and clone cues capped at five', () => {
+    const phoneChecks = checksFor({
+      itemType: 'electronics',
+      slabbed: false,
+      metal: null,
+      keyDate: false,
+      showType: 'electronics',
+      title: 'Used Apple iPhone 13 128GB',
+    });
+    expect(phoneChecks.length).toBeLessThanOrEqual(5);
+    expect(phoneChecks.join(' ')).toMatch(/activation lock/i);
+    expect(phoneChecks.join(' ')).toMatch(/carrier lock/i);
+    expect(phoneChecks.join(' ')).toMatch(/battery health/i);
+    expect(phoneChecks.join(' ')).toMatch(/serial/i);
+
+    const toolChecks = checksFor({
+      itemType: 'tools_household',
+      slabbed: false,
+      metal: null,
+      keyDate: false,
+      showType: 'tools',
+      title: 'Milwaukee M18 FUEL Hammer Drill',
+    });
+    expect(toolChecks.length).toBeLessThanOrEqual(5);
+    expect(toolChecks.join(' ')).toMatch(/batteries and charger/i);
+    expect(toolChecks.join(' ')).toMatch(/nameplate part number/i);
+    expect(toolChecks.join(' ')).toMatch(/platform/i);
+
+    const consoleChecks = checksFor({
+      itemType: 'electronics',
+      slabbed: false,
+      metal: null,
+      keyDate: false,
+      showType: 'electronics',
+      title: 'P5 Handheld Retro Gaming Console – 520 Built-In Games',
+    });
+    expect(consoleChecks.length).toBeLessThanOrEqual(5);
+    expect(consoleChecks.join(' ')).toMatch(/unlicensed/i);
+
+    const sdChecks = checksFor({
+      itemType: 'electronics',
+      slabbed: false,
+      metal: null,
+      keyDate: false,
+      showType: 'electronics',
+      title: '1TB SD Card',
+      startPrice: 1,
+    });
+    expect(sdChecks.length).toBeLessThanOrEqual(5);
+    expect(sdChecks.join(' ')).toMatch(/capacity/i);
+  });
 });

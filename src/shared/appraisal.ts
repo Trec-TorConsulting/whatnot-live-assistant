@@ -5,6 +5,7 @@ import { ELECTRONICS_HINT, electronicsPassOn, isPullBucket, pullContext, readMsr
 import { ESTATE_HINT, estatePassOn, isTemplate, templateContext } from './estate';
 import { noteForPrompt } from './showNotes';
 import { SHOW_TYPES, type ShowType } from './showType';
+import { TOOLS_HINT, toolsPassOn } from './tools';
 import type { Calibration } from './calibration';
 import type { RefPrice } from './refPrice';
 import type { CompSummary } from './soldHistory';
@@ -426,9 +427,10 @@ export interface AppraisalContext {
 // Per request rather than in the cached instructions, so every show type shares one cache entry.
 export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [], showType = 'general', showNotes }: AppraisalContext) => {
   const notes = noteForPrompt(showNotes);
-  const electronics = electronicsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
-  const pull = Boolean(lotTitle && isPullBucket(lotTitle));
-  const template = !electronics && Boolean(lotTitle && isTemplate(lotTitle));
+  const tools = toolsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
+  const electronics = !tools && electronicsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
+  const pull = Boolean(lotTitle && isPullBucket(lotTitle, showTitle));
+  const template = !tools && !electronics && Boolean(lotTitle && isTemplate(lotTitle));
   const msrp = !pull && lotTitle ? readMsrp(lotTitle) : null;
   let page = pageText;
   if ((pull || template) && lotTitle) {
@@ -436,13 +438,13 @@ export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [
   } else if (msrp && lotTitle) {
     page = page.split(lotTitle).join(msrp.cleanTitle).replace(/[ \t]{2,}/g, ' ').trim();
   }
-  const pass = !electronics && estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
+  const pass = !tools && !electronics && estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
   const lotLine = pull
-    ? (pullContext(lotTitle) ?? '')
+    ? (pullContext(lotTitle, showTitle) ?? '')
     : template
       ? (templateContext(lotTitle) ?? '')
       : msrp
-        ? (pullContext(lotTitle) ?? '')
+        ? (pullContext(lotTitle, showTitle) ?? '')
         : lotTitle
           ? `Current lot title: ${lotTitle}`
           : '';
@@ -452,7 +454,7 @@ export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [
     lotLine,
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
     SHOW_TYPES[showType].hint ?? '',
-    electronics ? ELECTRONICS_HINT : pass ? ESTATE_HINT : '',
+    tools ? TOOLS_HINT : electronics ? ELECTRONICS_HINT : pass ? ESTATE_HINT : '',
     'Listing text (title, bid, grade, or cert):',
     page || '(none)',
   ]

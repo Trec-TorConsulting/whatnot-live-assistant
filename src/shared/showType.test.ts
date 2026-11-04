@@ -35,4 +35,11 @@ describe('detectShowType', () => {
     expect(detectShowType('MacBooks and iPads', ['Laptops, Phones & Tablets'])).toBe('electronics');
     expect(detectShowType('Garage sale: old laptop and dishes', [])).toBe('flea');
   });
+
+  it('treats Tools and tool-brand tags as tools even with Pallet Pulls, while a garage sale mentioning a drill stays flea', () => {
+    expect(detectShowType('Tool pallets', ['Tools', 'Pallet Pulls', 'Ryobi Tools'])).toBe('tools');
+    expect(detectShowType('Milwaukee blowout', ['Tools', 'DIY', 'Milwaukee Tools'])).toBe('tools');
+    expect(detectShowType('Everyday Electronics', ['Everyday Electronics', 'Pallet Pulls'])).toBe('electronics');
+    expect(detectShowType('Garage sale: old drill and boxes', [])).toBe('flea');
+  });
 });

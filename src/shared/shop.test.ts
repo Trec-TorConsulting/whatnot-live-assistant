@@ -226,6 +226,50 @@ describe('scoreShop', () => {
     expect(hits.map((h) => h.id)).toEqual(['xgimi']);
     expect(hits[0]).toMatchObject({ kind: 'steal', price: 110, quantity: 26 });
   });
+
+  it('treats a shared $2 auction start across at least half the shop as the opener, while scoring a real $169 start above it', () => {
+    const toolSold: SoldItem[] = [
+      { ...sold('2457-21 3/8-in Cordless M12 Lithium-Ion Ratchet Kit', 220), showType: 'tools' },
+      { ...sold('2457-21 M12 Ratchet Kit', 240, 2), showType: 'tools' },
+      { ...sold('2021 Apple iPad (9th Gen) 64GB', 180, 3), showType: 'electronics' },
+      { ...sold('2021 Apple iPad (9th Gen) 64GB Wi-Fi', 195, 4), showType: 'electronics' },
+    ];
+    const twoDollarShop: ShopListing[] = Array.from({ length: 23 }, (_, i) => ({
+      id: `lot-${i + 1}`,
+      title: i === 0 ? '2021 Apple iPad (9th Gen) 64GB' : `Device Lot Model X${i + 100}`,
+      price: 2,
+      quantity: 1,
+      mode: 'auction',
+    }));
+    twoDollarShop.push({
+      id: 'lot-24',
+      title: 'Another Device Z900',
+      price: 15,
+      quantity: 1,
+      mode: 'auction',
+    });
+    expect(score(twoDollarShop, { sold: toolSold, showType: 'electronics', meltOf: () => null })).toEqual([]);
+
+    const toolsShop: ShopListing[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `open-${i}`,
+        title: `Milwaukee Tool ${i + 1}`,
+        price: 2,
+        quantity: 1,
+        mode: 'auction' as const,
+      })),
+      {
+        id: 'ratchet-kit',
+        title: '2457-21 M12 Ratchet Kit',
+        price: 169,
+        quantity: 1,
+        mode: 'auction',
+      },
+    ];
+    const toolHits = score(toolsShop, { sold: toolSold, showType: 'tools', meltOf: () => null });
+    expect(toolHits.map((h) => h.id)).toEqual(['ratchet-kit']);
+    expect(toolHits[0]).toMatchObject({ kind: 'deal', price: 169, mode: 'auction' });
+  });
 });
 
 describe('shop query text', () => {

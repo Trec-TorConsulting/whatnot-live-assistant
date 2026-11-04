@@ -308,6 +308,35 @@ describe('overlay', () => {
     overlay.setElectronics(null);
   });
 
+  it('renders the tools quick read and the device spec line before an appraisal', () => {
+    overlay.mount({});
+    overlay.setElectronics(
+      buildElectronicsView({
+        lotTitle: '$329 M18 FUEL 5 in. Flathead Braking Grinder 2886-20',
+        categories: ['Tools', 'Milwaukee Tools'],
+      }),
+    );
+    const toolsText = shadow().textContent ?? '';
+    expect(toolsText).toContain('M18 FUEL');
+    expect(toolsText).toContain('tool-only');
+    expect(toolsText).toContain('2886-20');
+    expect(toolsText).not.toContain('Appraising');
+
+    overlay.setElectronics(
+      buildElectronicsView({
+        lotTitle: '2015 Apple Macbook Air 8GB RAM 250GB SSD i5 13"',
+        categories: ['Everyday Electronics'],
+      }),
+    );
+    const specText = shadow().textContent ?? '';
+    expect(specText).toContain('2015');
+    expect(specText).toContain('i5');
+    expect(specText).toContain('8GB RAM');
+    expect(specText).toContain('250GB');
+    expect(specText).toContain('13 inch');
+    overlay.setElectronics(null);
+  });
+
   it('hides Appraise while a wheel is running', () => {
     overlay.mount({});
     overlay.setWheel(null);

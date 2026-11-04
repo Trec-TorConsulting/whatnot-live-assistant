@@ -433,6 +433,9 @@ const electronicsRow = (v: ElectronicsView | null) => {
   const runs = v.runs.map((r) => `<li>${esc(r)}</li>`).join('');
   return `<div class="row" data-electronics>
       ${v.line ? `<div>${esc(v.line)}</div>` : ''}
+      ${v.specLine ? `<div>${esc(v.specLine)}</div>` : ''}
+      ${v.toolsLine ? `<div>${esc(v.toolsLine)}</div>` : ''}
+      ${v.accessory ? `<div class="notice">${esc(v.accessory)}</div>` : ''}
       ${v.condition ? `<div>${esc(v.condition)}</div>` : ''}
       ${v.msrp ? `<div class="muted">${esc(v.msrp)}</div>` : ''}
       ${v.suddenDeath ? `<div class="notice">${esc(v.suddenDeath)}</div>` : ''}

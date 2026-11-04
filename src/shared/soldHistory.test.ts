@@ -106,6 +106,27 @@ describe('findComps', () => {
     expect(msrpOnly).toBeNull();
     expect(computeValue({ quantity: 1, melt: null, price: null, comps: msrpOnly }).marketValue).toBeNull();
   });
+
+  it('rejects conflicting storage, variant suffix, and part-number suffix while keeping sales with a missing spec', () => {
+    const specSales = [
+      sold('2019 Apple Macbook Pro i5 8GB 500GB 13"', 350, { key: 'mb500a', showType: 'electronics' }),
+      sold('2019 Apple Macbook Pro i5 8GB 500GB 13"', 370, { key: 'mb500b', showType: 'electronics' }),
+      sold('Audien Atom Pro Hearing Aids', 90, { key: 'atom1a', showType: 'electronics' }),
+      sold('Audien Atom Pro Hearing Aids', 95, { key: 'atom1b', showType: 'electronics' }),
+      sold('Milwaukee M18 FUEL Grinder 2886-22 Kit', 220, { key: 'm2886kit1', showType: 'tools' }),
+      sold('Milwaukee M18 FUEL Grinder 2886-22', 240, { key: 'm2886kit2', showType: 'tools' }),
+      sold('2022 Apple Macbook Air M2 500GB', 620, { key: 'm2a', showType: 'electronics' }),
+      sold('2022 Apple Macbook Air M2 500GB Laptop', 650, { key: 'm2b', showType: 'electronics' }),
+    ];
+
+    expect(findComps(['2019 Apple Macbook Pro i5 8GB 250GB 13"'], specSales, now, 8, 'electronics')).toEqual([]);
+    expect(findComps(['Audien Atom Pro 2'], specSales, now, 8, 'electronics')).toEqual([]);
+    expect(findComps(['Milwaukee M18 FUEL Grinder 2886-20'], specSales, now, 8, 'tools')).toEqual([]);
+
+    const m2Comps = summarizeComps(findComps(['2022 Apple Macbook Air M2 8GB 500GB'], specSales, now, 8, 'electronics'));
+    expect(m2Comps?.count).toBe(2);
+    expect(computeValue({ quantity: 1, melt: null, price: null, comps: m2Comps }).basis).toBe('whatnot');
+  });
 });
 
 describe('summarizeComps', () => {

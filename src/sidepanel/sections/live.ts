@@ -165,7 +165,15 @@ const renderAppraisal = () => {
   const cost = lot?.currentBid ?? guarded?.suggestedMax ?? null;
   const atLabel = lot?.currentBid ? 'At the current bid' : v.basis === 'estimate' ? 'At the low end of the guess' : v.basis === 'melt' ? 'At melt' : 'At your max';
   el.flip.textContent = v.marketValue && cost ? `${atLabel}: ${flipLine(flipProfit(v.marketValue, cost, buyer.feePercent))}` : '';
-  const checks = checksFor({ itemType: appraisal.itemType, slabbed: Boolean(appraisal.slabbed), metal: appraisal.melt?.metal ?? null, keyDate: false });
+  const checks = checksFor({
+    itemType: appraisal.itemType,
+    slabbed: Boolean(appraisal.slabbed),
+    metal: appraisal.melt?.metal ?? null,
+    keyDate: false,
+    showType: appraisal.showType,
+    title: [appraisal.name, appraisal.lotTitle, session?.lot?.title].filter(Boolean).join(' '),
+    startPrice: session?.lot?.currentBid ?? null,
+  });
   el.checksBox.hidden = !checks.length;
   const shown = checks.join('|');
   if (el.checks.dataset.shown !== shown) {
@@ -303,8 +311,8 @@ const renderEstate = () => {
   });
   el.electronicsCard.hidden = !eView;
   if (eView) {
-    el.electronicsLine.textContent = eView.line ?? '';
-    el.electronicsCondition.textContent = eView.condition ?? '';
+    el.electronicsLine.textContent = [eView.line, eView.specLine, eView.toolsLine].filter(Boolean).join(' · ');
+    el.electronicsCondition.textContent = [eView.condition, eView.accessory].filter(Boolean).join(' · ');
     el.electronicsMsrp.textContent = eView.msrp ?? '';
     el.electronicsSudden.textContent = eView.suddenDeath ?? '';
     el.electronicsShip.textContent = eView.shippingNote ?? '';

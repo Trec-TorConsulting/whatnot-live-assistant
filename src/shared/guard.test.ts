@@ -44,6 +44,33 @@ describe('guardStatus', () => {
     expect(guardStatus({ bid: 60, lot: { id: 'p2' }, settings: s, spentThisShow: 0, watchMax: 70, appraisal })).toMatchObject({ level: 'ok', ceiling: 70, ceilingSource: 'watch' });
     expect(guardStatus({ bid: 60, lot: { id: 'p1' }, settings: s, spentThisShow: 0, watchMax: 70, appraisal })).toMatchObject({ ceiling: 20, ceilingSource: 'lot' });
   });
+
+  it('converts a CA$40 bid against a $25 lot max as over, and gives no over/near verdict when there is no rate', () => {
+    const s = settings({ lotMax: { lot1: 25 } });
+    const withRate = guardStatus({
+      bid: 40,
+      lot: { id: 'lot1', currency: 'CAD' },
+      settings: s,
+      spentThisShow: 0,
+      appraisal: null,
+      currency: 'CAD',
+      rate: 0.7168,
+    });
+    expect(withRate.level).toBe('over');
+    expect(withRate.reasons[0]).toContain('$28.67');
+
+    const withoutRate = guardStatus({
+      bid: 40,
+      lot: { id: 'lot1', currency: 'CAD' },
+      settings: s,
+      spentThisShow: 0,
+      appraisal: null,
+      currency: 'CAD',
+      rate: null,
+    });
+    expect(withoutRate.level).toBe('ok');
+    expect(withoutRate.reasons[0]).toContain('not converted');
+  });
 });
 
 describe('parseBidButton', () => {

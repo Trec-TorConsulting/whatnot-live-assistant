@@ -1,11 +1,13 @@
 // On entering a show, read its shop and surface buy-it-now steals, deals, and must-haves.
+import { perPieceShopRows } from '../shared/casePack';
+import { toUsd } from '../shared/currency';
 import { HOOK_SOURCE, type HookToContent } from '../shared/hookProtocol';
 import { keyDatePrice } from '../shared/keyDates';
 import { formatMoney } from '../shared/money';
 import { applyShopWorth, isShopOperation, readShopPage, scoreShop, shopMelt, shopSummary, shopWorthLine, type ShopHit, type ShopListing, type ShopScan } from '../shared/shop';
 import { getBuyerSettings, getGuardSettings, getItem } from '../shared/storage';
 import { send } from '../shared/messages';
-import { isShareWorker, publishShop, postToHook, rememberRunnerGiveawayStems } from './live';
+import { isShareWorker, liveSession, publishShop, postToHook, rememberCurrencyPair, rememberRunnerGiveawayStems } from './live';
 import { overlay, type ShopView } from './overlay';
 import { liveIdFromPath } from './selectors';
 import { currentShowType } from './showType';
@@ -37,6 +39,7 @@ const viewOf = (scan: ShopScan): ShopView => ({
     label: hitLabel(h),
     text: `${h.title} — ${formatMoney(h.price)}. ${h.reason}`,
   })),
+  ...(scan.perPieceRows?.length ? { perPieceRows: scan.perPieceRows.map((r) => `${r.title} — ${r.label}`) } : {}),
 });
 
 const arm = (ms: number) => {
@@ -60,6 +63,9 @@ const ingest = (operation: string, raw: string) => {
   if (!read.error) sawSuccess = true;
   const seen = new Set(listings.map((l) => l.id));
   for (const item of read.listings) {
+    if (item.currency && item.currency !== 'USD' && item.usdPrice != null) {
+      rememberCurrencyPair({ amount: item.price, code: item.currency, usd: item.usdPrice });
+    }
     if (seen.has(item.id)) continue;
     seen.add(item.id);
     listings.push(item);
@@ -90,23 +96,49 @@ const finish = async (g: number) => {
     getBuyerSettings().catch(() => null),
   ]);
   if (g !== gen || liveId !== id || isShareWorker()) return;
+  const showType = currentShowType();
+  const currencyRate = liveSession()?.currency?.rate ?? null;
   const hits = scoreShop({
     listings,
     sold: sold ?? [],
-    showType: currentShowType(),
+    showType,
     watchlist: buyer?.watchlist ?? [],
     maxBidPercent: guard?.maxBidPercent ?? 80,
     meltOf: (item) => shopMelt(item, spot),
     now: Date.now(),
+    currencyRate,
   });
+  const perPieceRows =
+    showType === 'wholesale'
+      ? perPieceShopRows(
+          listings.map((l) => ({
+            ...l,
+            usdPrice:
+              l.usdPrice ??
+              (l.currency && l.currency !== 'USD' ? toUsd(l.price, l.currency, currencyRate) : l.price),
+          })),
+        )
+      : [];
   const auctionCount = listings.filter((l) => l.mode === 'auction').length;
-  const scan: ShopScan = { status: 'ready', binCount: listings.length, auctionCount, hits };
+  const scan: ShopScan = {
+    status: 'ready',
+    binCount: listings.length,
+    auctionCount,
+    hits,
+    ...(perPieceRows.length ? { perPieceRows } : {}),
+  };
   publishShop(scan);
   overlay.setShop(viewOf(scan));
   announce(id, hits);
   const priced = await priceMustHaves(hits);
   if (g !== gen || liveId !== id || isShareWorker() || priced === hits) return;
-  const next: ShopScan = { status: 'ready', binCount: listings.length, auctionCount: listings.filter((l) => l.mode === 'auction').length, hits: priced };
+  const next: ShopScan = {
+    status: 'ready',
+    binCount: listings.length,
+    auctionCount: listings.filter((l) => l.mode === 'auction').length,
+    hits: priced,
+    ...(perPieceRows.length ? { perPieceRows } : {}),
+  };
   publishShop(next);
   overlay.setShop(viewOf(next));
 };

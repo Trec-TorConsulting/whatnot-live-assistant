@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addPurchase, findSimilarPurchases, purchaseKey, purchasesCsv, summarizeSpend, type Purchase } from './purchases';
+import { formatForeignWithUsd, toUsd } from './currency';
+import { addPurchase, findSimilarPurchases, purchaseKey, purchasesCsv, spentInShow, summarizeSpend, type Purchase } from './purchases';
 import { DAY } from './time';
 
 const now = new Date(2026, 9, 26, 15, 0).getTime();
@@ -39,6 +40,43 @@ describe('summarizeSpend', () => {
     expect(s.days.at(-1)?.total).toBe(30);
     expect(s.days.at(-2)?.total).toBe(20);
     expect(s.shows[0]).toMatchObject({ liveId: 'show1', total: 130, count: 2 });
+  });
+
+  it('converts a CA$5 win at 0.7168 to $3.58 in show budget and SpendSummary, leaves out and counts a CA$5 win with no rate, and totals an old purchase with no currency as USD', () => {
+    const cadConverted = p({
+      key: 'cad-1',
+      liveId: 'cad-show',
+      title: 'Mystery Pull',
+      price: 5,
+      currency: 'CAD',
+      priceUsd: toUsd(5, 'CAD', 0.7168),
+    });
+    expect(cadConverted.priceUsd).toBe(3.58);
+    expect(formatForeignWithUsd(cadConverted.price, cadConverted.currency, cadConverted.priceUsd, 'usd')).toBe(
+      'CA$5 (≈ $3.58)',
+    );
+    expect(spentInShow([cadConverted], 'cad-show')).toBe(3.58);
+
+    const cadNoRate = p({
+      key: 'cad-2',
+      liveId: 'cad-show',
+      title: 'Unconverted Pull',
+      price: 5,
+      currency: 'CAD',
+      priceUsd: null,
+    });
+    const oldUsd = p({
+      key: 'old-usd',
+      liveId: 'usd-show',
+      title: 'Old USD Purchase',
+      price: 20,
+    });
+
+    const summary = summarizeSpend([cadConverted, cadNoRate, oldUsd], now);
+    expect(summary.today).toBe(23.58);
+    expect(summary.allTime).toBe(23.58);
+    expect(summary.unconvertedCount).toBe(1);
+    expect(spentInShow([cadConverted, cadNoRate], 'cad-show')).toBe(3.58);
   });
 });
 

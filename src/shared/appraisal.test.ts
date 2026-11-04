@@ -19,6 +19,7 @@ import {
   meltFor,
   parseOthers,
   quickRead,
+  reconcileCount,
   summarizeAuctions,
 } from './appraisal';
 import type { ShowType } from './showType';
@@ -156,6 +157,60 @@ describe('appraisal prompt', () => {
       showNotes: longOrdinaryNotes,
     });
     expect(ordinaryCtx).not.toContain('No cancellations or returns on any lot.');
+
+    const wholesaleJewelry = appraisalContext({
+      pageText: '12/$12 Dozens #4',
+      showTitle: 'Jewelry Dozens Wholesale',
+      lotTitle: '12/$12 Dozens #4',
+      categories: ['Fashion Jewelry', 'Wholesale/Lots'],
+      showType: 'wholesale',
+      showNotes: 'Sold by the dozen unless otherwise stated. /coupon DOZEN10',
+    });
+    expect(wholesaleJewelry).toContain('Wholesale / case-pack show:');
+    expect(wholesaleJewelry).not.toContain('hallmark');
+    expect(wholesaleJewelry).not.toContain('DOZEN10');
+
+    const bundleAsSeen = appraisalContext({
+      pageText: 'Case Pack or Bundle as Seen #335',
+      showTitle: 'Case Packs Live',
+      lotTitle: 'Case Pack or Bundle as Seen #335',
+      categories: ['Case Packs & Bundles'],
+      showType: 'wholesale',
+    });
+    expect(bundleAsSeen).toContain('Wholesale / case-pack show:');
+    expect(bundleAsSeen).not.toContain('maker marks');
+    expect(bundleAsSeen).not.toContain('shipping bucket');
+
+    const pinkTag = appraisalContext({
+      pageText: 'Clothing Case Pack - Pink Tag #66\nBid $21',
+      showTitle: 'Apparel Case Packs',
+      lotTitle: 'Clothing Case Pack - Pink Tag #66',
+      categories: ['Case Packs & Bundles'],
+      showType: 'wholesale',
+      casePack: { pin: 'Hats- 10' },
+    });
+    expect(pinkTag).toContain('lot 66');
+    expect(pinkTag).toContain('10 pieces stated by a mod');
+    expect(pinkTag).toContain('Hats- 10');
+    expect(pinkTag).not.toContain('Clothing Case Pack - Pink Tag #66');
+  });
+
+  it('reconciles stated pack counts with model quantity and scales value and suggested max accordingly', () => {
+    const est = { low: 5, high: 8 };
+    const r1 = reconcileCount(12, 1);
+    expect(r1).toEqual({ quantity: 12, countNote: '12 stated' });
+    const v1 = computeValue({ quantity: r1.quantity, melt: null, price: null, estimate: est });
+    expect(v1).toMatchObject({ marketValue: 78, suggestedMax: 60 });
+
+    const r2 = reconcileCount(12, 10);
+    expect(r2).toEqual({ quantity: 10, countNote: '10 counted · 12 stated' });
+    const v2 = computeValue({ quantity: r2.quantity, melt: null, price: null, estimate: est });
+    expect(v2).toMatchObject({ marketValue: 65, suggestedMax: 50 });
+
+    const r3 = reconcileCount(null, 3);
+    expect(r3).toEqual({ quantity: 3, countNote: null });
+    const v3 = computeValue({ quantity: r3.quantity, melt: null, price: null, estimate: est });
+    expect(v3).toMatchObject({ marketValue: 19.5, suggestedMax: 15 });
   });
 });
 

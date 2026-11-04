@@ -3,11 +3,14 @@ import {
   estimateOf,
   isPcgsPriceable,
   lotRollup,
+  reconcileCount,
   type AppraisalItem,
   type AppraisalRecord,
   type OtherItem,
 } from '../shared/appraisal';
 import { calibrated, calibrationFor } from '../shared/calibration';
+import { packCount, resolveLotCount } from '../shared/casePack';
+import { lotNumber } from '../shared/estate';
 import { marketOf, verifiedName } from '../shared/refPrice';
 import { send, STALE_CONTEXT, type PriceLookupResult, type Req } from '../shared/messages';
 import type { ShowType } from '../shared/showType';
@@ -410,7 +413,30 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       if (quick?.read) void showQuickMelt(quick, 'quick');
     });
 
-    const context = { pageText, showTitle: base.showTitle ?? '', lotTitle: base.lotTitle, categories, showType, showNotes: session?.show.note?.text ?? null };
+    const lotNum = lotNumber(base.lotTitle);
+    const pin = lotNum !== null ? (session?.casePins?.[String(lotNum)] ?? null) : (session?.casePins?.['current'] ?? null);
+    const resolvedCase =
+      showType === 'wholesale'
+        ? resolveLotCount({ lotTitle: base.lotTitle, notes: session?.show.note?.text ?? null, pin })
+        : packCount(base.lotTitle);
+    const context = {
+      pageText,
+      showTitle: base.showTitle ?? '',
+      lotTitle: base.lotTitle,
+      categories,
+      showType,
+      showNotes: session?.show.note?.text ?? null,
+      ...(showType === 'wholesale'
+        ? {
+            casePack: {
+              lotNumber: lotNum,
+              count: resolvedCase.count,
+              countSource: resolvedCase.source,
+              pin: pin?.text ?? null,
+            },
+          }
+        : {}),
+    };
     const image = (video ? captureFrame(video) : null) ?? (await captureScreenshot(video));
     if (!image) {
       modelShown = true;
@@ -452,7 +478,8 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       rememberElectronicsName(res.item.item_name);
       refreshEstate();
     }
-    const valuation = computeValue({ quantity: res.item.quantity, melt, price: null, estimate: rawEstimate, comps: null }, guard.maxBidPercent);
+    const reconciled = reconcileCount(resolvedCase.count, res.item.quantity);
+    const valuation = computeValue({ quantity: reconciled.quantity, melt, price: null, estimate: rawEstimate, comps: null }, guard.maxBidPercent);
     const record: AppraisalRecord = {
       ...base,
       name,
@@ -462,7 +489,8 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       slabbed: Boolean(item.is_slabbed),
       special: res.item.special?.trim() || null,
       grade: res.item.grade ?? res.item.grade_estimate ?? null,
-      quantity: res.item.quantity,
+      quantity: reconciled.quantity,
+      countNote: reconciled.countNote,
       confidence: res.item.confidence,
       model: res.model,
       melt,
@@ -473,7 +501,7 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       comps: null,
       valuation,
       // Only the presented item was looked up. The rest of its lot is already on the model answer, so this adds no wait.
-      lot: lotRollup({ name, quantity: res.item.quantity, marketValue: valuation.marketValue, basis: valuation.basis }, res.others),
+      lot: lotRollup({ name, quantity: reconciled.quantity, marketValue: valuation.marketValue, basis: valuation.basis }, res.others),
       showType,
       notes: res.item.notes || null,
       elapsedMs: performance.now() - started,

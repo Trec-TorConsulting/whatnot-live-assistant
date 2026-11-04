@@ -4,6 +4,17 @@
 // tolerantly by field name, and unrecognized events are sampled for diagnostics.
 import { BREAK_OPERATION, mergeWheel, parseBreakResponse, type BreakSnapshot } from './breaks';
 import {
+  contentsLine,
+  isGenericCaseLot,
+  notesRatio,
+  packCount,
+  perPiece,
+  pushCaseRun,
+  type CaseRun,
+  type ContentsPin,
+} from './casePack';
+import { rateFrom, type SessionCurrency } from './currency';
+import {
   electronicsPinFrom,
   electronicsWantFrom,
   isGenericDeviceClass,
@@ -12,7 +23,7 @@ import {
   type PullRun,
 } from './electronics';
 import { isTemplate, lotNumber, pinFrom, type EstateRun, wantFrom } from './estate';
-import { moneyValue } from './money';
+import { moneyCurrency, moneyValue } from './money';
 import {
   giveawayMatchesStem,
   giveawayShippingStems,
@@ -20,6 +31,7 @@ import {
   type RunnerChatQuote,
 } from './runner';
 import { readShowNote, type ShowNote } from './showNotes';
+import { detectShowType } from './showType';
 import type { ShopScan } from './shop';
 
 export interface PhoenixMessage {
@@ -45,6 +57,7 @@ export interface Lot {
   title: string | null;
   subtitle?: string | null;
   currentBid: number | null;
+  currency?: string | null;
   bidCount: number | null;
   leader: string | null;
   endsAt: number | null;
@@ -61,6 +74,7 @@ export interface Sale {
   productId: string | null;
   title: string | null;
   price: number | null;
+  currency?: string | null;
   buyer: string | null;
   kind: SaleKind;
   at: number;
@@ -121,6 +135,14 @@ export interface LiveSession {
   runnerGiveawayStems: string[];
   /** True when the signed-in user won a giveaway matching one of runnerGiveawayStems in this show. */
   runnerGiveawayShippingWon: boolean;
+  /** Lot number to host/mod case-pack contents pin on a wholesale show. */
+  casePins: Record<string, ContentsPin>;
+  /** Recent case-pack hammers on a wholesale show, newest first, capped at 12. */
+  caseRuns: CaseRun[];
+  /** Non-USD currency and conversion rate from Whatnot's own "est. $" pairs on this show. */
+  currency: SessionCurrency | null;
+  /** Shipping rules already shown on this show. */
+  shippingRulesKey: string | null;
   /** Shipping quote read off the page, so the side panel can show it. */
   shippingQuote: number | null;
   updatedAt: number;
@@ -172,6 +194,10 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
   runnerQuote: null,
   runnerGiveawayStems: [],
   runnerGiveawayShippingWon: false,
+  casePins: {},
+  caseRuns: [],
+  currency: null,
+  shippingRulesKey: null,
   shippingQuote: null,
   updatedAt: now,
 });
@@ -317,9 +343,13 @@ const NEXT_BID_KEYS = ['nextBidPrice', 'nextBidCents'];
 // Confirmed on new_bid: product.highestBid = { price: { amount }, priceCents, user: { username } }.
 const highestBid = (o: Record<string, unknown>) => {
   const hb = obj(o.highestBid);
-  if (!hb) return { bid: null, leader: null };
+  if (!hb) return { bid: null, currency: null, leader: null };
   const cents = num(hb.priceCents);
-  return { bid: moneyValue(hb.price) ?? (cents !== null ? cents / 100 : null), leader: username(hb.user) };
+  return {
+    bid: moneyValue(hb.price) ?? (cents !== null ? cents / 100 : null),
+    currency: moneyCurrency(hb.price),
+    leader: username(hb.user),
+  };
 };
 
 export const readCommerce = (event: string, payload: unknown, now: number): CommerceRead => {
@@ -353,7 +383,9 @@ export const readCommerce = (event: string, payload: unknown, now: number): Comm
     const id = idHit ? str(idHit[1]) : null;
     const title = titleHit ? str(titleHit[1]) : null;
     const bid = bidHit ? moneyValue(bidHit[1], bidHit[0]) : top.bid;
+    const bidCurrency = (bidHit ? moneyCurrency(bidHit[1]) : null) ?? top.currency ?? moneyCurrency(o.price);
     const soldPrice = soldHit ? moneyValue(soldHit[1], soldHit[0]) : null;
+    const soldCurrency = (soldHit ? moneyCurrency(soldHit[1]) : null) ?? bidCurrency;
     const sold = soldEvent || /sold|won|complete|closed|purchased/i.test(status ?? '');
 
     if (!read.lot && (bidHit || top.bid !== null || endHit || remainingHit || titleHit)) {
@@ -364,6 +396,7 @@ export const readCommerce = (event: string, payload: unknown, now: number): Comm
         title,
         subtitle: subtitleHit ? str(subtitleHit[1]) : null,
         currentBid: bid,
+        ...(bidCurrency ? { currency: bidCurrency } : {}),
         nextBid: nextBidHit ? moneyValue(nextBidHit[1], nextBidHit[0]) : null,
         breakId,
         bidCount: num(first(o, BID_COUNT_KEYS)?.[1]),
@@ -383,6 +416,7 @@ export const readCommerce = (event: string, payload: unknown, now: number): Comm
         productId: id,
         title,
         price: kind === 'giveaway' ? 0 : (soldPrice ?? bid),
+        ...(soldCurrency ? { currency: soldCurrency } : {}),
         buyer: buyer ?? leader,
         kind,
         at: now,
@@ -402,7 +436,12 @@ const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[], viewer
   signals.push({ kind: 'sale', sale });
   let estateRuns = session.estateRuns;
   let electronicsRuns = session.electronicsRuns;
+  let caseRuns = session.caseRuns;
   let runnerGiveawayShippingWon = session.runnerGiveawayShippingWon;
+  let currency = session.currency;
+  if (sale.currency && sale.currency !== 'USD' && !currency) {
+    currency = { code: sale.currency, rate: null };
+  }
   if (sale.kind === 'giveaway') {
     const buyerMatches =
       !viewerUsername || (sale.buyer && sale.buyer.toLowerCase() === viewerUsername.toLowerCase());
@@ -418,12 +457,37 @@ const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[], viewer
       const number = lotNumber(sale.title);
       estateRuns = [{ number, name: number != null ? (session.estatePins[String(number)] ?? null) : null, price: sale.price }, ...estateRuns].slice(0, 12);
     }
+    const isWholesale =
+      detectShowType(session.show.title, session.show.categories, session.show.note?.text ?? '') === 'wholesale';
+    if (isWholesale) {
+      const number = lotNumber(sale.title);
+      const pinKey = number != null ? String(number) : (sale.productId ?? null);
+      const pin = pinKey ? (session.casePins[pinKey] ?? null) : null;
+      const count =
+        pin?.count ??
+        packCount(sale.title, session.lot?.subtitle).count ??
+        notesRatio(session.show.note?.text);
+      const generic = isGenericCaseLot(sale.title);
+      if (generic || count !== null || pin !== null) {
+        const name = pin?.name ?? (!generic ? sale.title : null);
+        const unitPrice = count !== null ? perPiece(sale.price, count) : null;
+        caseRuns = pushCaseRun(caseRuns, {
+          number,
+          name,
+          count,
+          price: sale.price,
+          unitPrice,
+        });
+      }
+    }
   }
   return {
     ...session,
     sales: pushCapped(session.sales, sale, MAX_SALES),
     estateRuns,
     electronicsRuns,
+    caseRuns,
+    currency,
     runnerGiveawayShippingWon,
   };
 };
@@ -439,6 +503,19 @@ const noteChat = (session: LiveSession, m: ChatMessage): LiveSession => {
   const eNumber = title && isPullBucket(title, next.show.title) ? electronicsLotNumber(title) : null;
   const ePin = eNumber != null ? electronicsPinFrom(m.text, m.isHost, m.isModerator) : null;
   if (ePin && eNumber != null) next = { ...next, electronicsPins: { ...next.electronicsPins, [String(eNumber)]: ePin } };
+  if (
+    (m.isHost || m.isModerator) &&
+    title &&
+    isGenericCaseLot(title) &&
+    detectShowType(next.show.title, next.show.categories, next.show.note?.text ?? '') === 'wholesale'
+  ) {
+    const cPin = contentsLine(m.text);
+    if (cPin) {
+      const cNum = lotNumber(title);
+      const key = cNum != null ? String(cNum) : (next.lot?.id ?? 'current');
+      next = { ...next, casePins: { ...next.casePins, [key]: cPin } };
+    }
+  }
   if (!m.isHost && !m.isModerator) {
     const want = wantFrom(m.text);
     if (want) next = { ...next, estateWants: [...next.estateWants, want].slice(-20) };
@@ -472,6 +549,36 @@ export const noteElectronicsRules = (session: LiveSession, key: string | null): 
 
 export const noteShippingQuote = (session: LiveSession, shipping: number | null): LiveSession =>
   shipping != null && shipping !== session.shippingQuote ? { ...session, shippingQuote: shipping } : session;
+
+export const noteShippingRules = (session: LiveSession, key: string | null): LiveSession =>
+  key && key !== session.shippingRulesKey ? { ...session, shippingRulesKey: key } : session;
+
+export const noteCurrencyPair = (
+  session: LiveSession,
+  pair: { amount: number; code: string; usd: number | null; tariffs?: boolean } | null | undefined,
+): LiveSession => {
+  if (!pair || !pair.code || pair.code.toUpperCase() === 'USD') return session;
+  const code = pair.code.toUpperCase();
+  const prev = session.currency?.code === code ? session.currency : null;
+  const prevBasis = prev?.basis ?? 0;
+  let rate = prev?.rate ?? null;
+  let basis = prevBasis;
+  if (pair.usd != null && pair.amount > 0 && pair.amount >= prevBasis) {
+    const computed = rateFrom([{ amount: pair.amount, usd: pair.usd, code }]);
+    if (computed !== null) {
+      rate = computed;
+      basis = pair.amount;
+    }
+  }
+  const tariffs = Boolean(pair.tariffs || prev?.tariffs);
+  if (prev && prev.rate === rate && (prev.basis ?? 0) === basis && Boolean(prev.tariffs) === tariffs) {
+    return session;
+  }
+  return {
+    ...session,
+    currency: { code, rate, ...(basis > 0 ? { basis } : {}), ...(tariffs ? { tariffs: true } : {}) },
+  };
+};
 
 export const noteRunnerGiveawayStems = (session: LiveSession, bodyOrStems: unknown): LiveSession => {
   const incoming = Array.isArray(bodyOrStems)
@@ -592,6 +699,7 @@ const applyLot = (session: LiveSession, patch: Partial<Lot>, signals: LiveSignal
     title: patch.title ?? base.title,
     subtitle: patch.subtitle ?? base.subtitle ?? null,
     currentBid: patch.currentBid ?? base.currentBid,
+    ...(patch.currency ?? base.currency ? { currency: patch.currency ?? base.currency } : {}),
     bidCount: patch.bidCount ?? base.bidCount,
     leader: patch.leader ?? base.leader,
     endsAt: patch.endsAt ?? base.endsAt,
@@ -600,9 +708,13 @@ const applyLot = (session: LiveSession, patch: Partial<Lot>, signals: LiveSignal
     breakId: patch.breakId ?? base.breakId ?? null,
     updatedAt: now,
   };
+  let currency = session.currency;
+  if (lot.currency && lot.currency !== 'USD' && !currency) {
+    currency = { code: lot.currency, rate: null };
+  }
   const changed = started || isNewLot(prev, lot);
   signals.push(started ? { kind: 'lot', lot, started } : { kind: 'lot', lot });
-  return { ...session, lot, ...(changed ? { runnerQuote: null } : {}) };
+  return { ...session, lot, currency, ...(changed ? { runnerQuote: null } : {}) };
 };
 
 export const reduceSocket = (

@@ -38,6 +38,12 @@ describe('soldFromSale', () => {
     expect(soldFromSale({ ...sale, price: 0 }, 's', null)).toBeNull();
     expect(soldFromSale({ ...sale, title: null }, 's', null)).toBeNull();
   });
+
+  it('converts a foreign sale when a rate is known and drops a CA$35 sale with no rate', () => {
+    expect(soldFromSale({ ...sale, price: 35, currency: 'CAD' }, 's', null, 'wholesale', 'host', null)).toBeNull();
+    const converted = soldFromSale({ ...sale, price: 35, currency: 'CAD' }, 's', null, 'wholesale', 'host', 0.7168);
+    expect(converted?.price).toBe(25.09);
+  });
 });
 
 describe('addSold', () => {
@@ -126,6 +132,26 @@ describe('findComps', () => {
     const m2Comps = summarizeComps(findComps(['2022 Apple Macbook Air M2 8GB 500GB'], specSales, now, 8, 'electronics'));
     expect(m2Comps?.count).toBe(2);
     expect(computeValue({ quantity: 1, melt: null, price: null, comps: m2Comps }).basis).toBe('whatnot');
+  });
+
+  it('rejects generic case-pack titles and pairs whose pack counts disagree, while matching same-count packs', () => {
+    const caseSales = [
+      sold('Clothing Case Pack - Pink Tag #64', 18, { key: 'cp64', showType: 'wholesale' }),
+      sold('Clothing Case Pack - Pink Tag #65', 22, { key: 'cp65', showType: 'wholesale' }),
+      sold('12 pairs Christmas socks 31079 size 9-11', 15, { key: 'socks12a', showType: 'wholesale' }),
+      sold('12 pairs Christmas socks 31079 size 9-11', 18, { key: 'socks12b', showType: 'wholesale' }),
+      sold('Joggers Casepack size LARGE (12 pairs)', 36, { key: 'jog12a', showType: 'wholesale' }),
+      sold('Joggers Casepack size LARGE (12 pairs)', 40, { key: 'jog12b', showType: 'wholesale' }),
+    ];
+
+    expect(findComps(['Clothing Case Pack - Pink Tag #66'], caseSales, now, 8, 'wholesale')).toEqual([]);
+    expect(findComps(['Christmas socks 31079 size 9-11'], caseSales, now, 8, 'wholesale')).toEqual([]);
+
+    const joggerComps = summarizeComps(
+      findComps(['Joggers Casepack size LARGE (12 pairs)'], caseSales, now, 8, 'wholesale'),
+    );
+    expect(joggerComps?.count).toBe(2);
+    expect(joggerComps?.median).toBe(38);
   });
 });
 

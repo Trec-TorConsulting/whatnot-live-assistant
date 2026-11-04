@@ -71,6 +71,7 @@ export const estatePassOn = (p: {
   notes?: string | null;
   showType?: ShowType;
 }): boolean => {
+  if (p.showType === 'wholesale' || /\b(?:case\s*packs?|casepacks?)\b/i.test(p.lotTitle ?? '')) return false;
   if (electronicsPassOn(p)) return false;
   if (p.lotTitle && runnerItemName(p.lotTitle, runnerPassOn(p.notes))) return false;
   if (p.lotTitle && isTemplate(p.lotTitle)) return true;

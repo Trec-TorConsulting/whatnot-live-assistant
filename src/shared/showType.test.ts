@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectShowType } from './showType';
+import { detectShowType, scansByDefault } from './showType';
 
 describe('detectShowType', () => {
   it('reads the show type from Whatnot tags first, then the title', () => {
@@ -41,5 +41,30 @@ describe('detectShowType', () => {
     expect(detectShowType('Milwaukee blowout', ['Tools', 'DIY', 'Milwaukee Tools'])).toBe('tools');
     expect(detectShowType('Everyday Electronics', ['Everyday Electronics', 'Pallet Pulls'])).toBe('electronics');
     expect(detectShowType('Garage sale: old drill and boxes', [])).toBe('flea');
+  });
+
+  it('classifies all 14 observed Case Packs & Bundles shows as wholesale while keeping Pokemon packs as cards and scansByDefault flea-only', () => {
+    const observed: [string, string[]][] = [
+      ['12/$12 SB Casepack:Novelties,Keychains,Jewelry,Accessories', ['Case Packs & Bundles', 'Reseller Bundles', 'Wholesale/Lots', 'Squishy Toys']],
+      ['12/$12 Earrings, Necklaces & More! Casepacks!', ['Case Packs & Bundles', 'Reseller Bundles', 'Wholesale/Lots', 'Fashion Jewelry']],
+      ['🇨🇦！Cad! Warehouse show', ['Case Packs & Bundles', 'Reseller Bundles', 'Wholesale/Lots', 'Pallet Pulls']],
+      ['Boutique Apparel Casepacks & Bundles', ['Case Packs & Bundles', 'Reseller Bundles', 'Women\'s Contemporary']],
+      ['Wholesale Reseller Bundles $1 Starts', ['Case Packs & Bundles', 'Reseller Bundles', 'Wholesale/Lots']],
+      ['Children\'s Clothing Case Packs', ['Case Packs & Bundles', 'Reseller Bundles', 'Baby & Kids']],
+      ['12/$12 Dozens Wholesale Blowout', ['Case Packs & Bundles', 'Wholesale/Lots']],
+      ['Closeout Casepack Liquidation', ['Case Packs & Bundles', 'Reseller Bundles']],
+      ['Sneaker & Streetwear Case Packs', ['Case Packs & Bundles', 'Sneakers & Streetwear']],
+      ['Beauty & Cosmetics Casepacks', ['Case Packs & Bundles', 'Beauty']],
+      ['Toys & Collectibles Reseller Casepacks', ['Case Packs & Bundles', 'Toys']],
+      ['Home & Kitchen Case Packs', ['Case Packs & Bundles', 'Home & Garden']],
+      ['Reseller Bundles & Closeouts', ['Reseller Bundles', 'Wholesale/Lots', 'Pallet Pulls']],
+      ['Casepack Madness 12/$12', ['Wholesale/Lots', 'Fashion Jewelry']],
+    ];
+    for (const [title, tags] of observed) {
+      expect(detectShowType(title, tags)).toBe('wholesale');
+    }
+    expect(detectShowType('Pokemon packs', [])).toBe('cards');
+    expect(scansByDefault('wholesale')).toBe(false);
+    expect(scansByDefault('flea')).toBe(true);
   });
 });

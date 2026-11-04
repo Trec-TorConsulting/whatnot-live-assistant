@@ -1,4 +1,5 @@
 // A small shadow-DOM panel on live pages: bid guard, wheel status or appraisal card, share status.
+import type { CasePackView } from '../shared/casePack';
 import type { ElectronicsView } from '../shared/electronics';
 import type { EstateView } from '../shared/estate';
 import type { RunnerView } from '../shared/runner';
@@ -58,6 +59,7 @@ export interface ShopHitView {
 export interface ShopView {
   summary: string;
   hits: ShopHitView[];
+  perPieceRows?: string[];
 }
 
 export interface ToolsView {
@@ -113,6 +115,7 @@ interface State {
   estate: EstateView | null;
   electronics: ElectronicsView | null;
   runner: RunnerView | null;
+  casePack: CasePackView | null;
   tools: ToolsView | null;
   quickBids: QuickBidButton[];
   checksOpen: boolean;
@@ -134,6 +137,7 @@ const state: State = {
   estate: null,
   electronics: null,
   runner: null,
+  casePack: null,
   tools: null,
 };
 let host: HTMLElement | null = null;
@@ -458,12 +462,30 @@ const runnerRow = (v: RunnerView | null) => {
     </div>`;
 };
 
+const casePackRow = (v: CasePackView | null) => {
+  if (!v) return '';
+  const runs = v.runs.map((r) => `<li>${esc(r)}</li>`).join('');
+  return `<div class="row" data-casepack>
+      ${v.line ? `<div>${esc(v.line)}</div>` : ''}
+      ${v.conflict ? `<div class="notice">${esc(v.conflict)}</div>` : ''}
+      ${v.sizeRun ? `<div>${esc(v.sizeRun)}</div>` : ''}
+      ${v.claims ? `<div class="muted">${esc(v.claims)}</div>` : ''}
+      ${v.breakEven ? `<div>${esc(v.breakEven)}</div>` : ''}
+      ${v.shippingRules ? `<div class="notice">${esc(v.shippingRules)}</div>` : ''}
+      ${v.currencyNote ? `<div class="muted">${esc(v.currencyNote)}</div>` : ''}
+      ${runs ? `<ul>${runs}</ul>` : ''}
+    </div>`;
+};
+
 const shopRow = (s: ShopView | null) => {
   if (!s) return '';
   const worth = s.hits.some((h) => h.kind === 'steal');
-  const items = s.hits
-    .map((h) => `<li><span class="${h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : ''}">${esc(h.label)}</span> ${esc(h.text)}</li>`)
-    .join('');
+  const items = [
+    ...s.hits.map(
+      (h) => `<li><span class="${h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : ''}">${esc(h.label)}</span> ${esc(h.text)}</li>`,
+    ),
+    ...(s.perPieceRows ?? []).map((row) => `<li class="muted">${esc(row)}</li>`),
+  ].join('');
   return `<div class="row${worth ? ' worth' : ''}"><div class="wheel-name">Shop</div><div class="muted">${esc(s.summary)}</div>${items ? `<ul>${items}</ul>` : ''}</div>`;
 };
 
@@ -482,7 +504,8 @@ const render = () => {
         ${sellerRow(state.seller)}
         ${estateRow(state.estate)}
         ${electronicsRow(state.electronics)}
-        ${runnerRow(state.runner)}`;
+        ${runnerRow(state.runner)}
+        ${casePackRow(state.casePack)}`;
   const body = state.collapsed
     ? ''
     : `<div class="body">
@@ -684,6 +707,10 @@ export const overlay = {
   },
   setRunner(view: RunnerView | null) {
     state.runner = view;
+    if (host) render();
+  },
+  setCasePack(view: CasePackView | null) {
+    state.casePack = view;
     if (host) render();
   },
   setTools(view: ToolsView | null) {

@@ -70,7 +70,7 @@ export interface MessageMap {
   // Live show data from content scripts
   LIVE_UPDATE: { req: { session: LiveSession }; res: Result };
   // photo: a small JPEG data URL of the video when one of your wins came in.
-  LIVE_SIGNAL: { req: { liveId: string; showTitle: string | null; host: string | null; signal: LiveSignal; photo?: string }; res: Result };
+  LIVE_SIGNAL: { req: { liveId: string; showTitle: string | null; host: string | null; signal: LiveSignal; photo?: string; currencyRate?: number | null }; res: Result };
   WATCH_SHOWS: { req: { shows: Omit<WatchedShow, 'notifiedAt'>[] }; res: Result };
   SALES_RECORD: { req: { items: SoldItem[] }; res: Result };
   // Outbid, closing, watchlist, and mention alerts, shown as a notification when the show tab is hidden.

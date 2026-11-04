@@ -2,7 +2,7 @@
 // quick chat lines. Alerts only; nothing here ever places a bid.
 import type { Lot, Sale } from './live';
 import { formatMoney } from './money';
-import type { Purchase } from './purchases';
+import { purchaseUsd, type Purchase } from './purchases';
 import { DAY } from './time';
 
 export interface WatchItem {
@@ -229,9 +229,11 @@ export const spentByPeriod = (list: Purchase[], now: number): PeriodSpend => {
   const s = periodStarts(now);
   const out = { day: 0, week: 0, month: 0 };
   for (const p of list) {
-    if (p.at >= s.day) out.day += p.price;
-    if (p.at >= s.week) out.week += p.price;
-    if (p.at >= s.month) out.month += p.price;
+    const usd = purchaseUsd(p);
+    if (usd === null) continue;
+    if (p.at >= s.day) out.day += usd;
+    if (p.at >= s.week) out.week += usd;
+    if (p.at >= s.month) out.month += usd;
   }
   const r = (n: number) => Math.round(n * 100) / 100;
   return { day: r(out.day), week: r(out.week), month: r(out.month) };
@@ -270,14 +272,15 @@ export interface SellerHistory {
 export const sellerHistory = (list: Purchase[], host: string, liveId: string | null): SellerHistory => {
   const key = sellerKey(host);
   const mine = list.filter((p) => p.host && sellerKey(p.host) === key && p.kind !== 'giveaway');
-  const total = mine.reduce((n, p) => n + p.price, 0);
-  const appraised = mine.filter((p) => p.appraisedValue !== null);
+  const priced = mine.filter((p) => purchaseUsd(p) !== null);
+  const total = priced.reduce((n, p) => n + (purchaseUsd(p) ?? 0), 0);
+  const appraised = priced.filter((p) => p.appraisedValue !== null);
   const r = (n: number) => Math.round(n * 100) / 100;
   return {
     wins: mine.length,
     total: r(total),
-    average: mine.length ? r(total / mine.length) : 0,
-    appraisedPaid: r(appraised.reduce((n, p) => n + p.price, 0)),
+    average: priced.length ? r(total / priced.length) : 0,
+    appraisedPaid: r(appraised.reduce((n, p) => n + (purchaseUsd(p) ?? 0), 0)),
     appraisedValue: r(appraised.reduce((n, p) => n + (p.appraisedValue ?? 0), 0)),
     thisShow: liveId ? list.filter((p) => p.liveId === liveId).length : 0,
     lastAt: mine.length ? Math.max(...mine.map((p) => p.at)) : null,

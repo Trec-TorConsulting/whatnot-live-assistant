@@ -1,4 +1,5 @@
 import type { PeriodSpend } from './buyer';
+import { toUsd } from './currency';
 import type { Lot } from './live';
 import { formatMoney } from './money';
 
@@ -62,13 +63,15 @@ export interface GuardStatus {
 
 export interface GuardInput {
   bid: number | null;
-  lot: Pick<Lot, 'id'> | null;
+  lot: Pick<Lot, 'id' | 'currency'> | null;
   settings: GuardSettings;
   spentThisShow: number;
   spentByPeriod?: PeriodSpend;
   // Your max from a watchlist entry matching this lot's title.
   watchMax?: number | null;
   appraisal: { marketValue: number | null; suggestedMax: number | null } | null;
+  currency?: string | null;
+  rate?: number | null;
 }
 
 const NEAR_SHARE = 0.9;
@@ -86,7 +89,7 @@ const CEILING_LABEL: Record<CeilingSource, string> = {
 
 // The ceiling is the tightest of: this lot's max (or your watchlist max), your default max, what's
 // left of the show, day, week, and month budgets, and (when an appraisal exists) its suggested max.
-export const guardStatus = ({ bid, lot, settings, spentThisShow, spentByPeriod, watchMax, appraisal }: GuardInput): GuardStatus => {
+export const guardStatus = ({ bid, lot, settings, spentThisShow, spentByPeriod, watchMax, appraisal, currency, rate }: GuardInput): GuardStatus => {
   const ceilings: { value: number; source: CeilingSource }[] = [];
   const lotMax = lot?.id ? settings.lotMax[lot.id] : undefined;
   const ownMax = lotMax ?? watchMax ?? undefined;
@@ -108,18 +111,35 @@ export const guardStatus = ({ bid, lot, settings, spentThisShow, spentByPeriod, 
   const reasons: string[] = [];
   let level: GuardLevel = 'ok';
 
-  if (bid !== null && tightest) {
-    if (bid > tightest.value) {
+  const code = (currency ?? lot?.currency ?? 'USD').toUpperCase();
+  let effectiveBid = bid;
+  let bidLabel = bid !== null ? formatMoney(bid) : '';
+  if (bid !== null && code !== 'USD') {
+    const converted = toUsd(bid, code, rate ?? null);
+    if (converted === null) {
+      return {
+        level: 'ok',
+        ceiling: tightest?.value ?? null,
+        ceilingSource: tightest?.source ?? null,
+        reasons: [`${formatMoney(bid, code)} bid is not converted to US dollars`],
+      };
+    }
+    effectiveBid = converted;
+    bidLabel = `${formatMoney(bid, code)} (${formatMoney(converted)})`;
+  }
+
+  if (effectiveBid !== null && tightest) {
+    if (effectiveBid > tightest.value) {
       level = 'over';
-      reasons.push(`${formatMoney(bid)} is over ${CEILING_LABEL[tightest.source]} (${formatMoney(tightest.value)})`);
-    } else if (bid >= tightest.value * NEAR_SHARE) {
+      reasons.push(`${bidLabel} is over ${CEILING_LABEL[tightest.source]} (${formatMoney(tightest.value)})`);
+    } else if (effectiveBid >= tightest.value * NEAR_SHARE) {
       level = 'near';
-      reasons.push(`${formatMoney(bid)} is close to your ceiling (${formatMoney(tightest.value)})`);
+      reasons.push(`${bidLabel} is close to your ceiling (${formatMoney(tightest.value)})`);
     }
   }
-  if (bid !== null && settings.warnOverMarket && appraisal?.marketValue && bid > appraisal.marketValue) {
+  if (effectiveBid !== null && settings.warnOverMarket && appraisal?.marketValue && effectiveBid > appraisal.marketValue) {
     level = 'over';
-    reasons.push(`${formatMoney(bid)} is above the appraised market value (${formatMoney(appraisal.marketValue)})`);
+    reasons.push(`${bidLabel} is above the appraised market value (${formatMoney(appraisal.marketValue)})`);
   }
   return { level, ceiling: tightest?.value ?? null, ceilingSource: tightest?.source ?? null, reasons };
 };

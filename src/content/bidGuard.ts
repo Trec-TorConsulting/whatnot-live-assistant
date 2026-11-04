@@ -8,10 +8,11 @@ import { getItem, onItemChanged } from '../shared/storage';
 import { MINUTE, SECOND } from '../shared/time';
 import { guardAppraisal } from '../shared/appraisal';
 import { latestAppraisal } from './appraise';
-import { allInLine, allInPrice, parseShipping } from '../shared/costs';
+import { allInLine, allInPrice, parseShippingInfo, shippingOwed, shippingRules } from '../shared/costs';
+import { toUsd } from '../shared/currency';
 import { bidderNote, buyerSettings, currentSpot, watchFor, youOnLot } from './buyer';
 import { onRetire } from './lifecycle';
-import { liveSession, onLive } from './live';
+import { liveSession, onLive, rememberCurrencyPair } from './live';
 import { overlay, type QuickBidButton } from './overlay';
 import { fillMaxBid, quickBidAmount, type QuickBidKind } from './quickBid';
 import {
@@ -49,6 +50,8 @@ const statusFor = (bid: number | null) => {
     spentByPeriod: spentByPeriod(purchases, Date.now()),
     watchMax: watchFor(lot)?.max ?? null,
     appraisal: guardAppraisal(relevantRecord(lot?.id ?? null)),
+    currency: lot?.currency ?? session?.currency?.code ?? null,
+    rate: session?.currency?.rate ?? null,
   });
 };
 
@@ -71,22 +74,40 @@ export const refreshGuard = () => {
     overlay.setQuickBids([]);
     return;
   }
+  const shipInfo = parseShippingInfo(findShippingText());
+  if (shipInfo.code !== 'USD' && shipInfo.rawAmount != null) {
+    rememberCurrencyPair({ amount: shipInfo.rawAmount, code: shipInfo.code, usd: shipInfo.usd, tariffs: shipInfo.tariffs });
+  }
   const s = statusFor(lot.currentBid);
   const session = liveSession();
   const withLeader = { ...lot, leader: lot.leader ?? findWinningUser() };
   const you = youOnLot(withLeader);
   const tax = buyerSettings().taxPercent;
-  const shippingPaid = Boolean(session && purchases.some((p) => p.liveId === session.show.liveId));
-  const allIn = lot.currentBid !== null ? allInLine(allInPrice(lot.currentBid, parseShipping(findShippingText()), tax, shippingPaid), tax) : null;
+  const hasWin = Boolean(session && purchases.some((p) => p.liveId === session.show.liveId));
+  const rules = shippingRules({
+    notes: session?.show.note?.text,
+    showTitle: session?.show.title,
+    lotTitle: lot.title,
+  });
+  const owed = shippingOwed({
+    rules,
+    lotTitle: lot.title,
+    pageShipping: shipInfo.shipping,
+    hasWinThisShow: hasWin,
+    tariffs: shipInfo.tariffs,
+  });
+  const code = (lot.currency ?? session?.currency?.code ?? 'USD').toUpperCase();
+  const bidUsd = code !== 'USD' ? toUsd(lot.currentBid, code, session?.currency?.rate ?? null) : lot.currentBid;
+  const allIn = bidUsd !== null ? allInLine(allInPrice(bidUsd, owed, tax), tax) : null;
   overlay.setGuard({
     lotTitle: lot.title,
-    bid: formatMoney(lot.currentBid),
+    bid: formatMoney(lot.currentBid, code !== 'USD' ? code : undefined),
     ceiling: s.ceiling !== null ? formatMoney(s.ceiling) : null,
     level: s.level,
     reasons: s.reasons,
     you,
     watch: watchFor(lot)?.text ?? null,
-    perOz: perOzLine(lot.currentBid, lot.id),
+    perOz: perOzLine(bidUsd, lot.id),
     allIn,
     // Only worth a line when it's your money on the lot, or the leader is the host or a moderator.
     pusher: you !== 'leading' ? bidderNote(withLeader.leader, you !== null) : null,

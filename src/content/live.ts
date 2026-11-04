@@ -3,12 +3,14 @@ import { CONTENT_SOURCE, HOOK_SOURCE, type ContentToHook, type HookToContent } f
 import {
   decodePhoenixFrame,
   emptySession,
+  noteCurrencyPair,
   noteElectronicsName,
   noteElectronicsRules,
   noteEstateName,
   noteEstateRules,
   noteRunnerGiveawayStems,
   noteShippingQuote,
+  noteShippingRules,
   reduceGraphql,
   sessionForPath,
   reduceSocket,
@@ -117,6 +119,24 @@ export const rememberRunnerGiveawayStems = (bodyOrStems: unknown) => {
   schedulePush();
 };
 
+export const rememberShippingRules = (key: string | null) => {
+  if (!session || shareWorker) return;
+  const next = noteShippingRules(session, key);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
+export const rememberCurrencyPair = (
+  pair: { amount: number; code: string; usd: number | null; tariffs?: boolean } | null | undefined,
+) => {
+  if (!session || shareWorker) return;
+  const next = noteCurrencyPair(session, pair);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
 export const publishShop = (shop: ShopScan) => {
   const s = currentSession();
   if (!s || shareWorker) return;
@@ -134,7 +154,8 @@ const forward = (signal: LiveSignal) => {
     void send('LIVE_SIGNAL', { ...base, signal }).catch(() => undefined);
   } else if (signal.kind === 'sale' && username && signal.sale.buyer?.toLowerCase() === username.toLowerCase()) {
     const photo = winPhoto();
-    void send('LIVE_SIGNAL', { ...base, signal, ...(photo ? { photo } : {}) }).catch(() => undefined);
+    const currencyRate = session.currency?.rate ?? null;
+    void send('LIVE_SIGNAL', { ...base, signal, ...(photo ? { photo } : {}), ...(currencyRate !== null ? { currencyRate } : {}) }).catch(() => undefined);
   }
 };
 
@@ -160,7 +181,7 @@ let soldTimer: ReturnType<typeof setTimeout> | undefined;
 
 const recordSold = (signal: LiveSignal) => {
   if (!session || signal.kind !== 'sale') return;
-  const item = soldFromSale(signal.sale, session.show.liveId, session.show.title, currentShowType(), session.show.host);
+  const item = soldFromSale(signal.sale, session.show.liveId, session.show.title, currentShowType(), session.show.host, session.currency?.rate ?? null);
   if (!item) return;
   soldQueue.push(item);
   soldTimer ??= setTimeout(() => {

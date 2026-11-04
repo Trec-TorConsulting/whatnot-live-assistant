@@ -442,6 +442,71 @@ describe('estate session', () => {
     expect(reset?.runnerGiveawayStems).toEqual([]);
     expect(reset?.runnerGiveawayShippingWon).toBe(false);
   });
+
+  it('pins a mod contents line on a generic wholesale lot, ignores viewer lines, does not reuse lot 66 pin on lot 67, and keeps giveaways off caseRuns', () => {
+    let s = emptySession(LIVE);
+    s = apply(
+      s,
+      frame(`chat:${LIVE}`, 'livestream_update', {
+        title: 'Wholesale Reseller Blowout',
+        categories: ['Case Packs & Bundles', 'Reseller Bundles'],
+      }),
+    ).session;
+
+    s = apply(s, lot('c66', 'Clothing Case Pack - Pink Tag #66', 100)).session;
+    // Viewer line does not pin
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', chatMsg('v1', 'buyer', 'Purses- 5'))).session;
+    expect(s.casePins['66']).toBeUndefined();
+
+    // Mod line "Hats- 10" pins to lot 66
+    s = apply(
+      s,
+      frame(`chat:${LIVE}`, 'new_msg', {
+        id: 'm1',
+        message: 'Hats- 10',
+        user: { username: 'mod1', isModerator: true },
+      }),
+    ).session;
+    expect(s.casePins['66']).toMatchObject({ name: 'Hats', count: 10 });
+
+    // Lot 66 sells for $21 -> top of caseRuns is lot 66 · Hats · 10 · $21 · $2.10
+    s = apply(s, sold('c66', 'Clothing Case Pack - Pink Tag #66', 21)).session;
+    expect(s.caseRuns[0]).toEqual({
+      number: 66,
+      name: 'Hats',
+      count: 10,
+      price: 21,
+      unitPrice: 2.1,
+    });
+
+    // A giveaway between sales is absent from the board
+    s = apply(
+      s,
+      frame(`commerce:${LIVE}`, 'giveaway_won', {
+        product: {
+          id: 'g-1',
+          name: 'Follower Giveaway #1',
+          transactionType: 'GIVEAWAY',
+          soldPrice: { amount: 0 },
+          purchaserUser: { username: 'alice' },
+        },
+      }),
+    ).session;
+    expect(s.caseRuns).toHaveLength(1);
+
+    // Lot 67 does not reuse lot 66's pin
+    s = apply(s, lot('c67', 'Clothing Case Pack - Pink Tag #67', 100)).session;
+    expect(s.casePins['67']).toBeUndefined();
+    s = apply(s, sold('c67', 'Clothing Case Pack - Pink Tag #67', 15)).session;
+    expect(s.caseRuns[0]).toEqual({
+      number: 67,
+      name: null,
+      count: null,
+      price: 15,
+      unitPrice: null,
+    });
+    expect(s.caseRuns).toHaveLength(2);
+  });
 });
 
 describe('isNewLot', () => {

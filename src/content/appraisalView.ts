@@ -201,10 +201,12 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
   const confidence = record.confidence === 'quick' ? 'from the listing' : record.confidence !== 'high' ? `${record.confidence} confidence` : null;
   const more = lot && lot.pieces.length > 1 ? `+${lot.pieces.length - 1} more` : null;
 
+  const qtyLabel = record.countNote ?? (record.quantity > 1 ? `x${record.quantity}` : null);
+
   return {
     status,
     title: record.name,
-    subtitle: [kind, record.grade, record.quantity > 1 ? `x${record.quantity}` : null, more, confidence].filter(Boolean).join(' · ') || null,
+    subtitle: [kind, record.grade, qtyLabel, more, confidence].filter(Boolean).join(' · ') || null,
     highlight: headline,
     valueLine: valueLine(record),
     reasons,

@@ -1,6 +1,7 @@
+import { formatForeignWithUsd } from '../../shared/currency';
 import { send } from '../../shared/messages';
 import { formatMoney } from '../../shared/money';
-import { purchasesCsv, summarizeSpend, type Purchase } from '../../shared/purchases';
+import { purchasesCsv, purchaseUsd, summarizeSpend, type Purchase } from '../../shared/purchases';
 import { DEFAULT_BUYER_SETTINGS, sanitizeBuyerSettings, type BuyerSettings } from '../../shared/buyer';
 import { sanitizeCollection, type CollectionSettings } from '../../shared/collection';
 import { flipLine, flipProfit, portfolioValue } from '../../shared/costs';
@@ -104,7 +105,7 @@ const render = () => {
   const s = summarizeSpend(purchases, Date.now());
   el.today.textContent = formatMoney(s.today);
   el.month.textContent = formatMoney(s.thisMonth);
-  el.all.textContent = `${formatMoney(s.allTime)} (${s.count})`;
+  el.all.textContent = `${formatMoney(s.allTime)} (${s.count}${s.unconvertedCount ? `, ${s.unconvertedCount} not converted` : ''})`;
   el.vs.textContent = s.appraisedPaid ? `${formatMoney(s.appraisedPaid)} / ${formatMoney(s.appraisedValue)}` : '—';
 
   const peak = Math.max(1, ...s.days.map((d) => d.total));
@@ -126,8 +127,14 @@ const render = () => {
       .sort((a, b) => b.at - a.at)
       .slice(0, 50)
       .map((p) => {
+        const code = (p.currency ?? 'USD').toUpperCase();
+        const usd = purchaseUsd(p);
+        const priceLabel =
+          code !== 'USD'
+            ? (formatForeignWithUsd(p.price, code, usd, 'usd') ?? formatMoney(p.price, code))
+            : formatMoney(p.price);
         const item = li(
-          `${new Date(p.at).toLocaleDateString()} · ${p.title} · ${formatMoney(p.price)}${
+          `${new Date(p.at).toLocaleDateString()} · ${p.title} · ${priceLabel}${
             p.appraisedValue !== null ? ` (appraised ${formatMoney(p.appraisedValue)})` : ''
           }${p.host ? ` · @${p.host}` : ''}`,
         );

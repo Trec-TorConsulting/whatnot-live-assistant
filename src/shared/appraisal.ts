@@ -1,8 +1,9 @@
 // Coin and bullion appraisal logic: series weights, listing-text pre-appraisal, the Gemini answer
 // schema, PCGS sale summaries, and the market value / suggested max bid that comes out of them.
+import { CASE_PACK_HINT, contentsLine, isGenericCaseLot, resolveLotCount, type CountSource } from './casePack';
 import { formatMoney } from './money';
 import { ELECTRONICS_HINT, electronicsPassOn, isPullBucket, pullContext, readMsrp } from './electronics';
-import { ESTATE_HINT, estatePassOn, isTemplate, templateContext } from './estate';
+import { ESTATE_HINT, estatePassOn, isTemplate, lotNumber, templateContext } from './estate';
 import { runnerItemName, runnerNoteSupplement, runnerPassOn } from './runner';
 import { noteForPrompt } from './showNotes';
 import { SHOW_TYPES, type ShowType } from './showType';
@@ -416,59 +417,148 @@ export const APPRAISAL_INSTRUCTIONS = [
   'notes: one short sentence on what limits accuracy (e.g. authenticity, size, or condition that cannot be checked on camera).',
 ].join('\n');
 
+export interface CasePackPromptInput {
+  lotNumber?: number | null;
+  count?: number | null;
+  countSource?: CountSource | string | null;
+  pin?: string | null;
+}
+
 export interface AppraisalContext {
   pageText: string;
   showTitle: string;
   lotTitle?: string | null;
+  lotSubtitle?: string | null;
   categories?: string[];
   showType?: ShowType;
   showNotes?: string | null;
+  casePack?: CasePackPromptInput | null;
 }
 
+const sourcePhrase = (src: CountSource | string | null | undefined): string => {
+  if (src === 'mod') return 'a mod';
+  if (src === 'notes') return 'the notes';
+  if (src === 'subtitle') return 'the subtitle';
+  return 'the title';
+};
+
 // Per request rather than in the cached instructions, so every show type shares one cache entry.
-export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [], showType = 'general', showNotes }: AppraisalContext) => {
+export const appraisalContext = ({
+  pageText,
+  showTitle,
+  lotTitle,
+  lotSubtitle,
+  categories = [],
+  showType = 'general',
+  showNotes,
+  casePack,
+}: AppraisalContext) => {
   const baseNotes = noteForPrompt(showNotes);
   const runnerSupp = runnerNoteSupplement(showNotes);
   const notes = [baseNotes, runnerSupp].filter(Boolean).join('\n');
-  const runnerOn = runnerPassOn(showNotes);
-  const runnerNamed = lotTitle ? runnerItemName(lotTitle, runnerOn) : null;
-  const tools = toolsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
-  const electronics = !tools && electronicsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
-  const pull = !runnerNamed && Boolean(lotTitle && isPullBucket(lotTitle, showTitle));
-  const template = !runnerNamed && !tools && !electronics && Boolean(lotTitle && isTemplate(lotTitle));
-  const msrp = !pull && lotTitle ? readMsrp(runnerNamed ?? lotTitle) : null;
+  const isWholesale =
+    showType === 'wholesale' ||
+    Boolean(casePack) ||
+    /\b(?:case\s*packs?|casepacks?)\b/i.test(lotTitle ?? '');
+  const effectiveShowType: ShowType = isWholesale ? 'wholesale' : showType;
+
+  const pinObj = casePack?.pin ? contentsLine(casePack.pin) : null;
+  const resolvedCase = isWholesale
+    ? resolveLotCount({
+        lotTitle,
+        lotSubtitle,
+        notes: showNotes,
+        pin: pinObj,
+      })
+    : null;
+  const cpCount = casePack?.count !== undefined ? casePack.count : (resolvedCase?.count ?? null);
+  const cpSource = casePack?.countSource !== undefined ? casePack.countSource : (resolvedCase?.source ?? null);
+  const cpNum = casePack?.lotNumber !== undefined ? casePack.lotNumber : lotNumber(lotTitle);
+  const cpPinText = casePack?.pin ?? null;
+  const genericCase = isWholesale && Boolean(lotTitle && isGenericCaseLot(lotTitle));
+
+  const runnerOn = !isWholesale && runnerPassOn(showNotes);
+  const runnerNamed = !isWholesale && lotTitle ? runnerItemName(lotTitle, runnerOn) : null;
+  const tools = !isWholesale && toolsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType: effectiveShowType });
+  const electronics =
+    !isWholesale && !tools && electronicsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType: effectiveShowType });
+  const pull = !isWholesale && !runnerNamed && Boolean(lotTitle && isPullBucket(lotTitle, showTitle));
+  const template = !isWholesale && !runnerNamed && !tools && !electronics && Boolean(lotTitle && isTemplate(lotTitle));
+  const msrp = !pull && !genericCase && lotTitle ? readMsrp(runnerNamed ?? lotTitle) : null;
   let page = pageText;
-  if ((pull || template) && lotTitle) {
+  if ((pull || template || genericCase) && lotTitle) {
     page = page.split(lotTitle).join(' ').replace(/[ \t]{2,}/g, ' ').trim();
   } else if (runnerNamed && lotTitle) {
     page = page.split(lotTitle).join(runnerNamed).replace(/[ \t]{2,}/g, ' ').trim();
   } else if (msrp && lotTitle) {
     page = page.split(lotTitle).join(msrp.cleanTitle).replace(/[ \t]{2,}/g, ' ').trim();
   }
-  const pass = !runnerNamed && !tools && !electronics && estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
-  const lotLine = pull
-    ? (pullContext(lotTitle, showTitle) ?? '')
-    : template
-      ? (templateContext(lotTitle) ?? '')
-      : msrp
-        ? (pullContext(runnerNamed ?? lotTitle, showTitle) ?? '')
-        : runnerNamed
-          ? `Current lot title: ${runnerNamed}`
-          : lotTitle
-            ? `Current lot title: ${lotTitle}`
-            : '';
+  const pass =
+    !isWholesale &&
+    !runnerNamed &&
+    !tools &&
+    !electronics &&
+    estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType: effectiveShowType });
+
+  let lotLine = '';
+  if (genericCase) {
+    const bits = [
+      cpNum != null ? `lot ${cpNum}` : 'case-pack lot',
+      cpCount != null ? `${cpCount} ${cpCount === 1 ? 'piece' : 'pieces'} stated by ${sourcePhrase(cpSource)}` : null,
+      cpPinText ? `pinned "${cpPinText}"${pinObj?.name ? ` (${pinObj.name})` : ''}` : null,
+    ].filter(Boolean);
+    lotLine = `Listing context: ${bits.join(', ')}. The listing title is a case-pack bucket, not the item name.`;
+  } else if (pull) {
+    lotLine = pullContext(lotTitle, showTitle) ?? '';
+  } else if (template) {
+    lotLine = templateContext(lotTitle) ?? '';
+  } else if (msrp) {
+    lotLine = pullContext(runnerNamed ?? lotTitle, showTitle) ?? '';
+  } else if (runnerNamed) {
+    lotLine = `Current lot title: ${runnerNamed}`;
+  } else if (lotTitle) {
+    const extraBits = isWholesale
+      ? [
+          cpCount != null ? `${cpCount} ${cpCount === 1 ? 'piece' : 'pieces'} stated by ${sourcePhrase(cpSource)}` : null,
+          cpPinText ? `pinned "${cpPinText}"` : null,
+        ].filter(Boolean)
+      : [];
+    lotLine = `Current lot title: ${lotTitle}${extraBits.length ? ` (${extraBits.join(', ')})` : ''}`;
+  }
+
   return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',
     lotLine,
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
-    SHOW_TYPES[showType].hint ?? '',
-    tools ? TOOLS_HINT : electronics ? ELECTRONICS_HINT : pass ? ESTATE_HINT : '',
+    SHOW_TYPES[effectiveShowType].hint ?? '',
+    isWholesale ? CASE_PACK_HINT : tools ? TOOLS_HINT : electronics ? ELECTRONICS_HINT : pass ? ESTATE_HINT : '',
     'Listing text (title, bid, grade, or cert):',
     page || '(none)',
   ]
     .filter(Boolean)
     .join('\n');
+};
+
+export const reconcileCount = (
+  statedCount: number | null | undefined,
+  modelQuantity: number | null | undefined,
+): { quantity: number; countNote: string | null } => {
+  const model = Math.max(1, Math.round(modelQuantity || 1));
+  if (statedCount != null && statedCount > 0) {
+    const stated = Math.round(statedCount);
+    if (model <= 1) {
+      return { quantity: stated, countNote: stated > 1 ? `${stated} stated` : null };
+    }
+    if (model !== stated) {
+      return {
+        quantity: Math.min(stated, model),
+        countNote: `${model} counted · ${stated} stated`,
+      };
+    }
+    return { quantity: stated, countNote: stated > 1 ? `${stated} stated` : null };
+  }
+  return { quantity: model, countNote: null };
 };
 
 export interface AuctionSummary {
@@ -756,6 +846,7 @@ export interface AppraisalRecord {
   special?: string | null;
   grade: string | null;
   quantity: number;
+  countNote?: string | null;
   confidence: AppraisalItem['confidence'] | 'quick';
   model: string | null;
   melt: Melt | null;

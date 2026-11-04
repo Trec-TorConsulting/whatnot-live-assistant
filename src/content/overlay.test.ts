@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildCasePackView } from '../shared/casePack';
 import { buildElectronicsView } from '../shared/electronics';
 import { buildEstateView } from '../shared/estate';
 import { buildRunnerView } from '../shared/runner';
@@ -370,6 +371,26 @@ describe('overlay', () => {
     expect(shadow().querySelector('[data-action="chat"]')).toBeNull();
     expect(text).not.toMatch(/\bR\s*\/\s*P\b/);
     overlay.setRunner(null);
+  });
+
+  it('shows the case-pack per-piece and landed per-piece cost before an appraisal without calling the item 12/$12 SB', () => {
+    overlay.mount({});
+    overlay.setCasePack(
+      buildCasePackView({
+        showType: 'wholesale',
+        lotTitle: '12/$12 SB, 11/4 am',
+        bid: 12,
+        shipping: 5.25,
+      }),
+    );
+    const casePackEl = shadow().querySelector('[data-casepack]')!;
+    const text = casePackEl.textContent ?? '';
+    expect(text).toContain('12 pieces');
+    expect(text).toContain('$1.00 each');
+    expect(text).toContain('$1.44 each landed');
+    expect(text).not.toContain('12/$12 SB');
+    expect(text).not.toContain('Appraising');
+    overlay.setCasePack(null);
   });
 
   it('hides Appraise while a wheel is running', () => {

@@ -1,5 +1,7 @@
 // Estate and grab-bag shows sell through a reusable shipping-tier listing. The title is not the item.
+import { electronicsPassOn } from './electronics';
 import { formatMoney } from './money';
+import type { ShowType } from './showType';
 
 const GRAB = /\b(?:item on screen|random\.?\s*pulls?|junk bags?|random beauties)\b/i;
 const YEAR = /\b(?:1[6-9]\d{2}|20\d{2})\b/;
@@ -66,7 +68,9 @@ export const estatePassOn = (p: {
   showTitle?: string | null;
   categories?: string[];
   notes?: string | null;
+  showType?: ShowType;
 }): boolean => {
+  if (electronicsPassOn(p)) return false;
   if (p.lotTitle && isTemplate(p.lotTitle)) return true;
   const blob = [p.showTitle, ...(p.categories ?? []), p.notes].filter(Boolean).join('\n');
   return /\bestate\s+(?:sales?|shows?)\b/i.test(blob);
@@ -212,6 +216,7 @@ export const buildEstateView = (input: {
   showTitle?: string | null;
   categories?: string[];
   notes?: string | null;
+  showType?: ShowType;
   start?: number | null;
   bid?: number | null;
   shipping?: number | null;
@@ -250,7 +255,13 @@ export const estateViewFromSession = (
     estateRuns?: EstateRun[];
     shippingQuote?: number | null;
   },
-  extra: { shippingPaid?: boolean; shipping?: number | null; recognizedName?: string | null; appraisalNotes?: string | null } = {},
+  extra: {
+    shippingPaid?: boolean;
+    shipping?: number | null;
+    recognizedName?: string | null;
+    appraisalNotes?: string | null;
+    showType?: ShowType;
+  } = {},
 ): EstateView | null => {
   const lot = session.lot;
   const bidCount = lot?.bidCount ?? 0;
@@ -262,6 +273,7 @@ export const estateViewFromSession = (
     showTitle: session.show.title,
     categories: session.show.categories,
     notes: session.show.note?.text,
+    showType: extra.showType,
     start: bidCount > 0 ? null : (lot?.currentBid ?? null),
     bid: bidCount > 0 ? (lot?.currentBid ?? null) : null,
     shipping: extra.shipping !== undefined ? extra.shipping : (session.shippingQuote ?? null),

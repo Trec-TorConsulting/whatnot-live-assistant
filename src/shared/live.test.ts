@@ -3,6 +3,7 @@ import {
   decodePhoenixFrame,
   emptySession,
   isNewLot,
+  noteElectronicsName,
   noteEstateName,
   readCategories,
   readCommerce,
@@ -14,6 +15,7 @@ import {
   type LiveSession,
   type Sale,
 } from './live';
+import { buildEstateView } from './estate';
 import { moneyValue, parseMoneyText } from './money';
 
 const LIVE = '0711ec47-add7-47f6-8480-048764724c9e';
@@ -342,6 +344,32 @@ describe('estate session', () => {
     expect(next?.estateRuns).toEqual([]);
     expect(next?.estatePins).toEqual({});
     expect(next?.estateWants).toEqual([]);
+  });
+
+  it('keeps pull-bucket hammers and recognized names in electronics session, hides estate card on electronics pass, and drops giveaways', () => {
+    let s = emptySession(LIVE);
+    s = apply(s, lot('p46', 'SMALL Random Item #46', 300)).session;
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('pin46', ' Anker power bank '))).session;
+    s = noteElectronicsName(s, 'Anker 737 Power Bank');
+    s = apply(s, sold('p46', 'SMALL Random Item #46', 24)).session;
+    s = apply(s, lot('p51', 'SMALL Random Item #51', 300)).session;
+    s = apply(s, frame(`chat:${LIVE}`, 'new_msg', host('pin51', 'JBL Clip 4 speaker'))).session;
+    s = apply(s, frame(`commerce:${LIVE}`, 'giveaway_won', {
+      product: { id: 'g2', name: 'SMALL Random Item #47', transactionType: 'GIVEAWAY', soldPrice: { amount: 0 }, purchaserUser: { username: 'winner' } },
+    })).session;
+    s = apply(s, sold('p51', 'SMALL Random Item #51', 31)).session;
+
+    expect(s.electronicsRuns.map((r) => [r.number, r.name, r.price])).toEqual([
+      [51, 'JBL Clip 4 speaker', 31],
+      [46, 'Anker 737 Power Bank', 24],
+    ]);
+    expect(s.electronicsPins['46']).toBe('Anker 737 Power Bank');
+    expect(s.electronicsRuns.some((r) => r.number === 47)).toBe(false);
+    expect(buildEstateView({ lotTitle: 'ELECTRONIC AS SHOWN #150', categories: ['Everyday Electronics'] })).toBeNull();
+    const next = sessionForPath(s, 'other-show');
+    expect(next?.electronicsRuns).toEqual([]);
+    expect(next?.electronicsPins).toEqual({});
+    expect(next?.electronicsWants).toEqual([]);
   });
 });
 

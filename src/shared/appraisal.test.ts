@@ -76,6 +76,40 @@ describe('appraisal prompt', () => {
     expect(screen).toContain('lot 57');
     expect(screen).toContain('tier 2 oz');
   });
+
+  it('uses the electronics hint on pull buckets, omits the estate hint, and labels stated MSRP as a claim', () => {
+    const asShown = appraisalContext({
+      pageText: 'ELECTRONIC AS SHOWN #150',
+      showTitle: 'Everyday Electronics Blowout',
+      lotTitle: 'ELECTRONIC AS SHOWN #150',
+      categories: ['Everyday Electronics'],
+      showType: 'electronics',
+    });
+    expect(asShown).toContain('Electronics show:');
+    expect(asShown).not.toContain('maker marks');
+    expect(asShown).not.toContain('ELECTRONIC AS SHOWN');
+    expect(asShown).toContain('lot 150');
+
+    const smallPull = appraisalContext({
+      pageText: 'SMALL Random Item #202\nBid $3',
+      showTitle: 'Pallet Pulls',
+      lotTitle: 'SMALL Random Item #202',
+      categories: ['Everyday Electronics', 'Pallet Pulls'],
+      showType: 'electronics',
+    });
+    expect(smallPull).toContain('lot 202');
+    expect(smallPull).toContain('tier small');
+    expect(smallPull).not.toContain('SMALL Random Item');
+
+    const msrpLot = appraisalContext({
+      pageText: '($200 Retail) Viaim Black RecDot AI Voice Recorder Earbuds',
+      showTitle: 'Tech Show',
+      lotTitle: '($200 Retail) Viaim Black RecDot AI Voice Recorder Earbuds',
+      showType: 'electronics',
+    });
+    expect(msrpLot).toContain('claim, not a sold price');
+    expect(msrpLot).toContain('Viaim Black RecDot AI Voice Recorder Earbuds');
+  });
 });
 
 describe('jewelry melt', () => {

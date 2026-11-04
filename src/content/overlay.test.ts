@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildElectronicsView } from '../shared/electronics';
 import { buildEstateView } from '../shared/estate';
 import { messageView } from './appraisalView';
 import { overlay, type WheelView } from './overlay';
@@ -285,6 +286,26 @@ describe('overlay', () => {
     expect(text).not.toContain('Item on screen');
     expect(text).not.toContain('Appraising');
     overlay.setEstate(null);
+  });
+
+  it('shows the electronics pull lot before an appraisal without calling the item Random Item', () => {
+    overlay.mount({});
+    overlay.setElectronics(
+      buildElectronicsView({
+        lotTitle: 'SMALL Random Item #202',
+        start: 3,
+        shipping: 6.75,
+        categories: ['Everyday Electronics', 'Pallet Pulls'],
+      }),
+    );
+    const text = shadow().textContent ?? '';
+    expect(text).toContain('Lot 202');
+    expect(text).toContain('small');
+    expect(text).toContain('$3');
+    expect(text).toContain('$6.75');
+    expect(text).not.toContain('Random Item');
+    expect(text).not.toContain('Appraising');
+    overlay.setElectronics(null);
   });
 
   it('hides Appraise while a wheel is running', () => {

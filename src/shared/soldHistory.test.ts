@@ -82,6 +82,30 @@ describe('findComps', () => {
     expect(one?.count).toBe(1);
     expect(computeValue({ quantity: 1, melt: null, price: null, comps: one }).basis).not.toBe('whatnot');
   });
+
+  it('rejects pull buckets and generic device classes as comps while matching specific devices and stripping MSRP', () => {
+    const pullsAndGeneric = [
+      sold('SMALL Random Item #201', 12, { key: 'sr1', showType: 'electronics' }),
+      sold('SMALL Random Item #202', 18, { key: 'sr2', showType: 'electronics' }),
+      sold('APPLE IPAD', 85, { key: 'ipad1', showType: 'electronics' }),
+      sold('APPLE IPAD', 110, { key: 'ipad2', showType: 'electronics' }),
+      sold('2020 Apple MacBook Air Laptop Apple M1 Chip (USED)', 410, { key: 'mb1', showType: 'electronics' }),
+      sold('2020 Apple MacBook Air M1 Laptop', 430, { key: 'mb2', showType: 'electronics' }),
+    ];
+    expect(findComps(['SMALL Random Item #203'], pullsAndGeneric, now, 8, 'electronics')).toEqual([]);
+    expect(findComps(['APPLE IPAD'], pullsAndGeneric, now, 8, 'electronics')).toEqual([]);
+
+    const macComps = summarizeComps(findComps(['2020 Apple MacBook Air M1'], pullsAndGeneric, now, 8, 'electronics'));
+    expect(macComps?.count).toBe(2);
+    expect(computeValue({ quantity: 1, melt: null, price: null, comps: macComps }).basis).toBe('whatnot');
+
+    // Stated MSRP alone does not set market value when no sold comps exist.
+    const msrpOnly = summarizeComps(
+      findComps(['($200 Retail) Viaim Black RecDot AI Voice Recorder Earbuds'], pullsAndGeneric, now, 8, 'electronics'),
+    );
+    expect(msrpOnly).toBeNull();
+    expect(computeValue({ quantity: 1, melt: null, price: null, comps: msrpOnly }).marketValue).toBeNull();
+  });
 });
 
 describe('summarizeComps', () => {

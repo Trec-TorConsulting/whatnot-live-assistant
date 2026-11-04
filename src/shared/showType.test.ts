@@ -29,4 +29,10 @@ describe('detectShowType', () => {
   it('lets flea wording in the notes outweigh a coin title', () => {
     expect(detectShowType('Morgan dollars', [], 'Garage sale estate sale storage unit')).toBe('flea');
   });
+
+  it('treats Everyday Electronics and Laptops categories as electronics even with Pallet Pulls, while a garage sale with a laptop stays flea', () => {
+    expect(detectShowType('Tech pallet pulls', ['Everyday Electronics', 'Pallet Pulls'])).toBe('electronics');
+    expect(detectShowType('MacBooks and iPads', ['Laptops, Phones & Tablets'])).toBe('electronics');
+    expect(detectShowType('Garage sale: old laptop and dishes', [])).toBe('flea');
+  });
 });

@@ -3,6 +3,7 @@
 // opener, not a price you pay, so it is not scored. A hit is a price under melt or under sales
 // you've watched, a watchlist match, or a known key date. Nothing here buys.
 import { quickRead, type AuctionSummary } from './appraisal';
+import { isGenericDeviceClass, isPartsCondition, isPullBucket, isSpecificDevice } from './electronics';
 import { isTemplate } from './estate';
 import { matchWatch, type WatchItem } from './buyer';
 import { keyDateCallouts, keyDatePrice } from './keyDates';
@@ -13,6 +14,7 @@ import type { ShowType } from './showType';
 export interface ShopListing {
   id: string;
   title: string;
+  subtitle?: string | null;
   price: number;
   quantity: number;
   mode?: 'bin' | 'auction';
@@ -79,7 +81,15 @@ const readListing = (o: Record<string, unknown>): ShopListing | null => {
   const rawQty = num(o.quantity ?? o.inventory ?? obj(o.inventoryLevel)?.quantity) ?? 1;
   const quantity = Math.max(1, Math.min(999, Math.round(rawQty)));
   const id = str(o.id ?? o.uuid ?? o.listingId ?? o.productId) ?? `${title}|${price}`;
-  return { id, title: title.slice(0, 160), price, quantity, mode: auction ? 'auction' : 'bin' };
+  const subtitle = str(o.subtitle ?? o.subTitle ?? o.condition ?? obj(o.product)?.subtitle ?? obj(o.listing)?.subtitle);
+  return {
+    id,
+    title: title.slice(0, 160),
+    ...(subtitle ? { subtitle } : {}),
+    price,
+    quantity,
+    mode: auction ? 'auction' : 'bin',
+  };
 };
 
 const MAX_LISTINGS = 400;
@@ -147,20 +157,24 @@ export interface ShopScoreInput {
 export const scoreShop = ({ listings, sold, showType, watchlist, maxBidPercent, meltOf, now }: ShopScoreInput): ShopHit[] => {
   const hits: (ShopHit & { edge: number })[] = [];
   for (const item of listings) {
-    if (isTemplate(item.title) || item.quantity >= 20) continue;
+    if (isTemplate(item.title) || isPullBucket(item.title) || isGenericDeviceClass(item.title)) continue;
+    if (/\b(?:giveaway|givvy|givy)\b/i.test(item.title)) continue;
+    if (item.price >= 10_000 && item.quantity >= 20) continue;
+    if (item.quantity >= 20 && !isSpecificDevice(item.title)) continue;
     // Whatnot's Pre-bid button is an auction that has not started. $1 is the opener, so it is
     // under melt for every ounce of silver and is not a price you can pay.
     if (item.mode === 'auction' && item.price <= 1) continue;
+    const parts = isPartsCondition(item.subtitle, item.title);
     const comps = summarizeComps(findComps([item.title], sold, now, 8, showType));
     const median = comps && comps.count >= 2 ? comps.median : null;
     const melt = meltOf(item);
     const watch = matchWatch(item.title, watchlist);
     const keys = keyDateCallouts({ text: item.title }).filter((c) => c.kind === 'key');
-    const underMelt = melt !== null && item.price < melt;
-    const stealComps = median !== null && item.price <= median * STEAL_RATIO;
+    const underMelt = !parts && melt !== null && item.price < melt;
+    const stealComps = !parts && median !== null && item.price <= median * STEAL_RATIO;
     const max = median !== null ? (median * maxBidPercent) / 100 : null;
-    const dealComps = max !== null && item.price <= max && !stealComps;
-    const watchDeal = watch?.max != null && item.price <= watch.max;
+    const dealComps = !parts && max !== null && item.price <= max && !stealComps;
+    const watchDeal = !parts && watch?.max != null && item.price <= watch.max;
     const pricedFair = median !== null && item.price > median;
     const keyMust = keys.length > 0 && !pricedFair;
     let kind: ShopHitKind | null = null;

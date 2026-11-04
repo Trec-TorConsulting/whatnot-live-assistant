@@ -1,4 +1,5 @@
 // A small shadow-DOM panel on live pages: bid guard, wheel status or appraisal card, share status.
+import type { ElectronicsView } from '../shared/electronics';
 import type { EstateView } from '../shared/estate';
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from '../shared/storage';
 
@@ -109,6 +110,7 @@ interface State {
   seller: SellerView | null;
   shop: ShopView | null;
   estate: EstateView | null;
+  electronics: ElectronicsView | null;
   tools: ToolsView | null;
   quickBids: QuickBidButton[];
   checksOpen: boolean;
@@ -128,6 +130,7 @@ const state: State = {
   seller: null,
   shop: null,
   estate: null,
+  electronics: null,
   tools: null,
 };
 let host: HTMLElement | null = null;
@@ -424,6 +427,22 @@ const estateRow = (v: EstateView | null) => {
     </div>`;
 };
 
+const electronicsRow = (v: ElectronicsView | null) => {
+  if (!v) return '';
+  const wants = v.wants.map((w) => `<div class="${w.hit ? 'good' : 'muted'}">${esc(w.text)}</div>`).join('');
+  const runs = v.runs.map((r) => `<li>${esc(r)}</li>`).join('');
+  return `<div class="row" data-electronics>
+      ${v.line ? `<div>${esc(v.line)}</div>` : ''}
+      ${v.condition ? `<div>${esc(v.condition)}</div>` : ''}
+      ${v.msrp ? `<div class="muted">${esc(v.msrp)}</div>` : ''}
+      ${v.suddenDeath ? `<div class="notice">${esc(v.suddenDeath)}</div>` : ''}
+      ${v.shippingNote ? `<div class="notice">${esc(v.shippingNote)}</div>` : ''}
+      ${v.rules ? `<div class="notice">${esc(v.rules)}</div>` : ''}
+      ${wants}
+      ${runs ? `<ul>${runs}</ul>` : ''}
+    </div>`;
+};
+
 const shopRow = (s: ShopView | null) => {
   if (!s) return '';
   const worth = s.hits.some((h) => h.kind === 'steal');
@@ -446,7 +465,8 @@ const render = () => {
         ${g?.perOz ? `<div class="muted one-line" title="Current bid per troy ounce of metal, against today's spot price">${esc(g.perOz)}</div>` : ''}
         ${g?.pusher ? `<div class="notice" title="From who led and won lots in this show; the feed shows leaders, not every bid">${esc(g.pusher)}</div>` : ''}
         ${sellerRow(state.seller)}
-        ${estateRow(state.estate)}`;
+        ${estateRow(state.estate)}
+        ${electronicsRow(state.electronics)}`;
   const body = state.collapsed
     ? ''
     : `<div class="body">
@@ -640,6 +660,10 @@ export const overlay = {
   },
   setEstate(view: EstateView | null) {
     state.estate = view;
+    if (host) render();
+  },
+  setElectronics(view: ElectronicsView | null) {
+    state.electronics = view;
     if (host) render();
   },
   setTools(view: ToolsView | null) {

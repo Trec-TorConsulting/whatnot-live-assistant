@@ -12,6 +12,7 @@ import {
   type SellerNote,
 } from '../../shared/buyer';
 import { checksFor } from '../../shared/counterfeit';
+import { electronicsViewFromSession, isPullBucket } from '../../shared/electronics';
 import { estateViewFromSession, isTemplate } from '../../shared/estate';
 import { flipLine, flipProfit } from '../../shared/costs';
 import { closesLine, profileCaution, profileLine, sellerCloses, type SellerProfile } from '../../shared/sellerInfo';
@@ -55,6 +56,15 @@ const el = {
   estateClothing: $('#estate-clothing'),
   estateWants: $('#estate-wants'),
   estateRuns: $('#estate-runs'),
+  electronicsCard: $('#electronics-card'),
+  electronicsLine: $('#electronics-line'),
+  electronicsCondition: $('#electronics-condition'),
+  electronicsMsrp: $('#electronics-msrp'),
+  electronicsSudden: $('#electronics-sudden'),
+  electronicsShip: $('#electronics-ship'),
+  electronicsRules: $('#electronics-rules'),
+  electronicsWants: $('#electronics-wants'),
+  electronicsRuns: $('#electronics-runs'),
   shopSummary: $('#shop-summary'),
   shopHits: $('#shop-hits'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
@@ -265,24 +275,45 @@ const shopLabel = (h: ShopHit) => {
 const renderEstate = () => {
   if (!session) {
     el.estateCard.hidden = true;
+    el.electronicsCard.hidden = true;
     return;
   }
   const named = appraisal && session.lot && (!appraisal.lotId || appraisal.lotId === session.lot.id) ? appraisal.name : null;
+  const shippingPaid = purchases.some((p) => p.liveId === session!.show.liveId);
   const view = estateViewFromSession(session, {
-    shippingPaid: purchases.some((p) => p.liveId === session!.show.liveId),
+    shippingPaid,
     recognizedName: named && !isTemplate(named) ? named : null,
     appraisalNotes: appraisal?.notes,
   });
   el.estateCard.hidden = !view;
-  if (!view) return;
-  el.estateLine.textContent = view.line ?? '';
-  el.estateShip.textContent = view.shippingNote ?? '';
-  el.estateRules.textContent = view.rules ?? '';
-  el.estateClothing.textContent = view.clothing ?? '';
-  el.estateWants.replaceChildren(
-    ...view.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
-  );
-  el.estateRuns.replaceChildren(...view.runs.map((r) => li(r)));
+  if (view) {
+    el.estateLine.textContent = view.line ?? '';
+    el.estateShip.textContent = view.shippingNote ?? '';
+    el.estateRules.textContent = view.rules ?? '';
+    el.estateClothing.textContent = view.clothing ?? '';
+    el.estateWants.replaceChildren(
+      ...view.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
+    );
+    el.estateRuns.replaceChildren(...view.runs.map((r) => li(r)));
+  }
+
+  const eView = electronicsViewFromSession(session, {
+    shippingPaid,
+    recognizedName: named && !isPullBucket(named) ? named : null,
+  });
+  el.electronicsCard.hidden = !eView;
+  if (eView) {
+    el.electronicsLine.textContent = eView.line ?? '';
+    el.electronicsCondition.textContent = eView.condition ?? '';
+    el.electronicsMsrp.textContent = eView.msrp ?? '';
+    el.electronicsSudden.textContent = eView.suddenDeath ?? '';
+    el.electronicsShip.textContent = eView.shippingNote ?? '';
+    el.electronicsRules.textContent = eView.rules ?? '';
+    el.electronicsWants.replaceChildren(
+      ...eView.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
+    );
+    el.electronicsRuns.replaceChildren(...eView.runs.map((r) => li(r)));
+  }
 };
 
 const renderShop = () => {

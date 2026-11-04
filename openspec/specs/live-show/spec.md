@@ -70,6 +70,10 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 - **WHEN** a buy-it-now title says 1/1000 oz gold and the price is above that fraction of spot
 - **THEN** it is not listed as under melt
 
+#### Scenario: Copper Libertad
+- **WHEN** a buy-it-now title names a Libertad as copper, cobre, bronze, or brass
+- **THEN** it is not listed as under silver melt
+
 ### Requirement: Show notes
 The system SHALL read the seller's published show notes for the open show and SHALL read a later edit. The Live panel SHALL show the note and any coupon code in it. A code SHALL NOT be claimed. The note text SHALL be included in appraisal and wheel prompts. Lines of the form "2x 2024 1oz silver" in the notes SHALL price numbered wheel hits when the break description has no such list or was cut off. An unpublished note SHALL be ignored.
 

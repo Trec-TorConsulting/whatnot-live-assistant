@@ -81,7 +81,9 @@ const QUICK_PATTERNS: [RegExp, string, string][] = [
   [oneOz(/\bphilharmonic\b/), 'philharmonic_silver_1oz', '1 oz Silver Philharmonic'],
   [oneOz(/\bgold\b.*\bkangaroo|\bkangaroo\b.*\bgold\b/), 'kangaroo_gold_1oz', '1 oz Gold Kangaroo'],
   [oneOz(/\bkangaroo\b/), 'kangaroo_silver_1oz', '1 oz Silver Kangaroo'],
-  [oneOz(/^(?!.*\bgold\b).*\blibertad\b/), 'libertad_silver_1oz', '1 oz Silver Libertad'],
+  // Copper, bronze, and brass Libertads (and "cobre") are base metal. Only a Libertad that
+  // does not name one of those, or gold, is the 1 oz silver issue.
+  [oneOz(/^(?!.*\b(?:gold|copper|cobre|bronze|brass)\b).*\blibertad\b/), 'libertad_silver_1oz', '1 oz Silver Libertad'],
 ];
 
 // The fraction comes first, and the lookbehind keeps "1/1000 oz" from being read as 1000 oz.

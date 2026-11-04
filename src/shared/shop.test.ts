@@ -126,6 +126,13 @@ describe('scoreShop', () => {
     expect(hits[0]!.reason).toContain('Under melt');
   });
 
+  it('does not price a copper libertad off silver melt', () => {
+    const title = '1 onza dragon libertad copper 1 oz';
+    const spot = { gold: null, silver: 51.9 };
+    expect(shopMelt(list(title, 5), spot)).toBeNull();
+    expect(score([list(title, 5)], { meltOf: (item) => shopMelt(item, spot) })).toEqual([]);
+  });
+
   it('calls a price under melt a steal and ignores a price at melt', () => {
     const hits = score([list('1 oz silver round', 20), list('1 oz silver round #2', 30)]);
     expect(hits.map((h) => h.title)).toEqual(['1 oz silver round']);

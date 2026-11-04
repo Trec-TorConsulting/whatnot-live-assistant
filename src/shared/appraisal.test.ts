@@ -138,6 +138,8 @@ describe('quickRead', () => {
     expect(quickRead('2023 Gold Britannia BU').read).toMatchObject({ metal: 'gold', oz: 1 });
     expect(quickRead('2023 Britannia BU').read).toMatchObject({ metal: 'silver', oz: 1 });
     expect(quickRead('2024 Libertad 1 oz silver').read).toMatchObject({ name: '1 oz Silver Libertad', oz: 1 });
+    expect(quickRead('1 onza dragon libertad copper 1 oz').read).toBeNull();
+    expect(quickRead('2024 1 onza libertad cobre').read).toBeNull();
     expect(quickRead('2024 Libertad 5 oz silver').read).toMatchObject({ metal: 'silver', oz: 5 });
     expect(quickRead('1/10 oz gold Krugerrand 2020').read).toMatchObject({ metal: 'gold', oz: 0.1 });
     expect(quickRead('2022 1 kilo silver kangaroo').read?.name).not.toBe('1 oz Silver Kangaroo');

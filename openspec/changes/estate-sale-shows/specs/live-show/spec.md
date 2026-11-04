@@ -25,6 +25,10 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 - **WHEN** a buy-it-now title says 1/1000 oz gold and the price is above that fraction of spot
 - **THEN** it is not listed as under melt
 
+#### Scenario: Copper Libertad
+- **WHEN** a buy-it-now title names a Libertad as copper, cobre, bronze, or brass
+- **THEN** it is not listed as under silver melt
+
 #### Scenario: Category placeholder
 - **WHEN** the shop has a template titled "*z - Category - Coins" at $1 with a quantity in the hundreds
 - **THEN** that listing is not listed as a deal

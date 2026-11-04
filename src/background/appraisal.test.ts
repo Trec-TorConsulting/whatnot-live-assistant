@@ -86,6 +86,22 @@ describe('appraise', () => {
     expect(calls.filter((m) => m === 'gemini-2.5-flash-lite')).toHaveLength(2);
   });
 
+  it('does not start another model while the first is still working', async () => {
+    const slow = (init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(ok()), 6_000);
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        });
+      });
+    const calls = scriptGemini({ 'gemini-2.5-flash-lite': [slow] });
+    const pending = appraise({ image: 'AAAA', pageText: '', showTitle: 'Show' });
+    await vi.advanceTimersByTimeAsync(8_000);
+    await expect(pending).resolves.toMatchObject({ ok: true, model: 'gemini-2.5-flash-lite' });
+    expect(calls).toEqual(['gemini-2.5-flash-lite']);
+  });
+
   it('reports overload with the models it actually tried', async () => {
     const calls = scriptGemini({});
     const res = await run();
@@ -107,6 +123,27 @@ describe('appraise', () => {
     const res = await run();
     expect(res).toMatchObject({ ok: false, needsKey: true });
     expect(calls).toEqual(['gemini-2.5-flash-lite']);
+  });
+
+  it('reads a table-scan image at low resolution and leaves a normal image alone', async () => {
+    const bodyOf = () => {
+      const chat = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('generateContent'));
+      return JSON.parse(String((chat?.[1] as RequestInit).body)) as {
+        contents: { parts: { media_resolution?: { level: string } }[] }[];
+      };
+    };
+    const answer = () => json(200, { candidates: [{ content: { parts: [{ text: '{"low":1}' }] } }] });
+    scriptGemini({ 'gemini-2.5-flash-lite': [answer] });
+    const plain = geminiJson('sys', 'prompt', { type: 'OBJECT', properties: { low: { type: 'NUMBER' } } }, 'jpeg');
+    await vi.advanceTimersByTimeAsync(31_000);
+    await plain;
+    expect(bodyOf().contents[0]!.parts[1]?.media_resolution).toBeUndefined();
+
+    scriptGemini({ 'gemini-2.5-flash-lite': [answer] });
+    const low = geminiJson('sys', 'prompt', { type: 'OBJECT', properties: { low: { type: 'NUMBER' } } }, 'jpeg', true);
+    await vi.advanceTimersByTimeAsync(31_000);
+    await low;
+    expect(bodyOf().contents[0]!.parts[1]?.media_resolution).toEqual({ level: 'MEDIA_RESOLUTION_LOW' });
   });
 
   it('adds the tokens Gemini billed to the running total', async () => {

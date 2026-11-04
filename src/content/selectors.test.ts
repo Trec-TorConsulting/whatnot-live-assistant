@@ -7,6 +7,7 @@ import {
   findAppBlock,
   findShowPlaceholder,
   iconShape,
+  promptLine,
 } from './selectors';
 
 const html = (markup: string) => {
@@ -14,6 +15,16 @@ const html = (markup: string) => {
   wrap.innerHTML = markup.trim();
   return wrap.firstElementChild as HTMLElement;
 };
+
+describe('promptLine', () => {
+  it.each(['1921 Morgan Dollar', 'Bid $25', '$40', 'PCGS MS 65', 'Cert 40123456', '1 oz silver', '14 grams'])('keeps %j', (line) => {
+    expect(promptLine(line)).toBe(true);
+  });
+
+  it.each(['nice coin', 'Follow', 'Set Max Bid', 'Shipping is $4.85', 'patriot271k is Winning', '61 watching'])('drops %j', (line) => {
+    expect(promptLine(line)).toBe(false);
+  });
+});
 
 describe('classifyFollowLabel', () => {
   it.each([

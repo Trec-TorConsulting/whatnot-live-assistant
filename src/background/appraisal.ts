@@ -337,7 +337,8 @@ const TRANSIENT_STATUS = new Set([500, 503, 504]);
 // The last step repeats until the deadline; jitter keeps retries from landing in lockstep.
 const RETRY_BACKOFF_MS = [1 * SECOND, 2 * SECOND, 4 * SECOND];
 const backoffMs = (attempt: number) => RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]! * (0.5 + Math.random());
-// Every raced request is billed, so a backup model starts only when the leader is clearly stuck.
+// A second provider starts only when the first is still quiet after this long. Models inside one
+// provider do not: a second copy of the same frame is billed even if the first answers a moment later.
 const HEDGE_MS = 5 * SECOND;
 const MAX_IN_FLIGHT = 3;
 // An overloaded Gemini sometimes holds a request open instead of answering 503.
@@ -496,10 +497,10 @@ interface RaceOutcome {
   elapsedMs: number;
 }
 
-// Starts the first model, then races the next one whenever the leader is slow or fails with a
-// retryable status. Models that were merely overloaded or hung go to the back of the line after a
-// short backoff and keep retrying until the deadline, so a busy minute doesn't end the appraisal
-// after one try per model. First good answer wins.
+// Starts one model. The next starts when that one fails or its attempt times out. A request that
+// is still running is left alone. Models that were overloaded or hung go to the back of the line
+// after a short backoff and keep retrying until the deadline, so a busy minute doesn't end the
+// appraisal after one try per model. First good answer wins.
 const raceModels = (
   candidates: string[],
   run: (name: string, signal: AbortSignal) => Promise<RunResult>,
@@ -515,13 +516,11 @@ const raceModels = (
     const timers = new Set<ReturnType<typeof setTimeout>>();
     let pending = 0;
     let done = false;
-    let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
     let onExternalAbort = () => {};
     const finish = (result: RunResult | null) => {
       if (done) return;
       done = true;
       external?.removeEventListener('abort', onExternalAbort);
-      clearTimeout(hedgeTimer);
       clearTimeout(deadline);
       timers.forEach(clearTimeout);
       controllers.forEach((c) => c.abort());
@@ -550,8 +549,6 @@ const raceModels = (
       const controller = new AbortController();
       controllers.push(controller);
       pending += 1;
-      clearTimeout(hedgeTimer);
-      hedgeTimer = setTimeout(launch, HEDGE_MS);
       void run(name, controller.signal).then((result) => {
         pending -= 1;
         if (done) return;
@@ -816,8 +813,15 @@ const appraiseWithGemini = async (
 export type GeminiJson = { ok: true; text: string; model: string; usage?: CallUsage } | { ok: false; error: string; needsKey?: boolean };
 
 // JSON with the same model racing, retries and cooldowns as appraisals. An image is read at the
-// model's default resolution: these run ahead of the click, and small handwriting needs it.
-export const geminiJson = async (system: string, prompt: string, schema: object, image?: string): Promise<GeminiJson> => {
+// model's default resolution: envelope handwriting needs it. A table scan passes lowImage so the
+// same frame is billed as a coarse look at shelf items, not a second full read.
+export const geminiJson = async (
+  system: string,
+  prompt: string,
+  schema: object,
+  image?: string,
+  lowImage = false,
+): Promise<GeminiJson> => {
   const settings = await getAppraisalSettings();
   if (settings.ollamaOnly) return ollamaJson(settings, system, prompt, schema, image);
   const providers = providersWithKeys(settings);
@@ -827,7 +831,7 @@ export const geminiJson = async (system: string, prompt: string, schema: object,
   return raceCloud(
     providers.map(
       (provider) => (signal, deadlineAt) =>
-        askProvider(settings, provider, system, prompt, schema, image, signal, deadlineAt),
+        askProvider(settings, provider, system, prompt, schema, image, signal, deadlineAt, lowImage),
     ),
     ollama ? (signal, deadlineAt) => ollamaJson(settings, system, prompt, schema, image, deadlineAt, signal) : null,
   );
@@ -1229,6 +1233,12 @@ const foreignBody = (
   });
 };
 
+const imagePart = (image: string, lowImage: boolean) => ({
+  inline_data: { mime_type: 'image/jpeg', data: image },
+  // Gemini bills a low-resolution image at 64 tokens. Slab text and handwriting stay at the default.
+  ...(lowImage ? { media_resolution: { level: 'MEDIA_RESOLUTION_LOW' } } : {}),
+});
+
 const askProvider = async (
   settings: AppraisalSettings,
   provider: CloudProvider,
@@ -1238,10 +1248,11 @@ const askProvider = async (
   image: string | undefined,
   signal: AbortSignal | undefined,
   deadlineAt: number,
+  lowImage = false,
 ): Promise<GeminiJson> => {
   const label = CLOUD_PROVIDER_LABEL[provider];
   if (provider === 'gemini') {
-    const parts = image ? [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: image } }] : [{ text: prompt }];
+    const parts = image ? [{ text: prompt }, imagePart(image, lowImage)] : [{ text: prompt }];
     const bodyFor = (name: string, fast: boolean) =>
       JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },

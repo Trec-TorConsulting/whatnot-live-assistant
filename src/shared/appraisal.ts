@@ -435,7 +435,7 @@ export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
     SHOW_TYPES[showType].hint ?? '',
     pass ? ESTATE_HINT : '',
-    'Page text (listing title and unrelated chat):',
+    'Listing text (title, bid, grade, or cert):',
     page || '(none)',
   ]
     .filter(Boolean)

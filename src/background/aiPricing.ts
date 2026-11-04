@@ -19,19 +19,21 @@ export interface AiAsk {
   schema: object;
   geminiSchema: object;
   image?: string;
+  // Table scans only. Envelope handwriting stays at the model's default image resolution.
+  lowImage?: boolean;
   // An on-device answer with nothing usable falls through to Gemini.
   usable: (text: string) => boolean;
 }
 
 // Ollama-only skips both and asks the local server, same as an appraisal.
-export const askAi = async ({ instructions, prompt, schema, geminiSchema, image, usable }: AiAsk): Promise<AiAnswer> => {
+export const askAi = async ({ instructions, prompt, schema, geminiSchema, image, lowImage, usable }: AiAsk): Promise<AiAnswer> => {
   if ((await getAppraisalSettings()).ollamaOnly) {
-    const remote = await geminiJson(instructions, prompt, geminiSchema, image);
+    const remote = await geminiJson(instructions, prompt, geminiSchema, image, lowImage);
     return remote.ok ? remote : { ok: false, error: remote.error };
   }
   const local = await promptOnDeviceJson(instructions, prompt, schema, ON_DEVICE_TIMEOUT_MS, image);
   if (local.ok && usable(local.text)) return { ok: true, text: local.text, model: ON_DEVICE_MODEL };
-  const remote = await geminiJson(instructions, prompt, geminiSchema, image);
+  const remote = await geminiJson(instructions, prompt, geminiSchema, image, lowImage);
   if (remote.ok) return remote;
   const localError = local.ok ? 'on-device model gave no values' : local.error;
   return { ok: false, error: remote.needsKey ? `${localError}, and there is no cloud AI key to fall back on` : remote.error };

@@ -376,7 +376,19 @@ export const findOrderCards = (): { id: string; lines: string[]; image: string |
   return Array.from(byId.values());
 };
 
-// Text on and just below the player: the auction overlay holds the listing title and current bid.
+// A line the model can use. Chat, buttons, and viewer counts name other items and are billed on
+// every appraisal. The lot title is also passed on its own; a year or a weight still counts here
+// so a title that only appears on the overlay can set the melt floor.
+const PROMPT_LINE =
+  /\b(?:pcgs|ngc|anacs|icg|cacg|pmg|psa|bgs|sgc|cgc|cbcs)\b|\b(?:ms|pr|pf|sp|au|xf|ef|vf|vg)\s*-?\s*\d{1,2}\b|\bcert(?:ificate)?\b|(?<![\d$.,])\d{7,9}(?![\d,.])|\$\s?\d|\b(?:1[6-9]\d\d|20\d\d)\b|\b(?:oz|ozt|grams?)\b/i;
+const NOT_PROMPT_LINE = /\b(?:shipping|taxes?|viewers?|watching|followers?|giveaway|joined|is winning)\b|^(?:custom|follow|share|place bid|set max bid|bid|max bid)$/i;
+
+export const promptLine = (text: string) => {
+  const line = text.trim();
+  return Boolean(line) && !NOT_PROMPT_LINE.test(line) && PROMPT_LINE.test(line);
+};
+
+// Text on and just below the player. Chat sits in that box too, so only listing lines are kept.
 export const collectPlayerText = (video: HTMLVideoElement | null, ignore: (el: Element) => boolean) => {
   const r = video?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
   const box = { left: r.left - 40, right: r.right + 40, top: r.top - 20, bottom: Math.min(window.innerHeight, r.bottom + 260) };
@@ -384,16 +396,18 @@ export const collectPlayerText = (video: HTMLVideoElement | null, ignore: (el: E
   const seen = new Set<string>();
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let node: Node | null;
-  while ((node = walker.nextNode()) && lines.length < 80) {
+  let seenNodes = 0;
+  while ((node = walker.nextNode()) && lines.length < 16 && seenNodes < 400) {
+    seenNodes += 1;
     const text = normalize(node.textContent);
     const el = node.parentElement;
-    if (!text || seen.has(text) || !el || ignore(el)) continue;
+    if (!text || seen.has(text) || !el || ignore(el) || !promptLine(text)) continue;
     const b = el.getBoundingClientRect();
     if (!b.width || b.left < box.left || b.right > box.right || b.top < box.top || b.bottom > box.bottom) continue;
     seen.add(text);
     lines.push(text.slice(0, 120));
   }
-  return lines.join('\n').slice(0, 2000);
+  return lines.join('\n').slice(0, 800);
 };
 
 // --- Page identity ---

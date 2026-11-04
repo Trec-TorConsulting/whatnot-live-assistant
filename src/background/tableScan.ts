@@ -13,6 +13,7 @@ export const scanTable = async ({ image, mainItem, ...context }: AppraisalContex
     schema: TABLE_SCHEMA,
     geminiSchema: TABLE_SCHEMA_GEMINI,
     image,
+    lowImage: true,
     usable: (text) => parseTableAnswer(text, mainItem).length > 0,
   });
   if (!answer.ok) return answer;

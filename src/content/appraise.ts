@@ -18,7 +18,7 @@ import { formatMoney } from '../shared/money';
 import { findSimilarPurchases } from '../shared/purchases';
 import { findComps, summarizeComps } from '../shared/soldHistory';
 import { collectionLine, compareToCollection, type CollectionSettings } from '../shared/collection';
-import { getCollection, getGuardSettings, getItem } from '../shared/storage';
+import { getAppraisalSettings, getCollection, getGuardSettings, getItem } from '../shared/storage';
 import { MINUTE } from '../shared/time';
 import { emptyIdleScanGate, isIdleScanResultCurrent, runnerPassOn, stepIdleScanGate } from '../shared/runner';
 import { appraisalView, idleTableView, listingView, messageView } from './appraisalView';
@@ -94,7 +94,8 @@ export const maybeRunIdleScan = async () => {
   idleGate = step.state;
   if (!step.shouldScan) return;
   const video = findStreamVideo();
-  const image = video ? captureFrame(video) : null;
+  const settings = await getAppraisalSettings();
+  const image = video ? captureFrame(video, settings.ollamaOnly ? OLLAMA_FRAME_PX : FRAME_PX) : null;
   if (!image) return;
   const gapId = step.gapId;
   const res = await send('TABLE_SCAN', {
@@ -115,7 +116,10 @@ export const maybeRunIdleScan = async () => {
 
 // 1280px is a full portrait stream (720x1280), so small items like 1 g bars and their stamped
 // weight aren't shrunk before the model reads them. 896px missed them.
+// Local Ollama vision models spend most of their latency pre-filling image patches, so Ollama-only
+// caps at 768px (~64% fewer pixels) to keep local prefill fast.
 const FRAME_PX = 1280;
+export const OLLAMA_FRAME_PX = 768;
 const JPEG_QUALITY = 0.85;
 
 // Whatnot streams over WebRTC (srcObject), so drawing the frame doesn't taint the canvas.
@@ -134,7 +138,7 @@ export const captureFrame = (video: HTMLVideoElement, maxPx = FRAME_PX) => {
 };
 
 // Fallback: a screenshot of the tab (our panel hidden), cropped to the player.
-const captureScreenshot = async (video: HTMLVideoElement | null) =>
+const captureScreenshot = async (video: HTMLVideoElement | null, maxPx = FRAME_PX) =>
   overlay.hiddenDuring(async () => {
     const shot = await send('CAPTURE_TAB', {});
     if (!shot.ok) return null;
@@ -145,7 +149,7 @@ const captureScreenshot = async (video: HTMLVideoElement | null) =>
     const sy = Math.max(0, r.top * ratio);
     const sw = Math.min(bitmap.width - sx, r.width * ratio);
     const sh = Math.min(bitmap.height - sy, r.height * ratio);
-    const scale = Math.min(1, FRAME_PX / Math.max(sw, sh));
+    const scale = Math.min(1, maxPx / Math.max(sw, sh));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(sw * scale);
     canvas.height = Math.round(sh * scale);
@@ -437,7 +441,9 @@ export const appraiseNow = async ({ auto = false } = {}) => {
           }
         : {}),
     };
-    const image = (video ? captureFrame(video) : null) ?? (await captureScreenshot(video));
+    const appraisalSettings = await getAppraisalSettings();
+    const framePx = appraisalSettings.ollamaOnly ? OLLAMA_FRAME_PX : FRAME_PX;
+    const image = (video ? captureFrame(video, framePx) : null) ?? (await captureScreenshot(video, framePx));
     if (!image) {
       modelShown = true;
       const why = video ? "Couldn't read the video frame. Try the Alt+Shift+V shortcut, which allows a screenshot." : 'Open a live show first.';

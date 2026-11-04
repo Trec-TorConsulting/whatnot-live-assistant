@@ -1,6 +1,8 @@
 import {
   APPRAISAL_INSTRUCTIONS,
   APPRAISAL_SCHEMA,
+  FOCUS_INSTRUCTION,
+  ITEM_TYPES,
   ITEM_TYPE_LABEL,
   SERIES,
   SPOT_SYMBOLS,
@@ -344,6 +346,7 @@ const MAX_IN_FLIGHT = 3;
 // An overloaded Gemini sometimes holds a request open instead of answering 503.
 const ATTEMPT_MS = 15 * SECOND;
 const DEADLINE_MS = 30 * SECOND;
+export const OLLAMA_DEADLINE_MS = 60 * SECOND;
 const MODEL_COOLDOWN_MS: Record<number, number> = { 429: 10 * MINUTE, 503: MINUTE, 404: DAY };
 const plainConfigModels = new Set<string>();
 
@@ -616,15 +619,14 @@ const appraiseUncached = async ({ image, ...context }: AppraisalContext & { imag
   const settings = await getAppraisalSettings();
   if (settings.ollamaOnly) {
     if (!ollamaReady(settings)) return { ok: false, error: 'Ollama-only is on. Add the server URL and a vision model in Settings.' };
-    return appraiseWithOllama(settings, image, context, AbortSignal.timeout(DEADLINE_MS), Date.now() + DEADLINE_MS);
+    return appraiseWithOllama(settings, image, context, new AbortController().signal, Date.now() + OLLAMA_DEADLINE_MS);
   }
 
   const providers = providersWithKeys(settings);
   const ollama = ollamaReady(settings);
   const cloud = (signal: AbortSignal): Promise<GeminiResult> | null => {
     if (!providers.length && !ollama) return null;
-    const deadlineAt = Date.now() + DEADLINE_MS;
-    if (!providers.length) return appraiseWithOllama(settings, image, context, signal, deadlineAt);
+    if (!providers.length) return appraiseWithOllama(settings, image, context, signal, Date.now() + OLLAMA_DEADLINE_MS);
     return raceCloud(
       providers.map((provider) => (jobSignal, deadline) => appraiseProvider(settings, provider, image, context, jobSignal, deadline)),
       ollama ? (jobSignal, deadline) => appraiseWithOllama(settings, image, context, jobSignal, deadline) : null,
@@ -1001,10 +1003,95 @@ const ollamaText = (body: OllamaChat | null) => {
   }
 };
 
+// Compact instructions and flat schema for local Ollama vision models: no nullable unions and no
+// open-ended essay fields (notes/special), which cause thinking VLMs (like qwen3-vl) to loop until
+// num_predict runs out. "" and 0 represent unknown values and are normalized back to null.
+const OLLAMA_INSTRUCTIONS = [
+  'Identify the item for sale in this Whatnot livestream frame: coins, paper money, bullion, cards, comics, toys, games, electronics, tools, jewelry, antiques, or garage-sale goods. The show and lot titles are hints; trust the image when they disagree.',
+  FOCUS_INSTRUCTION,
+  'item_name: specific (e.g. "1921 Morgan Dollar", "1986 Fleer Michael Jordan #57", "Milwaukee M18 2886-20 Grinder").',
+  'series_key: precious-metal coin issue key (us_90_* = US pre-1965 silver, canada_80_* = Canada 1920-1967 silver), else "other".',
+  'fine_weight_oz: troy oz of pure precious metal per piece, 0 if unknown or not precious metal; 1 g = 0.03215 oz. quantity: pieces in the lot.',
+  'hallmark, gross_grams: jewelry/flatware purity stamp (e.g. "14K", "925") and weight in grams; "" and 0 if not shown.',
+  'grading_service, grade, cert_number: copy from a slab label (e.g. "PCGS", "MS 63", digits only); "" if raw or unreadable. For raw items, grade is a short condition like "VF" or "Near Mint".',
+  'year: 0 if unknown. mint_mark: coin mint mark letter, "" if none.',
+  'estimate_low_usd / estimate_high_usd: per-piece sold price range in USD (high at most 2x low; 0 only if is_collectible is false).',
+].join('\n');
+
+const OLLAMA_APPRAISAL_SCHEMA = {
+  type: 'object',
+  properties: {
+    is_collectible: { type: 'boolean' },
+    item_type: { type: 'string', enum: [...ITEM_TYPES] },
+    item_name: { type: 'string' },
+    year: { type: 'integer' },
+    mint_mark: { type: 'string' },
+    series_key: { type: 'string' },
+    metal: { type: 'string', enum: ['silver', 'gold', 'platinum', 'palladium', 'copper', 'nickel', 'clad', 'paper', 'other', 'unknown'] },
+    fine_weight_oz: { type: 'number' },
+    hallmark: { type: 'string' },
+    gross_grams: { type: 'number' },
+    quantity: { type: 'integer' },
+    is_slabbed: { type: 'boolean' },
+    grading_service: { type: 'string' },
+    grade: { type: 'string' },
+    cert_number: { type: 'string' },
+    estimate_low_usd: { type: 'number' },
+    estimate_high_usd: { type: 'number' },
+    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+  },
+  required: [
+    'is_collectible',
+    'item_type',
+    'item_name',
+    'year',
+    'mint_mark',
+    'series_key',
+    'metal',
+    'fine_weight_oz',
+    'hallmark',
+    'gross_grams',
+    'quantity',
+    'is_slabbed',
+    'grading_service',
+    'grade',
+    'cert_number',
+    'estimate_low_usd',
+    'estimate_high_usd',
+    'confidence',
+  ],
+  additionalProperties: false,
+};
+
+const normalizeOllamaItem = (raw: AppraisalItem): AppraisalItem => {
+  const rec = raw as AppraisalItem & Record<string, unknown>;
+  const gradingService = typeof rec.grading_service === 'string' ? rec.grading_service.trim() : '';
+  const slabbed = Boolean(rec.is_slabbed || gradingService);
+  const rawGrade = typeof rec.grade === 'string' ? rec.grade.trim() || null : null;
+  const rawGradeEst = typeof rec.grade_estimate === 'string' ? rec.grade_estimate.trim() || null : null;
+  return {
+    ...raw,
+    year: typeof rec.year === 'number' && rec.year > 0 ? rec.year : null,
+    mint_mark: typeof rec.mint_mark === 'string' ? rec.mint_mark.trim() || null : null,
+    fine_weight_oz: typeof rec.fine_weight_oz === 'number' && rec.fine_weight_oz > 0 ? rec.fine_weight_oz : null,
+    hallmark: typeof rec.hallmark === 'string' ? rec.hallmark.trim() || null : null,
+    gross_grams: typeof rec.gross_grams === 'number' && rec.gross_grams > 0 ? rec.gross_grams : null,
+    quantity: Math.max(1, Number(rec.quantity) || 1),
+    is_slabbed: slabbed,
+    grading_service: slabbed ? gradingService || null : null,
+    grade: slabbed ? rawGrade : null,
+    grade_estimate: slabbed ? rawGradeEst : (rawGradeEst ?? rawGrade),
+    cert_number: typeof rec.cert_number === 'string' ? rec.cert_number.replace(/\D/g, '') || null : null,
+    special: typeof rec.special === 'string' ? rec.special.trim().slice(0, 120) || null : null,
+    notes: typeof rec.notes === 'string' ? rec.notes : '',
+  };
+};
+
 // Loads the weights before the click. Ollama keeps the system-prompt cache while this model
 // stays resident; a text ping is enough to load it and does not sit on the GPU during an appraisal.
 let warming: Promise<void> | null = null;
 let warmedModel = '';
+let activeOllamaAppraisal: AbortController | null = null;
 
 export const warmOllama = () => {
   if (warming) return;
@@ -1022,8 +1109,11 @@ export const warmOllama = () => {
         stream: false,
         think: false,
         keep_alive: '30m',
-        options: { temperature: 0, num_predict: 1 },
-        messages: [{ role: 'user', content: 'ok' }],
+        options: { temperature: 0.2, num_predict: 1 },
+        messages: [
+          { role: 'system', content: OLLAMA_INSTRUCTIONS },
+          { role: 'user', content: 'ok' },
+        ],
       },
       AbortSignal.timeout(20 * SECOND),
       deadlineAt,
@@ -1078,7 +1168,7 @@ const ollamaJson = async (
   prompt: string,
   schema: object,
   image?: string,
-  deadlineAt = Date.now() + DEADLINE_MS,
+  deadlineAt = Date.now() + OLLAMA_DEADLINE_MS,
   signal?: AbortSignal,
 ): Promise<GeminiJson> => {
   const base = ollamaBase(settings.ollamaBaseUrl);
@@ -1091,7 +1181,7 @@ const ollamaJson = async (
     model,
     stream: false,
     keep_alive: '30m',
-    options: { temperature: 0.2, num_predict: 1024 },
+    options: { temperature: 0.2, num_predict: 384 },
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: prompt, ...(image ? { images: [image] } : {}) },
@@ -1109,7 +1199,10 @@ const ollamaJson = async (
     return { ok: true, text, model: `ollama:${model}` };
   } catch (err) {
     if (signal?.aborted) return { ok: false, error: 'Ollama stopped' };
-    if ((err as Error).name === 'AbortError') return { ok: false, error: 'Ollama took too long' };
+    const name = (err as Error)?.name;
+    if (name === 'AbortError' || name === 'TimeoutError' || own.aborted || Date.now() >= deadlineAt) {
+      return { ok: false, error: 'Ollama took too long' };
+    }
     return { ok: false, error: `Can't reach Ollama at ${base}` };
   }
 };
@@ -1125,40 +1218,51 @@ const appraiseWithOllama = async (
   const model = settings.ollamaModel.trim();
   if (!base || !model) return { ok: false, error: 'Add the Ollama server URL and a vision model first' };
   if (!(await ollamaPermitted(base))) return { ok: false, error: `This extension can't reach ${base}. Save the server again and allow access.` };
+  activeOllamaAppraisal?.abort();
+  const ownController = new AbortController();
+  activeOllamaAppraisal = ownController;
+  const combinedSignal = AbortSignal.any([signal, ownController.signal]);
   const payload = (structured: boolean) => ({
     model,
     stream: false,
     keep_alive: '30m',
-    options: { temperature: 0.2, num_predict: 1024 },
+    options: { temperature: 0.2, num_predict: 256 },
     messages: [
-      { role: 'system', content: APPRAISAL_INSTRUCTIONS },
+      { role: 'system', content: OLLAMA_INSTRUCTIONS },
       { role: 'user', content: appraisalContext(context), images: [image] },
     ],
-    ...(structured ? { think: false, format: toJsonSchema(APPRAISAL_SCHEMA) } : { format: 'json' }),
+    ...(structured ? { think: false, format: OLLAMA_APPRAISAL_SCHEMA } : { format: 'json' }),
   });
   try {
-    let { res, body } = await ollamaChat(base, payload(true), signal, deadlineAt);
+    let { res, body } = await ollamaChat(base, payload(true), combinedSignal, deadlineAt);
     // Older servers reject `think` or a JSON schema. A plain JSON format still constrains the answer.
     if (res.status === 400 && /think|format|schema/i.test(body?.error ?? '')) {
-      ({ res, body } = await ollamaChat(base, payload(false), signal, deadlineAt));
+      ({ res, body } = await ollamaChat(base, payload(false), combinedSignal, deadlineAt));
     }
     if (!res.ok) return { ok: false, error: ollamaHttpError(res.status, body) };
     let item: AppraisalItem;
     let others: ReturnType<typeof parseOthers>;
     try {
-      ({ item, others } = parsedAnswer(ollamaText(body)));
+      const parsed = parsedAnswer(ollamaText(body));
+      item = normalizeOllamaItem(parsed.item);
+      others = parsed.others;
     } catch {
       return { ok: false, error: 'Ollama gave no usable answer' };
     }
     const priced = await withMelt(item);
     if (item.is_collectible && !priced.melt && !estimateOf(item)) {
-      Object.assign(priced.item, await ollamaPrice(base, model, priced.item, signal, deadlineAt));
+      Object.assign(priced.item, await ollamaPrice(base, model, priced.item, combinedSignal, deadlineAt));
     }
     return { ok: true, ...priced, others, model: `ollama:${model}` };
   } catch (err) {
-    if (signal.aborted) return { ok: false, error: 'Ollama stopped' };
-    if ((err as Error).name === 'AbortError') return { ok: false, error: 'Ollama took too long' };
+    if (signal.aborted || ownController.signal.aborted) return { ok: false, error: 'Ollama stopped' };
+    const name = (err as Error)?.name;
+    if (name === 'AbortError' || name === 'TimeoutError' || Date.now() >= deadlineAt) {
+      return { ok: false, error: 'Ollama took too long' };
+    }
     return { ok: false, error: `Can't reach Ollama at ${base}` };
+  } finally {
+    if (activeOllamaAppraisal === ownController) activeOllamaAppraisal = null;
   }
 };
 

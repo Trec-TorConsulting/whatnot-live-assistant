@@ -7,6 +7,7 @@ import {
   noteElectronicsRules,
   noteEstateName,
   noteEstateRules,
+  noteRunnerGiveawayStems,
   noteShippingQuote,
   reduceGraphql,
   sessionForPath,
@@ -103,6 +104,14 @@ export const rememberElectronicsRules = (key: string | null) => {
 export const rememberElectronicsName = (name: string | null | undefined) => {
   if (!session || shareWorker) return;
   const next = noteElectronicsName(session, name);
+  if (next === session) return;
+  session = next;
+  schedulePush();
+};
+
+export const rememberRunnerGiveawayStems = (bodyOrStems: unknown) => {
+  if (!session || shareWorker) return;
+  const next = noteRunnerGiveawayStems(session, bodyOrStems);
   if (next === session) return;
   session = next;
   schedulePush();
@@ -242,7 +251,7 @@ const onHookMessage = (e: MessageEvent) => {
   if (msg.kind === 'socket') {
     const frame = decodePhoenixFrame(msg.raw);
     if (!frame) return;
-    const result = reduceSocket(s, frame);
+    const result = reduceSocket(s, frame, Date.now(), username || null);
     session = result.session;
     if (wheelMoved(s, session)) refreshBreak();
     emit(result.signals);

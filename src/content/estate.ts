@@ -9,7 +9,9 @@ import {
 } from '../shared/electronics';
 import { estateRules, estateViewFromSession, rulesAreNew, rulesKey } from '../shared/estate';
 import type { Purchase } from '../shared/purchases';
+import { runnerViewFromSession } from '../shared/runner';
 import { getItem, onItemChanged } from '../shared/storage';
+import { maybeRunIdleScan } from './appraise';
 import { liveSession, onLive, rememberElectronicsRules, rememberRules, rememberShipping } from './live';
 import { overlay } from './overlay';
 import { findShippingText } from './selectors';
@@ -22,6 +24,7 @@ export const refreshEstate = () => {
   if (!session) {
     overlay.setEstate(null);
     overlay.setElectronics(null);
+    overlay.setRunner(null);
     return;
   }
   const shipping = parseShipping(findShippingText());
@@ -36,6 +39,8 @@ export const refreshEstate = () => {
   const s = liveSession() ?? current;
   overlay.setEstate(estateViewFromSession(s, { shippingPaid: paid, shipping, showType }));
   overlay.setElectronics(electronicsViewFromSession(s, { shippingPaid: paid, shipping, showType }));
+  overlay.setRunner(runnerViewFromSession(s, { shipping, purchases }));
+  void maybeRunIdleScan();
 };
 
 export const startEstate = () => {

@@ -13,6 +13,12 @@ import {
 } from './electronics';
 import { isTemplate, lotNumber, pinFrom, type EstateRun, wantFrom } from './estate';
 import { moneyValue } from './money';
+import {
+  giveawayMatchesStem,
+  giveawayShippingStems,
+  vendorQuoteFromChat,
+  type RunnerChatQuote,
+} from './runner';
 import { readShowNote, type ShowNote } from './showNotes';
 import type { ShopScan } from './shop';
 
@@ -109,6 +115,12 @@ export interface LiveSession {
   electronicsRuns: PullRun[];
   /** Electronics rules already shown, so the next lot does not add them again. */
   electronicsRulesKey: string | null;
+  /** Host or mod vendor price quote on a runner show; cleared when a new lot starts. */
+  runnerQuote: RunnerChatQuote | null;
+  /** Stemmed titles of giveaway listings whose description says the seller pays shipping. */
+  runnerGiveawayStems: string[];
+  /** True when the signed-in user won a giveaway matching one of runnerGiveawayStems in this show. */
+  runnerGiveawayShippingWon: boolean;
   /** Shipping quote read off the page, so the side panel can show it. */
   shippingQuote: number | null;
   updatedAt: number;
@@ -157,6 +169,9 @@ export const emptySession = (liveId: string, now = Date.now()): LiveSession => (
   electronicsWants: [],
   electronicsRuns: [],
   electronicsRulesKey: null,
+  runnerQuote: null,
+  runnerGiveawayStems: [],
+  runnerGiveawayShippingWon: false,
   shippingQuote: null,
   updatedAt: now,
 });
@@ -382,13 +397,20 @@ const pushCapped = <T>(list: T[], item: T, max: number) => {
   return next.length > max ? next.slice(next.length - max) : next;
 };
 
-const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[]) => {
+const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[], viewerUsername?: string | null) => {
   if (session.sales.some((s) => s.key === sale.key)) return session;
   signals.push({ kind: 'sale', sale });
   let estateRuns = session.estateRuns;
   let electronicsRuns = session.electronicsRuns;
-  if (sale.kind !== 'giveaway' && sale.price != null && sale.price > 0 && sale.title) {
-    if (isPullBucket(sale.title)) {
+  let runnerGiveawayShippingWon = session.runnerGiveawayShippingWon;
+  if (sale.kind === 'giveaway') {
+    const buyerMatches =
+      !viewerUsername || (sale.buyer && sale.buyer.toLowerCase() === viewerUsername.toLowerCase());
+    if (buyerMatches && giveawayMatchesStem(sale.title, session.runnerGiveawayStems)) {
+      runnerGiveawayShippingWon = true;
+    }
+  } else if (sale.price != null && sale.price > 0 && sale.title) {
+    if (isPullBucket(sale.title, session.show.title)) {
       const number = electronicsLotNumber(sale.title);
       electronicsRuns = [{ number, name: number != null ? (session.electronicsPins[String(number)] ?? null) : null, price: sale.price }, ...electronicsRuns].slice(0, 12);
     }
@@ -397,16 +419,24 @@ const addSale = (session: LiveSession, sale: Sale, signals: LiveSignal[]) => {
       estateRuns = [{ number, name: number != null ? (session.estatePins[String(number)] ?? null) : null, price: sale.price }, ...estateRuns].slice(0, 12);
     }
   }
-  return { ...session, sales: pushCapped(session.sales, sale, MAX_SALES), estateRuns, electronicsRuns };
+  return {
+    ...session,
+    sales: pushCapped(session.sales, sale, MAX_SALES),
+    estateRuns,
+    electronicsRuns,
+    runnerGiveawayShippingWon,
+  };
 };
 
 const noteChat = (session: LiveSession, m: ChatMessage): LiveSession => {
   let next = session;
+  const rQuote = vendorQuoteFromChat(m.text, m.isHost, m.isModerator, next.shippingQuote);
+  if (rQuote) next = { ...next, runnerQuote: rQuote };
   const title = next.lot?.title;
   const number = title && isTemplate(title) ? lotNumber(title) : null;
   const pin = number != null ? pinFrom(m.text, m.isHost, m.isModerator) : null;
   if (pin && number != null) next = { ...next, estatePins: { ...next.estatePins, [String(number)]: pin } };
-  const eNumber = title && isPullBucket(title) ? electronicsLotNumber(title) : null;
+  const eNumber = title && isPullBucket(title, next.show.title) ? electronicsLotNumber(title) : null;
   const ePin = eNumber != null ? electronicsPinFrom(m.text, m.isHost, m.isModerator) : null;
   if (ePin && eNumber != null) next = { ...next, electronicsPins: { ...next.electronicsPins, [String(eNumber)]: ePin } };
   if (!m.isHost && !m.isModerator) {
@@ -442,6 +472,16 @@ export const noteElectronicsRules = (session: LiveSession, key: string | null): 
 
 export const noteShippingQuote = (session: LiveSession, shipping: number | null): LiveSession =>
   shipping != null && shipping !== session.shippingQuote ? { ...session, shippingQuote: shipping } : session;
+
+export const noteRunnerGiveawayStems = (session: LiveSession, bodyOrStems: unknown): LiveSession => {
+  const incoming = Array.isArray(bodyOrStems)
+    ? bodyOrStems.filter((x): x is string => typeof x === 'string')
+    : giveawayShippingStems(bodyOrStems);
+  if (!incoming.length) return session;
+  const merged = [...new Set([...session.runnerGiveawayStems, ...incoming])];
+  if (merged.length === session.runnerGiveawayStems.length) return session;
+  return { ...session, runnerGiveawayStems: merged };
+};
 
 const sampleEvent = (session: LiveSession, msg: PhoenixMessage): LiveSession => {
   const key = `${msg.topic.split(':')[0]}:${msg.event}`;
@@ -560,14 +600,16 @@ const applyLot = (session: LiveSession, patch: Partial<Lot>, signals: LiveSignal
     breakId: patch.breakId ?? base.breakId ?? null,
     updatedAt: now,
   };
+  const changed = started || isNewLot(prev, lot);
   signals.push(started ? { kind: 'lot', lot, started } : { kind: 'lot', lot });
-  return { ...session, lot };
+  return { ...session, lot, ...(changed ? { runnerQuote: null } : {}) };
 };
 
 export const reduceSocket = (
   session: LiveSession,
   msg: PhoenixMessage,
   now = Date.now(),
+  viewerUsername?: string | null,
 ): { session: LiveSession; signals: LiveSignal[] } => {
   const signals: LiveSignal[] = [];
   let next = sampleEvent(session, msg);
@@ -593,14 +635,14 @@ export const reduceSocket = (
           next = noteChat(next, m);
         }
         const sale = saleFromChat(m, next.show.liveId);
-        if (sale) next = addSale(next, sale, signals);
+        if (sale) next = addSale(next, sale, signals, viewerUsername);
       }
     }
   } else {
     const read = readCommerce(msg.event, msg.payload, now);
     if (read.breakId && read.breakId !== next.breakId) next = { ...next, breakId: read.breakId };
     if (read.lot) next = applyLot(next, read.lot, signals, now, /^auction_started$/i.test(msg.event));
-    if (read.sale) next = addSale(next, makeSale(next.show.liveId, read.sale), signals);
+    if (read.sale) next = addSale(next, makeSale(next.show.liveId, read.sale), signals, viewerUsername);
     if (read.giveawayId && read.giveawayId !== next.show.activeGiveawayId) {
       signals.push({ kind: 'giveaway_started', giveawayId: read.giveawayId });
       next = {
@@ -620,6 +662,7 @@ export const reduceGraphql = (session: LiveSession, operation: string, body: unk
   let next: LiveSession = { ...session, graphqlOps };
   const note = readShowNote(body, session.show.liveId);
   if (note !== undefined) next = { ...next, show: { ...next.show, note } };
+  if (body) next = noteRunnerGiveawayStems(next, body);
   const live = obj(obj(obj(body)?.data)?.liveStream);
   if (operation === 'LiveStream' && live && (!live.id || live.id === session.show.liveId)) {
     // Page-load data only sets the baseline, so it never raises alerts.

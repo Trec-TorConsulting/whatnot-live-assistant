@@ -3,6 +3,7 @@
 // delays the max bid.
 import type { AppraisalContext } from './appraisal';
 import { isTemplate } from './estate';
+import { runnerItemName, runnerNoteSupplement, runnerPassOn } from './runner';
 import { noteForPrompt } from './showNotes';
 
 export const MAX_TABLE_ITEMS = 8;
@@ -71,8 +72,12 @@ export const TABLE_SCHEMA_GEMINI = {
   required: ['items'],
 };
 
-export const tableSubject = (mainItem: string | null | undefined, lotTitle?: string | null) => {
+export const tableSubject = (mainItem: string | null | undefined, lotTitle?: string | null, showNotes?: string | null) => {
   const name = mainItem?.trim() ?? '';
+  const runnerNamed = lotTitle ? runnerItemName(lotTitle, runnerPassOn(showNotes)) : null;
+  if (runnerNamed && (!name || name.toLowerCase() === lotTitle?.trim().toLowerCase())) {
+    return runnerNamed;
+  }
   if (!name || isTemplate(name) || (lotTitle && name.toLowerCase() === lotTitle.trim().toLowerCase() && isTemplate(lotTitle))) {
     return 'the piece closest to the camera';
   }
@@ -80,14 +85,18 @@ export const tableSubject = (mainItem: string | null | undefined, lotTitle?: str
 };
 
 export const tablePrompt = ({ showTitle, lotTitle, categories = [], showNotes }: AppraisalContext, mainItem: string) => {
-  const notes = noteForPrompt(showNotes);
-  const template = Boolean(lotTitle && isTemplate(lotTitle));
+  const baseNotes = noteForPrompt(showNotes);
+  const runnerSupp = runnerNoteSupplement(showNotes);
+  const notes = [baseNotes, runnerSupp].filter(Boolean).join('\n');
+  const runnerNamed = lotTitle ? runnerItemName(lotTitle, runnerPassOn(showNotes)) : null;
+  const template = !runnerNamed && Boolean(lotTitle && isTemplate(lotTitle));
+  const shownLot = runnerNamed ?? lotTitle;
   return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',
-    template ? '' : lotTitle ? `Current lot title: ${lotTitle}` : '',
+    template ? '' : shownLot ? `Current lot title: ${shownLot}` : '',
     notes ? `Seller show notes (rules and what is in the show; the image still wins):\n${notes}` : '',
-    `Being sold now (do not list): ${tableSubject(mainItem, lotTitle)}`,
+    `Being sold now (do not list): ${tableSubject(mainItem, lotTitle, showNotes)}`,
   ]
     .filter(Boolean)
     .join('\n');

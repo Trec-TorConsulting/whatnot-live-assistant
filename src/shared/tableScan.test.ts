@@ -8,6 +8,26 @@ describe('tablePrompt', () => {
     expect(titled).not.toContain('Item on screen');
     const named = tablePrompt({ pageText: '', showTitle: 'Estate', lotTitle: 'Junk bag #10' }, 'Manganese glass toothpick holder');
     expect(named).toContain('Being sold now (do not list): Manganese glass toothpick holder');
+
+    const longRunnerNotes = [
+      `${'Welcome to our weekly outdoor flea walk! '.repeat(20)}\nPut in R for Run and P for Pass.`,
+      'Vendor price $1 will run for $6, $2 for $7, $3 for $8, $4 for $9, anything $5 and up will be doubled.',
+      'No cancellations, no refunds, no returns. Everything sold as-is, untested, not cleaned. /coupon SAVE10',
+    ].join('\n');
+    const runnerTable = tablePrompt(
+      {
+        pageText: '',
+        showTitle: 'Deal Hunting',
+        lotTitle: 'Cannons As seen',
+        showNotes: longRunnerNotes,
+      },
+      'Cannons As seen',
+    );
+    expect(runnerTable).toContain('Current lot title: Cannons');
+    expect(runnerTable).toContain('Being sold now (do not list): Cannons');
+    expect(runnerTable).toContain('anything $5 and up will be doubled');
+    expect(runnerTable).toContain('No cancellations, no refunds, no returns');
+    expect(runnerTable).not.toContain('SAVE10');
   });
 });
 

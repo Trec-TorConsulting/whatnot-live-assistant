@@ -3,6 +3,7 @@
 import { formatMoney } from './money';
 import { ELECTRONICS_HINT, electronicsPassOn, isPullBucket, pullContext, readMsrp } from './electronics';
 import { ESTATE_HINT, estatePassOn, isTemplate, templateContext } from './estate';
+import { runnerItemName, runnerNoteSupplement, runnerPassOn } from './runner';
 import { noteForPrompt } from './showNotes';
 import { SHOW_TYPES, type ShowType } from './showType';
 import { TOOLS_HINT, toolsPassOn } from './tools';
@@ -426,28 +427,36 @@ export interface AppraisalContext {
 
 // Per request rather than in the cached instructions, so every show type shares one cache entry.
 export const appraisalContext = ({ pageText, showTitle, lotTitle, categories = [], showType = 'general', showNotes }: AppraisalContext) => {
-  const notes = noteForPrompt(showNotes);
+  const baseNotes = noteForPrompt(showNotes);
+  const runnerSupp = runnerNoteSupplement(showNotes);
+  const notes = [baseNotes, runnerSupp].filter(Boolean).join('\n');
+  const runnerOn = runnerPassOn(showNotes);
+  const runnerNamed = lotTitle ? runnerItemName(lotTitle, runnerOn) : null;
   const tools = toolsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
   const electronics = !tools && electronicsPassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
-  const pull = Boolean(lotTitle && isPullBucket(lotTitle, showTitle));
-  const template = !tools && !electronics && Boolean(lotTitle && isTemplate(lotTitle));
-  const msrp = !pull && lotTitle ? readMsrp(lotTitle) : null;
+  const pull = !runnerNamed && Boolean(lotTitle && isPullBucket(lotTitle, showTitle));
+  const template = !runnerNamed && !tools && !electronics && Boolean(lotTitle && isTemplate(lotTitle));
+  const msrp = !pull && lotTitle ? readMsrp(runnerNamed ?? lotTitle) : null;
   let page = pageText;
   if ((pull || template) && lotTitle) {
     page = page.split(lotTitle).join(' ').replace(/[ \t]{2,}/g, ' ').trim();
+  } else if (runnerNamed && lotTitle) {
+    page = page.split(lotTitle).join(runnerNamed).replace(/[ \t]{2,}/g, ' ').trim();
   } else if (msrp && lotTitle) {
     page = page.split(lotTitle).join(msrp.cleanTitle).replace(/[ \t]{2,}/g, ' ').trim();
   }
-  const pass = !tools && !electronics && estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
+  const pass = !runnerNamed && !tools && !electronics && estatePassOn({ lotTitle, showTitle, categories, notes: showNotes, showType });
   const lotLine = pull
     ? (pullContext(lotTitle, showTitle) ?? '')
     : template
       ? (templateContext(lotTitle) ?? '')
       : msrp
-        ? (pullContext(lotTitle, showTitle) ?? '')
-        : lotTitle
-          ? `Current lot title: ${lotTitle}`
-          : '';
+        ? (pullContext(runnerNamed ?? lotTitle, showTitle) ?? '')
+        : runnerNamed
+          ? `Current lot title: ${runnerNamed}`
+          : lotTitle
+            ? `Current lot title: ${lotTitle}`
+            : '';
   return [
     `Show: ${showTitle || 'unknown'}`,
     categories.length ? `Whatnot category: ${categories.join(' > ')}` : '',

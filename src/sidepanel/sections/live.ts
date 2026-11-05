@@ -40,7 +40,7 @@ import {
   type Monitor,
   type OverlayPrefs,
 } from '../../shared/storage';
-import { shopSummary, type ShopHit } from '../../shared/shop';
+import { monitorShopBadge, shopSummary, type ShopHit } from '../../shared/shop';
 import { formatDuration } from '../../shared/time';
 import { $, li, liveIdOfTab, numberOf, onActiveTab, runCommand, setNumber, toast } from '../ui';
 
@@ -83,6 +83,8 @@ const el = {
   casePackRuns: $('#casepack-runs'),
   shopSummary: $('#shop-summary'),
   shopHits: $('#shop-hits'),
+  shopFilter: $<HTMLButtonElement>('#shop-filter'),
+  shopRescan: $<HTMLButtonElement>('#shop-rescan'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
   overlayShow: $<HTMLInputElement>('#overlay-show'),
   overlayReset: $<HTMLButtonElement>('#overlay-reset'),
@@ -145,9 +147,9 @@ const renderAppraisal = () => {
     ['Market', v.marketValue !== null ? `${formatMoney(v.marketValue)} (${BASIS_LABEL[v.basis]})` : '—'],
     ...(appraisal.lot && appraisal.lot.pieces.length >= 2
       ? ([
-          ['By price', appraisal.lot.pieces.map(lotLine).join(' · ')],
-          ['Total', formatMoney(appraisal.lot.total)],
-        ] as [string, string][])
+        ['By price', appraisal.lot.pieces.map(lotLine).join(' · ')],
+        ['Total', formatMoney(appraisal.lot.total)],
+      ] as [string, string][])
       : []),
     ['Bid', bidHeadline(appraisal) ?? '—'],
     ['Confidence', String(appraisal.confidence)],
@@ -216,11 +218,15 @@ const renderMonitors = () => {
       const lot = s?.lot;
       const left = lot?.endsAt ? lot.endsAt - Date.now() : null;
       const watch = lot ? matchWatch(lot.title, buyer.watchlist) : null;
+      const shopBadge = monitorShopBadge(s?.shop);
+      const lotText = lot
+        ? `${watch ? '★ ' : ''}${lot.title ?? 'Current lot'} ${formatMoney(lot.currentBid)}${left && left > 0 ? ` · ${formatDuration(left)} left` : ''}`
+        : 'waiting for an auction';
       const text = [
         `${s?.show.host ? `@${s.show.host}` : (m.host ? `@${m.host}` : 'Show')}: ${s?.show.title ?? m.title ?? m.liveId}`,
-        lot ? `${watch ? '★ ' : ''}${lot.title ?? 'Current lot'} ${formatMoney(lot.currentBid)}${left && left > 0 ? ` · ${formatDuration(left)} left` : ''}` : 'waiting for an auction',
+        `${lotText}${shopBadge ? ` · ${shopBadge.text}` : ''}`,
       ].join(' — ');
-      const item = li(text, watch ? 'good' : '');
+      const item = li(text, watch || shopBadge?.kind === 'steal' ? 'good' : '');
       const open = Object.assign(document.createElement('button'), { className: 'secondary small', textContent: 'Open', type: 'button' });
       open.addEventListener('click', () => void runCommand(send('MONITOR_FOCUS', { liveId: m.liveId })));
       const stop = Object.assign(document.createElement('button'), { className: 'secondary small', textContent: 'Stop', type: 'button' });
@@ -383,10 +389,43 @@ const renderShop = () => {
   el.shopCard.hidden = !shop;
   if (!shop) return;
   el.shopSummary.textContent = shopSummary(shop);
+  const hasAuctions = Boolean(shop.auctionCount && shop.auctionCount > 0);
+  el.shopFilter.hidden = !hasAuctions;
+  if (hasAuctions) {
+    el.shopFilter.textContent = (shop.filter ?? 'all') === 'bin' ? 'BIN only' : 'All';
+  }
   const rows = [
-    ...shop.hits.map((h) =>
-      li(`${shopLabel(h)}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : ''),
-    ),
+    ...shop.hits.map((h) => {
+      const stock =
+        h.mode === 'auction'
+          ? ''
+          : h.quantity === 1
+            ? ' [1 left]'
+            : h.quantity > 1 && h.quantity <= 99
+              ? ` [${h.quantity} in stock]`
+              : '';
+      const item = li(`${shopLabel(h)}${stock}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : '');
+      const find = Object.assign(document.createElement('button'), {
+        className: 'secondary small',
+        textContent: 'Find',
+        type: 'button',
+        title: "Search Whatnot's shop for this item",
+      });
+      find.addEventListener('click', () => {
+        if (tabId !== null) void sendToTab(tabId, 'SHOP_FOCUS', { title: h.title }).catch(() => undefined);
+      });
+      const dismiss = Object.assign(document.createElement('button'), {
+        className: 'secondary small',
+        textContent: '×',
+        type: 'button',
+        title: 'Dismiss this item',
+      });
+      dismiss.addEventListener('click', () => {
+        if (tabId !== null) void sendToTab(tabId, 'SHOP_DISMISS', { id: h.id }).catch(() => undefined);
+      });
+      item.append(' ', find, ' ', dismiss);
+      return item;
+    }),
     ...(shop.perPieceRows ?? []).map((r) => li(`${r.title} — ${r.label}`, 'muted')),
   ];
   if (!rows.length && shop.status === 'ready' && shop.binCount) {
@@ -465,13 +504,13 @@ const renderSeller = () => {
   const p = sellerProfiles[sellerKey(host)];
   el.sellerProfile.textContent = p
     ? [
-        profileLine(p),
-        profileCaution(p),
-        p.joinedAt ? `joined ${new Date(p.joinedAt).toLocaleDateString()}` : null,
-        `first seen here ${new Date(p.firstSeen).toLocaleDateString()}`,
-      ]
-        .filter(Boolean)
-        .join(' · ')
+      profileLine(p),
+      profileCaution(p),
+      p.joinedAt ? `joined ${new Date(p.joinedAt).toLocaleDateString()}` : null,
+      `first seen here ${new Date(p.firstSeen).toLocaleDateString()}`,
+    ]
+      .filter(Boolean)
+      .join(' · ')
     : 'Profile numbers load when the show tab opens.';
   if (closesFor !== sellerKey(host)) {
     closesFor = sellerKey(host);
@@ -604,6 +643,15 @@ export const initLive = async () => {
   el.appraise.addEventListener('click', () => {
     if (tabId === null) return toast('Open a Whatnot live show first.');
     void runCommand(sendToTab(tabId, 'APPRAISE_NOW', {}), 'Appraising…');
+  });
+  el.shopRescan.addEventListener('click', () => {
+    if (tabId === null) return toast('Open a Whatnot live show first.');
+    void runCommand(sendToTab(tabId, 'SHOP_RESCAN', {}), 'Rescanning shop…');
+  });
+  el.shopFilter.addEventListener('click', () => {
+    if (tabId === null) return;
+    const current = session?.shop?.filter ?? 'all';
+    void sendToTab(tabId, 'SHOP_FILTER', { mode: current === 'bin' ? 'all' : 'bin' }).catch(() => undefined);
   });
   const showOverlayPrefs = (p: OverlayPrefs) => {
     el.overlayShow.checked = !p.hidden;

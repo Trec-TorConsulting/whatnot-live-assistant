@@ -11,7 +11,7 @@ import { claimPage, contextAlive, every, onRetire } from './lifecycle';
 import { isShareWorker, markShareWorker, onLive, resetForPath, startLiveBridge } from './live';
 import { startCasePack } from './casePack';
 import { startEstate } from './estate';
-import { ensureShopListener, resetShop, startShopWatch } from './shop';
+import { dismissShopHit, ensureShopListener, focusShopHit, rescanShop, resetShop, setShopFilter, startShopWatch } from './shop';
 import { overlay } from './overlay';
 import { loadOverrides } from './overridesState';
 import { startPicker } from './picker';
@@ -121,6 +121,10 @@ const syncToPath = () => {
       quickBid: (kind) => void quickBid(kind),
       savePrefs: (prefs) => void setItem('overlay', prefs),
       pickScan: (scan) => void pickScan(scan),
+      shopRescan: () => rescanShop(),
+      shopFocus: (title) => void focusShopHit(title),
+      shopDismiss: (id) => dismissShopHit(id),
+      shopFilter: (mode) => setShopFilter(mode),
     });
     resetBuyer();
     refreshGuard();
@@ -149,6 +153,24 @@ const main = async () => {
     APPRAISE_NOW: () => {
       if (!isLivePath()) return { ok: false, error: 'Open a live show to appraise.' };
       void appraiseAndGuard();
+      return { ok: true };
+    },
+    SHOP_RESCAN: () => {
+      if (!isLivePath()) return { ok: false, error: 'Open a live show to rescan the shop.' };
+      rescanShop();
+      return { ok: true };
+    },
+    SHOP_FOCUS: ({ title }) => {
+      if (!isLivePath()) return { ok: false, error: 'Open a live show to search the shop.' };
+      void focusShopHit(title);
+      return { ok: true };
+    },
+    SHOP_DISMISS: ({ id }) => {
+      dismissShopHit(id);
+      return { ok: true };
+    },
+    SHOP_FILTER: ({ mode }) => {
+      setShopFilter(mode);
       return { ok: true };
     },
   });

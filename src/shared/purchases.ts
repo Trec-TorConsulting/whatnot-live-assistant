@@ -130,6 +130,7 @@ export const titleTokens = (s: string) =>
   new Set(
     s
       .toLowerCase()
+      .replace(/(\d+\/\d+)(?:st|nd|rd|th)\b/g, '$1')
       .replace(/[^a-z0-9/ ]/g, ' ')
       .split(/\s+/)
       .filter((t) => t.length > 1 && !STOP.has(t)),

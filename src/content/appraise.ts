@@ -54,7 +54,7 @@ export const latestAppraisal = () => (latestAuction === auction ? latest : null)
 
 // The bid guard reads the latest appraisal. The live page registers a refresh so a price that
 // arrives after the card is shown still updates the ceiling.
-let onShown: () => void = () => {};
+let onShown: () => void = () => { };
 export const watchAppraisal = (fn: () => void) => {
   onShown = fn;
 };
@@ -200,15 +200,15 @@ const toPriceInfo = (price: PriceLookupResult | null) =>
 
 const cachedForLot = (liveId: string | null, lotId: string | null, showType: ShowType, scan: boolean) =>
   latest &&
-  latestAuction === auction &&
-  lotId &&
-  latest.lotId === lotId &&
-  latest.liveId === liveId &&
-  (latest.showType ?? 'general') === showType &&
-  (latest.table !== undefined) === scan &&
-  latest.confidence !== 'quick' &&
-  latest.valuation.marketValue !== null &&
-  Date.now() - latest.at < LOT_CACHE_MS
+    latestAuction === auction &&
+    lotId &&
+    latest.lotId === lotId &&
+    latest.liveId === liveId &&
+    (latest.showType ?? 'general') === showType &&
+    (latest.table !== undefined) === scan &&
+    latest.confidence !== 'quick' &&
+    latest.valuation.marketValue !== null &&
+    Date.now() - latest.at < LOT_CACHE_MS
     ? latest
     : null;
 
@@ -432,13 +432,13 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       showNotes: session?.show.note?.text ?? null,
       ...(showType === 'wholesale'
         ? {
-            casePack: {
-              lotNumber: lotNum,
-              count: resolvedCase.count,
-              countSource: resolvedCase.source,
-              pin: pin?.text ?? null,
-            },
-          }
+          casePack: {
+            lotNumber: lotNum,
+            count: resolvedCase.count,
+            countSource: resolvedCase.source,
+            pin: pin?.text ?? null,
+          },
+        }
         : {}),
     };
     const appraisalSettings = await getAppraisalSettings();

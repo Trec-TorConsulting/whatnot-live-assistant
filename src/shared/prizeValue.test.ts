@@ -10,6 +10,8 @@ describe('prizeMelt', () => {
     expect(prizeMelt('BATMANS EMBLEM GOLD AGORO .10 GRAM')!.oz).toBeCloseTo(0.1 / 31.1035, 6);
     expect(prizeMelt('1 GRAM 14kt GOLD GRAIN / SHOT')).toMatchObject({ purity: 0.583 });
     expect(prizeMelt('1/10 oz Gold Eagle')).toMatchObject({ oz: 0.1 });
+    expect(prizeMelt('1/10th oz Gold Eagle')).toMatchObject({ oz: 0.1 });
+    expect(prizeMelt(clarifyPrizeName('1/10th gold eagle'))).toMatchObject({ metal: 'gold', oz: 0.1 });
   });
 
   it('reads a fraction of gold, and does not melt clad or gilt', () => {

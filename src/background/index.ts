@@ -27,6 +27,7 @@ import { ALARM_OVERRIDES, refreshOverrides } from './overrides';
 import { clearPickedShare, savePickedShare } from './picks';
 import { readEnvelopes, readNamedPrizes, valuePrizes } from './prizeValues';
 import { refLookup } from './refPrices';
+import { evaluateShopItems } from './shopAi';
 import { scanTable } from './tableScan';
 import { acquireShareForSession, claimShareWork, forgetTab, shareDone, startShare, stopShare, toggleShare } from './share';
 import { ensureContent, reconnectWhatnotTabs } from './tabs';
@@ -102,6 +103,7 @@ handleMessages({
   REF_LOOKUP: ({ item }) => refLookup(item),
   QUICK_APPRAISE: ({ pageText }) => quickAppraise(pageText),
   WHEEL_VALUE: ({ prizes, context }) => valuePrizes(prizes.slice(0, 200), context),
+  SHOP_AI: ({ items, showTitle, showType }) => evaluateShopItems(items.slice(0, 20), showTitle, showType),
   ENVELOPE_READ: ({ breakId, image, prizes, others, context, soldHidden }) =>
     readEnvelopes(breakId, image, prizes.slice(0, 100), others.slice(0, 100), context, soldHidden),
   PRIZE_READ: ({ breakId, image, prizes, context }) => readNamedPrizes(breakId, image, prizes.slice(0, 60), context),

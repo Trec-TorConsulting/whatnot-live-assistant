@@ -13,7 +13,9 @@ import {
   applyShopRefs,
   applyShopWorth,
   extractShopRefQuery,
+  hasPriceLine,
   isShopOperation,
+  MAX_LISTINGS,
   MAX_SHOP_HITS,
   mergeShopListings,
   readShopPage,
@@ -44,11 +46,13 @@ import { overlay, type ShopView } from './overlay';
 import { findShippingText, findShopSearchInput, findShopTabButton, liveIdFromPath } from './selectors';
 import { currentShowType } from './showType';
 
-const MAX_EXTRA_PAGES = 4;
-const MAX_REF_LOOKUPS = 6;
-const POOL_LIMIT = 24;
-const QUIET_MS = 20_000;
+const MAX_EXTRA_PAGES = 100;
+const MAX_REF_LOOKUPS = 16;
+const POOL_LIMIT = 100;
+const MAX_PANEL_HITS = 24;
+const QUIET_MS = 12_000;
 const QUICK_MS = 600;
+const PAGE_FETCH_DELAY_MS = 120;
 
 let listening = false;
 let liveId: string | null = null;
@@ -75,7 +79,7 @@ const hitLabel = (h: ShopHit) => {
 
 const viewOf = (scan: ShopScan): ShopView => ({
   summary: shopSummary(scan),
-  hits: scan.hits.map((h) => ({
+  hits: scan.hits.slice(0, MAX_SHOP_HITS).map((h) => ({
     id: h.id,
     title: h.title,
     quantity: h.quantity,
@@ -90,18 +94,18 @@ const viewOf = (scan: ShopScan): ShopView => ({
   ...(scan.coupons?.length ? { coupons: scan.coupons } : {}),
 });
 
-const visibleFromPool = (pool: ShopHit[]): ShopHit[] =>
+const visibleFromPool = (pool: ShopHit[], limit = MAX_PANEL_HITS): ShopHit[] =>
   pool
     .filter((h) => !dismissedIds.has(h.id) && (filterMode === 'bin' ? (h.mode ?? 'bin') === 'bin' : true))
-    .slice(0, MAX_SHOP_HITS);
+    .slice(0, limit);
 
-const publishCurrent = () => {
+const publishCurrent = (isScanning = false) => {
   if (!liveId || isShareWorker() || !sawSuccess) return;
-  const visible = visibleFromPool(scoredHits);
+  const visible = visibleFromPool(scoredHits, MAX_PANEL_HITS);
   const auctionCount = listings.filter((l) => l.mode === 'auction').length;
   const coupons = liveSession()?.show.note?.coupons;
   const scan: ShopScan = {
-    status: 'ready',
+    status: isScanning ? 'scanning' : 'ready',
     binCount: listings.length,
     auctionCount,
     hits: visible,
@@ -117,6 +121,68 @@ const arm = (ms: number) => {
   const g = ++gen;
   clearTimeout(timer);
   timer = setTimeout(() => void finish(g), ms);
+};
+
+const runFastScorePass = async (id: string, g: number) => {
+  if (g !== gen || liveId !== id || isShareWorker() || !listings.length) return;
+  const [sold, guard, spot, buyer, purchases, collection] = await Promise.all([
+    getItem('soldHistory').catch(() => []),
+    getGuardSettings().catch(() => null),
+    send('SPOT_GET', {}).catch(() => ({ gold: null, silver: null })),
+    getBuyerSettings().catch(() => null),
+    getItem('purchases').catch(() => []),
+    getCollection().catch(() => null),
+  ]);
+  if (g !== gen || liveId !== id || isShareWorker()) return;
+  const session = liveSession();
+  const showType = currentShowType();
+  const currencyRate = session?.currency?.rate ?? null;
+  const maxBidPercent = guard?.maxBidPercent ?? 80;
+  const watchlist = buyer?.watchlist ?? [];
+  const shipInfo = parseShippingInfo(findShippingText());
+  const shipping = shipInfo.shipping ?? session?.shippingQuote ?? null;
+  const rules = shippingRules({
+    notes: session?.show.note?.text,
+    showTitle: session?.show.title,
+  });
+  const hasWinThisShow = Boolean(
+    session &&
+    (session.runnerGiveawayShippingWon || (purchases ?? []).some((p) => p.liveId === session.show.liveId)),
+  );
+  const coupons = session?.show.note?.coupons ?? [];
+  const chatWants = [...(session?.electronicsWants ?? []), ...(session?.estateWants ?? [])];
+  const ownedTitles = (purchases ?? []).map((p) => p.title).filter(Boolean);
+
+  let pool = scoreShop({
+    listings,
+    sold: sold ?? [],
+    showType,
+    watchlist,
+    maxBidPercent,
+    meltOf: (item) => shopMelt(item, spot),
+    now: Date.now(),
+    currencyRate,
+    shipping,
+    shippingRules: rules,
+    hasWinThisShow,
+    taxPercent: buyer?.taxPercent ?? 0,
+    feePercent: buyer?.feePercent,
+    coupons,
+    collection,
+    ownedTitles,
+    chatWants,
+    limit: POOL_LIMIT,
+  });
+
+  if (worthCache.size) {
+    pool = applyShopWorth(pool, worthCache, { maxBidPercent, watchlist });
+  }
+  if (refCache.size) {
+    pool = applyShopRefs(listings, pool, refCache, { maxBidPercent, currencyRate, limit: POOL_LIMIT });
+  }
+
+  scoredHits = pool;
+  publishCurrent(true);
 };
 
 const ingest = (operation: string, raw: string) => {
@@ -138,11 +204,22 @@ const ingest = (operation: string, raw: string) => {
     }
   }
   listings = mergeShopListings(listings, read.listings, read.removedIds);
-  if (isShopOperation(operation) && read.cursor && !seenCursor.has(read.cursor) && pages < MAX_EXTRA_PAGES) {
+  const hasMore =
+    isShopOperation(operation) &&
+    Boolean(read.cursor && !seenCursor.has(read.cursor) && pages < MAX_EXTRA_PAGES && listings.length < MAX_LISTINGS);
+
+  if (hasMore && read.cursor) {
     seenCursor.add(read.cursor);
     pages += 1;
-    postToHook({ kind: 'fetch_shop', id, after: read.cursor });
-    arm(QUIET_MS);
+    const nextCursor = read.cursor;
+    setTimeout(() => {
+      if (liveId === id) {
+        postToHook({ kind: 'fetch_shop', id, after: nextCursor });
+      }
+    }, PAGE_FETCH_DELAY_MS);
+    publishCurrent(true);
+    void runFastScorePass(id, gen);
+    arm(8_000);
     return;
   }
   arm(sawSuccess ? QUICK_MS : QUIET_MS);
@@ -307,7 +384,9 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
     const listingById = new Map(listings.map((l) => [l.id, l]));
     const ordered: ShopListing[] = [];
     const seen = new Set<string>();
-    for (const h of hits) {
+    // Must-haves without a market price go first so the lookup budget fills their gap.
+    const unpricedMust = hits.filter((h) => h.kind === 'must' && !hasPriceLine(h.reason));
+    for (const h of [...unpricedMust, ...hits]) {
       const l = listingById.get(h.id);
       if (l && !seen.has(l.id)) {
         seen.add(l.id);
@@ -408,6 +487,7 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
     seenCursor = new Set();
     pages = 0;
     dismissedIds = new Set();
+    publishCurrent(true);
     postToHook({ kind: 'fetch_shop', id: liveId, after: null });
     arm(sawSuccess ? QUICK_MS : QUIET_MS);
   };

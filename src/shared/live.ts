@@ -16,13 +16,12 @@ import {
 import { rateFrom, type SessionCurrency } from './currency';
 import {
   electronicsPinFrom,
-  electronicsWantFrom,
   isGenericDeviceClass,
   isPullBucket,
   lotNumber as electronicsLotNumber,
   type PullRun,
 } from './electronics';
-import { isTemplate, lotNumber, pinFrom, type EstateRun, wantFrom } from './estate';
+import { isTemplate, lotNumber, pinFrom, type EstateRun } from './estate';
 import { moneyCurrency, moneyValue } from './money';
 import {
   giveawayMatchesStem,
@@ -515,12 +514,6 @@ const noteChat = (session: LiveSession, m: ChatMessage): LiveSession => {
       const key = cNum != null ? String(cNum) : (next.lot?.id ?? 'current');
       next = { ...next, casePins: { ...next.casePins, [key]: cPin } };
     }
-  }
-  if (!m.isHost && !m.isModerator) {
-    const want = wantFrom(m.text);
-    if (want) next = { ...next, estateWants: [...next.estateWants, want].slice(-20) };
-    const eWant = electronicsWantFrom(m.text);
-    if (eWant) next = { ...next, electronicsWants: [...next.electronicsWants, eWant].slice(-20) };
   }
   return next;
 };

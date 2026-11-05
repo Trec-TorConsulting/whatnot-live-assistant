@@ -566,7 +566,6 @@ export const buildElectronicsView = (input: {
     !suddenDeath &&
     !shippingNote &&
     !rules &&
-    !wants.length &&
     !runs.length
   ) {
     return null;
@@ -581,7 +580,7 @@ export const buildElectronicsView = (input: {
     suddenDeath,
     shippingNote,
     rules: rules || null,
-    wants,
+    wants: [],
     runs,
   };
 };

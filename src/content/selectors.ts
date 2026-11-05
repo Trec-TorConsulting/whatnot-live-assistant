@@ -343,7 +343,7 @@ export const findShopTabButton = (): HTMLElement | null => {
   for (const el of document.querySelectorAll<HTMLElement>('[role="tab"], button, [role="button"]')) {
     if (!isVisible(el) || el.closest(NAV_CHROME)) continue;
     const text = normalize(`${textOf(el)} ${el.getAttribute('aria-label') ?? ''}`);
-    if (/^shop(\s*\(\d+\)|\s+\d+|\s*·\s*\d+)?$/i.test(text)) return el;
+    if (/^(?:shop|buy\s*it\s*now|buy\s*now|store)(\s*\(\d+\)|\s+\d+|\s*·\s*\d+)?$/i.test(text)) return el;
   }
   return null;
 };

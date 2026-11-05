@@ -445,6 +445,28 @@ describe('overlay', () => {
     overlay.setCasePack(null);
   });
 
+  it('renders estate runs as a compact last-sold line and omits viewer chat wants', () => {
+    overlay.mount({});
+    overlay.setEstate(
+      buildEstateView({
+        lotTitle: 'Template lot #2',
+        categories: ['Estate Sales'],
+        runs: [
+          { number: 2, name: null, price: 3 },
+          { number: 1, name: 'Silver bowl', price: 25 },
+        ],
+        wants: ['Any 1/4 oz silver rounds', 'can u do $110?'],
+      }),
+    );
+    const estateEl = shadow().querySelector('[data-estate]')!;
+    const text = estateEl.textContent ?? '';
+    expect(text).toContain('Last sold: Lot 2 · $3');
+    expect(text).not.toContain('Lot 1 · Silver bowl · $25');
+    expect(text).not.toContain('Any 1/4 oz silver rounds');
+    expect(text).not.toContain('can u do $110?');
+    overlay.setEstate(null);
+  });
+
   it('hides Appraise while a wheel is running', () => {
     overlay.mount({});
     overlay.setWheel(null);

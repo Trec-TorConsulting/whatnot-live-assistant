@@ -1,6 +1,6 @@
 # Whatnot Live Assistant
 
-Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.20.1. In Chrome the extension is named **Whatnot Assistant**.
+Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.20.2. In Chrome the extension is named **Whatnot Assistant**.
 
 It runs on a show you already have open. API keys stay in the browser. Nothing in this repository is a key, a login, or a bid.
 
@@ -33,7 +33,7 @@ Open the side panel on a live show.
 
 | Area | What it does |
 | --- | --- |
-| Live | Show title, lot, viewers, revenue, orders, giveaways, and top buyers from the show feed. On entry and as sales happen, check the shop for buy-it-now steals, deals, must-haves, missing set dates, and wholesale per-piece prices, with all-in landed cost, net flip profit, PCGS/TCG/PSA/Discogs reference checks, stock badges, click-to-find in Whatnot's shop, and a BIN-only filter. On case-pack and wholesale shows, read the piece count, per-piece price, landed per-piece cost, break-even resale, size run, shipping caps, non-bundling tiers, pallet freight by time zone, and host/mod lot pins before an appraisal. Convert non-USD prices (such as CA$) from Whatnot's own `(est. $…)` shipping estimate. Appraise the item on screen. Track wheel odds. Watch up to four other shows in muted tabs, with live shop steal/deal badges on each monitored show. |
+| Live | Show title, lot, viewers, revenue, orders, giveaways, and top buyers from the show feed. On entry and as sales happen, check the shop for buy-it-now steals, deals, must-haves (each with its current market price, or "Market: no price yet"), missing set dates, and wholesale per-piece prices, with all-in landed cost, net flip profit, PCGS/TCG/PSA/Discogs reference checks, stock badges, click-to-find in Whatnot's shop, and a BIN-only filter. On case-pack and wholesale shows, read the piece count, per-piece price, landed per-piece cost, break-even resale, size run, shipping caps, non-bundling tiers, pallet freight by time zone, and host/mod lot pins before an appraisal. Convert non-USD prices (such as CA$) from Whatnot's own `(est. $…)` shipping estimate. Appraise the item on screen. Track wheel odds. Watch up to four other shows in muted tabs, with live shop steal/deal badges on each monitored show. |
 | Share | Copy link, X, or Facebook on a delay, once, for a count, or until you stop. Sharing runs in a muted background tab, so the tab you are watching is left alone. |
 | Bulk | Follow the host and bookmark upcoming shows that are not bookmarked yet. Unfollow or remove those bookmarks. Preview mode clicks nothing. |
 | Buys | Record purchases, cost, and what an appraisal said the item was worth. |

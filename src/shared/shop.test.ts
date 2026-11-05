@@ -9,11 +9,15 @@ import {
   applyShopAi,
   applyShopRefs,
   applyShopWorth,
+  ensureMustPrice,
   extractShopQuery,
   extractShopRefQuery,
+  hasPriceLine,
   isShopOperation,
+  MAX_LISTINGS,
   mergeShopListings,
   monitorShopBadge,
+  NO_MARKET_LINE,
   parseShopAiAnswer,
   parseShopListings,
   readRemovedShopIds,
@@ -22,6 +26,7 @@ import {
   selectShopAiItems,
   shopCursor,
   shopMelt,
+  shopSummary,
   shopVariables,
   shopVariablesFrom,
   shopWorthLine,
@@ -640,6 +645,58 @@ describe('scoreShop', () => {
     expect(lpHit.reason).toContain('Discogs listed from $25');
   });
 
+  it('always leads a must-have with a market price, or says none is known yet', () => {
+    // No sales, no melt: the gap is shown, not hidden.
+    const bare = score([list('1909-S VDB Lincoln cent', 40)], { meltOf: () => null })[0]!;
+    expect(bare.kind).toBe('must');
+    expect(bare.reason.startsWith(`${NO_MARKET_LINE}.`)).toBe(true);
+    expect(hasPriceLine(bare.reason)).toBe(false);
+
+    // Two watched sales above the price: their median is the market price.
+    const sales = [sold('1909-S VDB Lincoln cent', 50), sold('1909-S VDB Lincoln cent', 60, 2)];
+    const comped = score([list('1909-S VDB Lincoln cent', 48)], { sold: sales, meltOf: () => null })[0]!;
+    expect(comped.kind).toBe('must');
+    expect(comped.reason.startsWith('Market $55 (median of 2 sales)')).toBe(true);
+    expect(comped.reason).not.toContain(NO_MARKET_LINE);
+
+    // Melt is a floor, not a market price: shown next to the placeholder, never instead of it.
+    const silver = score([list('1879-CC Morgan dollar', 240)])[0]!;
+    expect(silver.kind).toBe('must');
+    expect(silver.reason.startsWith(`${NO_MARKET_LINE}. Melt $`)).toBe(true);
+
+    // PCGS guide replaces the placeholder.
+    const quarter = score([list('1932 S Washington Silver Quarter Coin Key Date 408k MINTED~! (A) Good!', 79)]);
+    const worth = applyShopWorth(quarter, new Map([['5792:4', 'Guide $110 (PCGS G-4)']]));
+    expect(worth[0]!.reason.startsWith('Guide $110 (PCGS G-4).')).toBe(true);
+    expect(worth[0]!.reason).not.toContain(NO_MARKET_LINE);
+
+    // A local AI range replaces the placeholder.
+    const items = [list('1879-CC Morgan dollar', 240)];
+    const initial = score(items);
+    const ai = applyShopAi(items, initial, [{ id: '1879-CC Morgan dollar', low: 220, high: 350, info: '' }]);
+    expect(ai[0]!.reason.startsWith('AI est. $220–$350.')).toBe(true);
+    expect(ai[0]!.reason).not.toContain(NO_MARKET_LINE);
+
+    // A card market price replaces it; a range is a price; a PSA check alone is not.
+    const card: ShopListing = { id: 'zard', title: 'Charizard 4/102 Base Set Holo', price: 240, quantity: 1, mode: 'bin' };
+    const mustCard = { id: 'zard', title: card.title, price: 240, quantity: 1, mode: 'bin' as const, kind: 'must' as const, reason: `${NO_MARKET_LINE}. On your watchlist` };
+    const market = applyShopRefs([card], [mustCard], new Map<string, RefPrice[]>([
+      ['zard', [{ source: 'pokemontcg', name: 'Charizard 4/102', value: 250, kind: 'market', detail: 'Holofoil', link: null }]],
+    ]));
+    expect(market[0]).toMatchObject({ kind: 'must' });
+    expect(market[0]!.reason).toBe('Market $250 (pokemontcg). On your watchlist');
+    const verified = applyShopRefs([card], [mustCard], new Map<string, RefPrice[]>([
+      ['zard', [{ source: 'psa', name: 'Charizard PSA 9', value: null, kind: 'verified', detail: 'PSA 9', link: null }]],
+    ]));
+    expect(verified[0]!.reason.startsWith(`${NO_MARKET_LINE}. PSA verified`)).toBe(true);
+
+    // Steals and deals never carry the placeholder.
+    const steal = score([list('1 oz silver round', 20)])[0]!;
+    expect(steal.kind).toBe('steal');
+    expect(steal.reason).not.toContain(NO_MARKET_LINE);
+    expect(ensureMustPrice(steal)).toBe(steal);
+  });
+
   it('computes monitor shop badges for steals and deals', () => {
     expect(
       monitorShopBadge({
@@ -687,5 +744,32 @@ describe('shop query text', () => {
       after: null,
       filters: null,
     });
+  });
+
+  it('supports progressive scanning status and formats shop summary', () => {
+    expect(shopSummary({ status: 'scanning', binCount: 150, auctionCount: 0 })).toBe(
+      'Scanning shop… 150 buy-it-now items checked.',
+    );
+    expect(shopSummary({ status: 'scanning', binCount: 220, auctionCount: 10 })).toBe(
+      'Scanning shop… 220 items checked.',
+    );
+    expect(shopSummary({ status: 'ready', binCount: 1500, auctionCount: 0 })).toBe(
+      'Checked 1500 buy-it-now items.',
+    );
+  });
+
+  it('parses large shop inventories beyond 400 listings and handles fallback buyNowPrice', () => {
+    const manyListings = Array.from({ length: 600 }, (_, i) => ({
+      node: {
+        id: `item-${i}`,
+        title: `Silver Coin #${i}`,
+        buyNowPrice: 25,
+        quantity: 1,
+      },
+    }));
+    const parsed = parseShopListings({ data: { liveShop: { edges: manyListings } } });
+    expect(parsed.length).toBe(600);
+    expect(parsed[0]).toMatchObject({ id: 'item-0', title: 'Silver Coin #0', price: 25, mode: 'bin' });
+    expect(MAX_LISTINGS).toBeGreaterThanOrEqual(3000);
   });
 });

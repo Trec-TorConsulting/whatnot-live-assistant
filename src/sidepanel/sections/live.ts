@@ -57,7 +57,6 @@ const el = {
   estateShip: $('#estate-ship'),
   estateRules: $('#estate-rules'),
   estateClothing: $('#estate-clothing'),
-  estateWants: $('#estate-wants'),
   estateRuns: $('#estate-runs'),
   electronicsCard: $('#electronics-card'),
   electronicsLine: $('#electronics-line'),
@@ -66,7 +65,6 @@ const el = {
   electronicsSudden: $('#electronics-sudden'),
   electronicsShip: $('#electronics-ship'),
   electronicsRules: $('#electronics-rules'),
-  electronicsWants: $('#electronics-wants'),
   electronicsRuns: $('#electronics-runs'),
   runnerCard: $('#runner-card'),
   runnerLadder: $('#runner-ladder'),
@@ -327,10 +325,9 @@ const renderEstate = () => {
     el.estateShip.textContent = view.shippingNote ?? '';
     el.estateRules.textContent = view.rules ?? '';
     el.estateClothing.textContent = view.clothing ?? '';
-    el.estateWants.replaceChildren(
-      ...view.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
+    el.estateRuns.replaceChildren(
+      ...view.runs.slice(0, 1).map((r) => li(`Last sold: ${r}`, 'muted small')),
     );
-    el.estateRuns.replaceChildren(...view.runs.map((r) => li(r)));
   }
 
   const eView = electronicsViewFromSession(session, {
@@ -346,10 +343,9 @@ const renderEstate = () => {
     el.electronicsSudden.textContent = eView.suddenDeath ?? '';
     el.electronicsShip.textContent = eView.shippingNote ?? '';
     el.electronicsRules.textContent = eView.rules ?? '';
-    el.electronicsWants.replaceChildren(
-      ...eView.wants.map((w) => li(w.text, w.hit ? 'good' : 'muted')),
+    el.electronicsRuns.replaceChildren(
+      ...eView.runs.slice(0, 1).map((r) => li(`Last sold: ${r}`, 'muted small')),
     );
-    el.electronicsRuns.replaceChildren(...eView.runs.map((r) => li(r)));
   }
 
   const rView = runnerViewFromSession(session, { purchases });
@@ -380,7 +376,9 @@ const renderEstate = () => {
     el.casePackBreakeven.textContent = cView.breakEven ?? '';
     el.casePackRules.textContent = cView.shippingRules ?? '';
     el.casePackCurrency.textContent = cView.currencyNote ?? '';
-    el.casePackRuns.replaceChildren(...cView.runs.map((r) => li(r)));
+    el.casePackRuns.replaceChildren(
+      ...cView.runs.slice(0, 1).map((r) => li(`Last sold: ${r}`, 'muted small')),
+    );
   }
 };
 
@@ -430,6 +428,8 @@ const renderShop = () => {
   ];
   if (!rows.length && shop.status === 'ready' && shop.binCount) {
     rows.push(li(shop.auctionCount ? 'No deals in the shop.' : 'No deals in the buy-it-now shop.', 'muted'));
+  } else if (!rows.length && shop.status === 'scanning') {
+    rows.push(li('Scanning for deals…', 'muted'));
   }
   el.shopHits.replaceChildren(...rows);
 };

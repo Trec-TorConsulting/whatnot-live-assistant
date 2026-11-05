@@ -5,6 +5,8 @@ import {
   classifyFollowLabel,
   describeShowCard,
   findAppBlock,
+  findShopSearchInput,
+  findShopTabButton,
   findShowPlaceholder,
   iconShape,
   promptLine,
@@ -193,6 +195,27 @@ describe('findShowPlaceholder', () => {
     expect(findShowPlaceholder()?.id).toBe('pending');
     document.getElementById('pending')!.remove();
     expect(findShowPlaceholder()).toBeNull();
+    rect.mockRestore();
+    document.body.innerHTML = '';
+  });
+});
+
+describe('findShopTabButton & findShopSearchInput', () => {
+  it('finds the live shop tab and shop search box while skipping header search and chat input', () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 120, height: 36 } as DOMRect);
+    document.body.innerHTML = `
+      <header><input type="search" placeholder="Search Whatnot" id="global-search" /></header>
+      <div role="tablist">
+        <button role="tab" id="shop-tab">Shop (42)</button>
+        <button role="tab" id="chat-tab">Chat</button>
+      </div>
+      <div id="shop-drawer">
+        <input type="search" placeholder="Search shop..." id="shop-search" />
+      </div>
+      <input placeholder="Say something..." id="chat-box" />
+    `;
+    expect(findShopTabButton()?.id).toBe('shop-tab');
+    expect(findShopSearchInput()?.id).toBe('shop-search');
     rect.mockRestore();
     document.body.innerHTML = '';
   });

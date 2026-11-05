@@ -1,14 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { parseWatchLine } from './buyer';
+import { parseSetLine } from './collection';
+import type { RefPrice } from './refPrice';
 import { giveawayMatchesStem, giveawayShippingStems } from './runner';
 import type { SoldItem } from './soldHistory';
 import {
+  applySaleToShopListings,
+  applyShopAi,
+  applyShopRefs,
   applyShopWorth,
   extractShopQuery,
+  extractShopRefQuery,
   isShopOperation,
+  mergeShopListings,
+  monitorShopBadge,
+  parseShopAiAnswer,
   parseShopListings,
+  readRemovedShopIds,
   readShopPage,
   scoreShop,
+  selectShopAiItems,
   shopCursor,
   shopMelt,
   shopVariables,
@@ -103,6 +114,44 @@ describe('parseShopListings', () => {
     expect(giveawayMatchesStem('Follower Giveaway #4', stems)).toBe(true);
     expect(parseShopListings(shopBody).map((l) => l.title)).toEqual(['1 oz silver round']);
   });
+
+  it('rejects zero-quantity listings, collects removedIds, merges updates, and decrements live sales', () => {
+    const pageBody = {
+      data: {
+        liveShop: {
+          edges: [
+            { node: { ...bin('Active round', 2800), id: 'r1', quantity: 2 } },
+            { node: { ...bin('Zero stock round', 2500), id: 'r2', quantity: 0 } },
+            { node: { ...bin('Sold out round', 2500), id: 'r3', status: 'SOLD_OUT' } },
+          ],
+        },
+      },
+    };
+    expect(parseShopListings(pageBody)).toEqual([
+      { id: 'r1', title: 'Active round', price: 28, quantity: 2, mode: 'bin' },
+    ]);
+    expect([...readRemovedShopIds(pageBody)].sort()).toEqual(['r2', 'r3']);
+    const page = readShopPage(pageBody);
+    expect(page.removedIds.sort()).toEqual(['r2', 'r3']);
+
+    const current: ShopListing[] = [
+      { id: 'r1', title: 'Active round', price: 32, quantity: 5, mode: 'bin' },
+      { id: 'r2', title: 'Zero stock round', price: 25, quantity: 1, mode: 'bin' },
+      { id: 'r4', title: 'Untouched round', price: 30, quantity: 1, mode: 'bin' },
+    ];
+    const merged = mergeShopListings(current, page.listings, page.removedIds);
+    expect(merged).toEqual([
+      { id: 'r1', title: 'Active round', price: 28, quantity: 2, mode: 'bin' },
+      { id: 'r4', title: 'Untouched round', price: 30, quantity: 1, mode: 'bin' },
+    ]);
+
+    const afterFirstSale = applySaleToShopListings(merged, { id: 'r1', title: 'Active round' });
+    expect(afterFirstSale.find((l) => l.id === 'r1')?.quantity).toBe(1);
+    const afterTitleSale = applySaleToShopListings(afterFirstSale, { title: 'Active round' });
+    expect(afterTitleSale.map((l) => l.id)).toEqual(['r4']);
+    const afterGivvy = applySaleToShopListings(afterTitleSale, { id: 'r4', title: 'Untouched round', kind: 'giveaway' });
+    expect(afterGivvy.map((l) => l.id)).toEqual(['r4']);
+  });
 });
 
 describe('scoreShop', () => {
@@ -130,12 +179,20 @@ describe('scoreShop', () => {
     expect(score([lot], { meltOf: (item) => shopMelt(item, spot) })[0]).toMatchObject({ kind: 'steal', price: 400 });
   });
 
-  it('treats 1/1000 oz as a thousandth of an ounce', () => {
+  it('treats 1/1000 oz as a thousandth of an ounce and 1/10th oz gold eagle as a tenth of an ounce', () => {
     const spot = { gold: 3964.2, silver: null };
     const title = '1/1000 oz 24K Gold 250th Anniversary Collectiable Gold Card';
     expect(shopMelt(list(title, 36), spot)).toBeCloseTo(3.9642);
     expect(score([list(title, 36)], { meltOf: (item) => shopMelt(item, spot) })).toEqual([]);
     expect(score([list(title, 1)], { meltOf: (item) => shopMelt(item, spot) })[0]).toMatchObject({ kind: 'steal', price: 1 });
+
+    const tenthEagle = list('1/10th oz gold eagle ms70 2022', 525);
+    expect(shopMelt(tenthEagle, { gold: 4130, silver: null })).toBeCloseTo(413);
+    expect(score([tenthEagle], { meltOf: (item) => shopMelt(item, { gold: 4130, silver: null }) })).toEqual([]);
+    expect(score([list('1/10th oz gold eagle ms70 2022', 350)], { meltOf: (item) => shopMelt(item, { gold: 4130, silver: null }) })[0]).toMatchObject({
+      kind: 'steal',
+      price: 350,
+    });
   });
 
   it('leaves a $1 pre-bid out and still flags a $1 buy-it-now under melt', () => {
@@ -160,6 +217,30 @@ describe('scoreShop', () => {
     expect(score([list(title, 5)], { meltOf: (item) => shopMelt(item, spot) })).toEqual([]);
   });
 
+  it('prices a 10 oz Armenia Noahs Ark off silver melt and never splices a title weight with a Gold subtitle', () => {
+    const spot = { gold: 4127.6, silver: 51.2 };
+    const noahsArk: ShopListing = {
+      id: 'ark-10oz',
+      title: '10 oz 2026 Armenia noahs ark PROOF LIKE',
+      subtitle: 'Gold & Silver Bullion',
+      price: 1200,
+      quantity: 16,
+      mode: 'bin',
+    };
+    expect(shopMelt(noahsArk, spot)).toBeCloseTo(512);
+    expect(score([noahsArk], { meltOf: (item) => shopMelt(item, spot) })).toEqual([]);
+
+    const mysteryWithGoldSub: ShopListing = {
+      id: 'mystery-10oz',
+      title: '10 oz 2026 Commemorative Medallion PROOF LIKE',
+      subtitle: 'Gold',
+      price: 1200,
+      quantity: 16,
+      mode: 'bin',
+    };
+    expect(shopMelt(mysteryWithGoldSub, spot)).toBeNull();
+  });
+
   it('calls a price under melt a steal and ignores a price at melt', () => {
     const hits = score([list('1 oz silver round', 20), list('1 oz silver round #2', 30)]);
     expect(hits.map((h) => h.title)).toEqual(['1 oz silver round']);
@@ -175,7 +256,7 @@ describe('scoreShop', () => {
     expect(lone).toEqual([]);
   });
 
-  it('flags a watchlist price as a deal and a key date as a must-have', () => {
+  it('flags a watchlist price as a deal and a key date, semi-key, or named variety as a must-have', () => {
     const watch = score([list('1921 Morgan dollar', 25)], {
       watchlist: [parseWatchLine('morgan $30')!],
       meltOf: () => null,
@@ -184,11 +265,46 @@ describe('scoreShop', () => {
     const key = score([list('1909-S VDB Lincoln cent', 40)], { meltOf: () => null });
     expect(key[0]).toMatchObject({ kind: 'must' });
     expect(key[0]!.reason).toContain('Key date');
+    const semi = score([list('1879-CC Morgan dollar', 240)], { meltOf: () => null });
+    expect(semi[0]).toMatchObject({ kind: 'must' });
+    expect(semi[0]!.reason).toContain('Semi-key date');
+    const variety = score([list('1955 Doubled Die Lincoln cent', 500)], { meltOf: () => null });
+    expect(variety[0]).toMatchObject({ kind: 'must' });
+    expect(variety[0]!.reason).toContain('Valuable variety');
     const overMax = score([list('1921 Morgan dollar', 80)], {
       watchlist: [parseWatchLine('morgan $30')!],
       meltOf: () => null,
     });
     expect(overMax).toEqual([]);
+  });
+
+  it('enriches must-have key dates with local AI estimates and info, and surfaces underpriced shop items', () => {
+    const items = [
+      list('1879-CC Morgan dollar', 240),
+      list('1883 No Cents Liberty V Nickel BU', 8),
+      list('1 oz silver round', 20),
+    ];
+    const initial = score(items);
+    const toAsk = selectShopAiItems(items, initial);
+    expect(toAsk.map((i) => i.title)).toEqual(['1879-CC Morgan dollar', '1883 No Cents Liberty V Nickel BU']);
+    const estimates = parseShopAiAnswer(
+      JSON.stringify({
+        items: [
+          { i: 1, low: 220, high: 350, info: 'Carson City semi-key issue' },
+          { i: 2, low: 20, high: 30, info: 'First-year Racketeer nickel type' },
+        ],
+      }),
+      toAsk,
+    );
+    const enriched = applyShopAi(items, initial, estimates);
+    const cc = enriched.find((h) => h.title === '1879-CC Morgan dollar')!;
+    expect(cc).toMatchObject({ kind: 'must', price: 240 });
+    expect(cc.reason).toContain('AI est. $220–$350');
+    expect(cc.reason).toContain('Carson City semi-key issue');
+    const nick = enriched.find((h) => h.title === '1883 No Cents Liberty V Nickel BU')!;
+    expect(nick).toMatchObject({ kind: 'deal', price: 8 });
+    expect(nick.reason).toContain('Under AI est. $20–$30');
+    expect(nick.reason).toContain('First-year Racketeer nickel type');
   });
 
   it('puts a PCGS grade value on a must-have and leaves a steal alone', () => {
@@ -335,6 +451,219 @@ describe('scoreShop', () => {
     const hits = score(parsed, { sold: sales, meltOf: () => null, currencyRate: null });
     expect(hits.map((h) => h.id)).toEqual(['cad-with-est']);
     expect(hits[0]).toMatchObject({ id: 'cad-with-est', kind: 'steal', price: 14.34 });
+  });
+
+  it('inspects subtitles for melt, watchlist, comps, key dates, and device/tool notes, and tags chat wants', () => {
+    const ring: ShopListing = {
+      id: 'ring-1',
+      title: 'Vintage Estate Ring',
+      subtitle: '14K Yellow Gold 5.2 grams',
+      price: 150,
+      quantity: 1,
+      mode: 'bin',
+    };
+    const ringMelt = shopMelt(ring, { gold: 3110.35, silver: null });
+    expect(ringMelt).toBeGreaterThan(250);
+    const ringHits = score([ring], { meltOf: (item) => shopMelt(item, { gold: 3110.35, silver: null }) });
+    expect(ringHits[0]).toMatchObject({ id: 'ring-1', kind: 'steal' });
+
+    const subKey: ShopListing = {
+      id: 'coin-sub',
+      title: 'Slabbed Silver Dollar Lot #4',
+      subtitle: '1879-CC Morgan Dollar NGC VF25',
+      price: 250,
+      quantity: 1,
+      mode: 'bin',
+    };
+    const keyHits = score([subKey], { meltOf: () => null });
+    expect(keyHits[0]).toMatchObject({ id: 'coin-sub', kind: 'must' });
+    expect(keyHits[0]!.reason).toContain('Semi-key date');
+
+    const toolListing: ShopListing = {
+      id: 'tool-1',
+      title: 'Milwaukee 2767-20 M18 Fuel High Torque Impact Wrench',
+      subtitle: 'Bare tool only, no battery or charger included',
+      price: 95,
+      quantity: 1,
+      mode: 'bin',
+    };
+    const toolSales: SoldItem[] = [
+      { ...sold('Milwaukee 2767-20 M18 Fuel Impact Wrench', 180), showType: 'tools' },
+      { ...sold('Milwaukee 2767-20 High Torque Impact Wrench', 190, 2), showType: 'tools' },
+    ];
+    const toolHits = score([toolListing], {
+      sold: toolSales,
+      showType: 'tools',
+      meltOf: () => null,
+      chatWants: ['any 2767-20 impact?'],
+    });
+    expect(toolHits[0]).toMatchObject({ id: 'tool-1', kind: 'steal' });
+    expect(toolHits[0]!.reason).toContain('tool-only');
+    expect(toolHits[0]!.reason).toContain('Matches chat want');
+  });
+
+  it('re-scores must hits when PCGS returns an auction median and keeps Guide-only hits as must', () => {
+    const keyQuarter = list('1932 S Washington Silver Quarter Coin Key Date (A) Good!', 60);
+    const initial = score([keyQuarter], { meltOf: () => null });
+    expect(initial[0]).toMatchObject({ kind: 'must', price: 60 });
+
+    // Auction median $120 -> $60 <= $72 (60%) promotes to steal
+    const stealPromoted = applyShopWorth(initial, new Map([['5792:4', 'Market $120 (PCGS G-4)']]), { maxBidPercent: 80 });
+    expect(stealPromoted[0]).toMatchObject({ kind: 'steal', price: 60 });
+    expect(stealPromoted[0]!.reason).toContain('Market $120 (PCGS G-4)');
+
+    // Auction median $80 -> $60 <= $64 (80% maxBidPercent) promotes to deal
+    const dealPromoted = applyShopWorth(initial, new Map([['5792:4', 'Market $80 (PCGS G-4)']]), { maxBidPercent: 80 });
+    expect(dealPromoted[0]).toMatchObject({ kind: 'deal', price: 60 });
+    expect(dealPromoted[0]!.reason).toContain('Market $80 (PCGS G-4)');
+
+    // Guide $120 alone does not promote to steal/deal
+    const guideKept = applyShopWorth(initial, new Map([['5792:4', 'Guide $120 (PCGS G-4)']]), { maxBidPercent: 80 });
+    expect(guideKept[0]).toMatchObject({ kind: 'must', price: 60 });
+    expect(guideKept[0]!.reason).toContain('Guide $120 (PCGS G-4)');
+
+    // Overpriced (> 1.25x Market) non-watchlist must hit is dropped, unless watched
+    const overpriced = score([list('1932 S Washington Silver Quarter Coin Key Date (A) Good!', 160)], { meltOf: () => null });
+    expect(applyShopWorth(overpriced, new Map([['5792:4', 'Market $120 (PCGS G-4)']]), { maxBidPercent: 80 })).toEqual([]);
+    const watchedKeep = applyShopWorth(overpriced, new Map([['5792:4', 'Market $120 (PCGS G-4)']]), {
+      maxBidPercent: 80,
+      watchlist: [parseWatchLine('1932 s washington')!],
+    });
+    expect(watchedKeep).toHaveLength(1);
+  });
+
+  it('scores against all-in landed cost and appends shipping, flip profit, and coupon callouts', () => {
+    const round = list('1 oz silver round', 26);
+    // Melt is $30. Without shipping ($26 < $30) it is a steal.
+    // With $5 shipping and no prior win, landed cost is $31 > $30, so NOT a steal!
+    const withUnpaidShipping = score([round], {
+      shipping: 5,
+      hasWinThisShow: false,
+    });
+    expect(withUnpaidShipping).toEqual([]);
+
+    // Once the buyer has a win in this show, incremental shipping is $0 (Combined shipping) -> steal!
+    const withCombinedShipping = score([round], {
+      shipping: 5,
+      hasWinThisShow: true,
+    });
+    expect(withCombinedShipping).toHaveLength(1);
+    expect(withCombinedShipping[0]).toMatchObject({ kind: 'steal', price: 26 });
+    expect(withCombinedShipping[0]!.reason).toContain('Combined shipping');
+
+    // Deeper discount ($15 + $4 shipping = $19 landed vs $30 melt) -> steal with All-in $19, Flip +$X, and Coupon
+    const deepSteal = score([list('1 oz silver round', 15)], {
+      shipping: 4,
+      hasWinThisShow: false,
+      feePercent: 11,
+      coupons: ['SILVER5'],
+    });
+    expect(deepSteal[0]).toMatchObject({ kind: 'steal', price: 15 });
+    expect(deepSteal[0]!.reason).toContain('All-in $19');
+    expect(deepSteal[0]!.reason).toContain('Flip +$');
+    expect(deepSteal[0]!.reason).toContain('Coupon SILVER5');
+  });
+
+  it('surfaces missing set coins from collection as must-haves and tags owned items', () => {
+    const collection = {
+      owned: ['1921 Peace Dollar'],
+      sets: [parseSetLine('peace dollar 1921-1935')!],
+    };
+    const needed = list('1926-S Peace Silver Dollar BU', 45);
+    const owned = list('1 oz silver round', 20);
+    const hits = score([needed, owned], {
+      collection,
+      ownedTitles: ['1 oz silver round'],
+    });
+    const neededHit = hits.find((h) => h.title.includes('1926-S'))!;
+    expect(neededHit).toMatchObject({ kind: 'must', price: 45 });
+    expect(neededHit.reason).toContain('Needed for your set: peace dollar 1921-1935 (you have 1 dates)');
+
+    const ownedHit = hits.find((h) => h.title === '1 oz silver round')!;
+    expect(ownedHit).toMatchObject({ kind: 'steal', price: 20 });
+    expect(ownedHit.reason).toContain('You own 1 like this');
+  });
+
+  it('extracts and applies TCG card, stated PSA cert, and vinyl reference prices without guessing certs', () => {
+    const zard: ShopListing = { id: 'zard', title: 'Charizard 4/102 Base Set Holo', price: 120, quantity: 1, mode: 'bin' };
+    const pikachuRange: ShopListing = { id: 'pika', title: 'Pikachu 58/102 Base Set', price: 5, quantity: 1, mode: 'bin' };
+    const psaSlab: ShopListing = { id: 'psa', title: '1986 Fleer Michael Jordan PSA 9 Cert #12345678', price: 500, quantity: 1, mode: 'bin' };
+    const vinyl: ShopListing = { id: 'lp', title: 'Fleetwood Mac - Rumours LP Vinyl 1977', price: 18, quantity: 1, mode: 'bin' };
+    const plainCoin: ShopListing = { id: 'coin', title: '1921 Morgan Silver Dollar', price: 30, quantity: 1, mode: 'bin' };
+
+    expect(extractShopRefQuery(zard, 'cards')).toEqual({
+      item_name: zard.title,
+      item_type: 'trading_card',
+      is_slabbed: false,
+      card: { game: 'pokemon', name: 'Charizard', number: '4/102', set: 'Base Set' },
+    });
+    expect(extractShopRefQuery(psaSlab, 'cards')).toEqual({
+      item_name: psaSlab.title,
+      item_type: 'trading_card',
+      is_slabbed: true,
+      grading_service: 'PSA',
+      cert_number: '12345678',
+      year: 1986,
+    });
+    expect(extractShopRefQuery(vinyl, 'general')).toEqual({
+      item_name: vinyl.title,
+      item_type: 'vinyl_media',
+    });
+    expect(extractShopRefQuery(plainCoin, 'coins')).toBeNull();
+
+    const refs = new Map<string, RefPrice[]>([
+      ['zard', [{ source: 'pokemontcg', name: 'Charizard 4/102', value: 250, kind: 'market', detail: 'Holofoil', link: null }]],
+      ['pika', [{ source: 'pokemontcg', name: 'Pikachu 58/102', value: 2, high: 18, kind: 'range', detail: '3 printings', link: null }]],
+      ['psa', [{ source: 'psa', name: '1986 Fleer Jordan PSA 8', value: null, kind: 'verified', detail: 'PSA 8', link: null, mismatch: true }]],
+      ['lp', [{ source: 'discogs', name: 'Fleetwood Mac - Rumours', value: 25, kind: 'listed', detail: '1977 US LP', link: null }]],
+    ]);
+
+    // Pre-existing hit for pikachu and lp so we can verify note attachment without false promotion
+    const baseHits = [
+      { id: 'pika', title: pikachuRange.title, price: 5, quantity: 1, mode: 'bin' as const, kind: 'must' as const, reason: 'Watchlist' },
+      { id: 'lp', title: vinyl.title, price: 18, quantity: 1, mode: 'bin' as const, kind: 'deal' as const, reason: 'Watchlist max $20' },
+    ];
+    const enriched = applyShopRefs([zard, pikachuRange, psaSlab, vinyl], baseHits, refs, { maxBidPercent: 80 });
+    const zardHit = enriched.find((h) => h.id === 'zard')!;
+    expect(zardHit).toMatchObject({ kind: 'steal', price: 120 });
+    expect(zardHit.reason).toContain('Market $250 (pokemontcg)');
+
+    const pikaHit = enriched.find((h) => h.id === 'pika')!;
+    expect(pikaHit.kind).toBe('must');
+    expect(pikaHit.reason).toContain('Prints $2–$18 (pokemontcg)');
+
+    const psaHit = enriched.find((h) => h.id === 'psa')!;
+    expect(psaHit.kind).toBe('must');
+    expect(psaHit.reason).toContain('PSA cert mismatch');
+
+    const lpHit = enriched.find((h) => h.id === 'lp')!;
+    expect(lpHit.reason).toContain('Discogs listed from $25');
+  });
+
+  it('computes monitor shop badges for steals and deals', () => {
+    expect(
+      monitorShopBadge({
+        status: 'ready',
+        hits: [
+          { id: '1', title: 'Round', price: 20, quantity: 1, kind: 'steal', reason: 'Under melt' },
+          { id: '2', title: 'Bar', price: 22, quantity: 1, kind: 'steal', reason: 'Under melt' },
+          { id: '3', title: 'Eagle', price: 25, quantity: 1, kind: 'deal', reason: 'Under comps' },
+        ],
+      }),
+    ).toEqual({ text: '2 shop steals (from $20)', kind: 'steal' });
+    expect(
+      monitorShopBadge({
+        status: 'ready',
+        hits: [{ id: '3', title: 'Eagle', price: 25, quantity: 1, kind: 'deal', reason: 'Under comps' }],
+      }),
+    ).toEqual({ text: 'Shop deal: Eagle $25', kind: 'deal' });
+    expect(
+      monitorShopBadge({
+        status: 'ready',
+        hits: [{ id: '4', title: 'Key date', price: 75, quantity: 1, kind: 'must', reason: 'Key date' }],
+      }),
+    ).toBeNull();
+    expect(monitorShopBadge(undefined)).toBeNull();
   });
 });
 

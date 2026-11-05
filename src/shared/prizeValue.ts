@@ -49,7 +49,7 @@ const NUGGET_PURITY = 0.8;
 // A box or pack with a chance at metal is not that metal: "1OZ GOLD CHASE RIP/SHIP" is a sealed box.
 // Clad and gilt are base metal with a color, not the metal named beside them.
 const NOT_BULLION_RE = /\bchase\b|\brip\b|rip\s*\/\s*ship|\bbox\b|\bpacks?\b|\bbreak\b|\bmystery\b|\brandom\b|\bchance\b|\bspot\b|\bclad\b|\bgilt\b/i;
-const WEIGHT_RE = /(?<![\d/.])(\d+\/\d+|\d*\.?\d+)\s*(grams?|gr?|oz|ozt|troy\s*oz|kilos?|kg)\b/i;
+const WEIGHT_RE = /(?<![\d/.])(\d+\/\d+|\d*\.?\d+)(?:st|nd|rd|th)?\s*(grams?|gr?|oz|ozt|troy\s*oz|kilos?|kg)\b/i;
 const METAL_RE = /\b(gold|silver|platinum|palladium)\b/i;
 
 export interface PrizeMelt {
@@ -87,7 +87,7 @@ export const clarifyPrizeName = (title: string): string => {
   s = s.replace(FACE_RE, ' ');
   s = s.replace(/\base\b/gi, 'American Silver Eagle');
   s = s.replace(/\brosevelt\b/gi, 'Roosevelt');
-  s = s.replace(/\b(\d+\s*\/\s*\d+)\s*gold\b/gi, (_, frac: string) => `${frac.replace(/\s+/g, '')} oz gold`);
+  s = s.replace(/\b(\d+\s*\/\s*\d+)(?:st|nd|rd|th)?\s*gold\b/gi, (_, frac: string) => `${frac.replace(/\s+/g, '')} oz gold`);
   if (GRADE_RE.test(s)) s = s.replace(/\b(?:good|fair|poor)\b\s*$/i, '');
   return s.replace(/\s+/g, ' ').trim();
 };

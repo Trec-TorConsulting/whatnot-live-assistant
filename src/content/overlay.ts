@@ -51,6 +51,10 @@ export interface SellerView {
 }
 
 export interface ShopHitView {
+  id?: string;
+  title?: string;
+  quantity?: number;
+  mode?: 'bin' | 'auction';
   kind: 'steal' | 'deal' | 'must';
   label: string;
   text: string;
@@ -60,6 +64,9 @@ export interface ShopView {
   summary: string;
   hits: ShopHitView[];
   perPieceRows?: string[];
+  filter?: 'all' | 'bin';
+  hasAuctions?: boolean;
+  coupons?: string[];
 }
 
 export interface ToolsView {
@@ -160,6 +167,10 @@ let handlers: {
   quickBid?: (kind: QuickBidButton['kind']) => void;
   savePrefs?: (prefs: OverlayPrefs) => void;
   pickScan?: (scan: boolean) => void;
+  shopRescan?: () => void;
+  shopFocus?: (title: string) => void;
+  shopDismiss?: (id: string) => void;
+  shopFilter?: (mode: 'all' | 'bin') => void;
 } = {};
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let prefs: OverlayPrefs = DEFAULT_OVERLAY_PREFS;
@@ -215,7 +226,7 @@ const STYLE = `
   .big { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .notice { color: #f59e0b; font-weight: 600; }
   ul { margin: 4px 0 0; padding-left: 16px; }
-  .appraisal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+  .appraisal-head, .shop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
   .max-bid { margin-top: 4px; font-size: 16px; font-weight: 800; color: #22c55e; font-variant-numeric: tabular-nums; }
   .value-line { font-size: 12px; font-variant-numeric: tabular-nums; }
   ul.reasons, ul.cautions { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 3px; }
@@ -245,6 +256,10 @@ const STYLE = `
   .picker { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
   .picker:empty { display: none; }
   .picker select { flex: 1; min-width: 0; font: inherit; color: #e8eaef; background: #181b22; border: 1px solid #2a2f3a; border-radius: 6px; padding: 2px 4px; }
+  .shop-hit { cursor: pointer; }
+  .shop-hit:hover { text-decoration: underline; }
+  button.shop-dismiss { padding: 0 4px; font-size: 11px; line-height: 1.2; margin-left: 4px; opacity: 0.75; }
+  button.shop-dismiss:hover { opacity: 1; }
 `;
 
 const ensure = () => {
@@ -287,6 +302,17 @@ const ensure = () => {
     } else if (action === 'checks') {
       state.checksOpen = !state.checksOpen;
       render();
+    } else if (action === 'shop-rescan') {
+      handlers.shopRescan?.();
+    } else if (action === 'shop-focus') {
+      const title = (e.target as HTMLElement).closest<HTMLElement>('[data-title]')?.dataset.title;
+      if (title) handlers.shopFocus?.(title);
+    } else if (action === 'shop-dismiss') {
+      const id = (e.target as HTMLElement).closest<HTMLElement>('[data-id]')?.dataset.id;
+      if (id) handlers.shopDismiss?.(id);
+    } else if (action === 'shop-filter') {
+      const mode = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]')?.dataset.mode as 'all' | 'bin' | undefined;
+      if (mode) handlers.shopFilter?.(mode);
     }
   });
   root.addEventListener('change', (e) => {
@@ -379,11 +405,11 @@ const popOut = async () => {
 const factsHtml = (facts: Fact[]) =>
   facts.length
     ? `<dl class="facts">${facts
-        .map(
-          (f) =>
-            `<dt>${esc(f.label)}</dt><dd><strong>${esc(f.value)}</strong>${f.detail ? `<div class="muted" title="${esc(f.detail)}">${esc(f.detail)}</div>` : ''}</dd>`,
-        )
-        .join('')}</dl>`
+      .map(
+        (f) =>
+          `<dt>${esc(f.label)}</dt><dd><strong>${esc(f.value)}</strong>${f.detail ? `<div class="muted" title="${esc(f.detail)}">${esc(f.detail)}</div>` : ''}</dd>`,
+      )
+      .join('')}</dl>`
     : '';
 
 // Always there and always two lines, so an auction starting or selling only changes its text.
@@ -477,16 +503,36 @@ const casePackRow = (v: CasePackView | null) => {
     </div>`;
 };
 
+const stockBadge = (qty: number | undefined, mode: 'bin' | 'auction' | undefined) => {
+  if (mode === 'auction' || !qty || qty <= 0) return '';
+  if (qty === 1) return ' <span class="notice">[1 left]</span>';
+  if (qty <= 99) return ` <span class="muted">[${qty} in stock]</span>`;
+  return '';
+};
+
 const shopRow = (s: ShopView | null) => {
   if (!s) return '';
   const worth = s.hits.some((h) => h.kind === 'steal');
+  const filterMode = s.filter ?? 'all';
+  const filterBtn = s.hasAuctions
+    ? `<button class="icon" data-action="shop-filter" data-mode="${filterMode === 'bin' ? 'all' : 'bin'}" title="Toggle between Buy-It-Now only and all shop items">${filterMode === 'bin' ? 'BIN only' : 'All'}</button>`
+    : '';
+  const rescanBtn = `<button class="icon" data-action="shop-rescan" title="Rescan the live shop">↻</button>`;
   const items = [
-    ...s.hits.map(
-      (h) => `<li><span class="${h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : ''}">${esc(h.label)}</span> ${esc(h.text)}</li>`,
-    ),
+    ...s.hits.map((h) => {
+      const cls = h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : '';
+      const stock = stockBadge(h.quantity, h.mode);
+      const body = h.title
+        ? `<span class="shop-hit" data-action="shop-focus" data-title="${esc(h.title)}" title="Click to find in Whatnot's shop"><span class="${cls}">${esc(h.label)}</span>${stock} ${esc(h.text)}</span>`
+        : `<span class="${cls}">${esc(h.label)}</span>${stock} ${esc(h.text)}`;
+      const dismiss = h.id
+        ? ` <button class="icon shop-dismiss" data-action="shop-dismiss" data-id="${esc(h.id)}" title="Dismiss this item">×</button>`
+        : '';
+      return `<li class="shop-item">${body}${dismiss}</li>`;
+    }),
     ...(s.perPieceRows ?? []).map((row) => `<li class="muted">${esc(row)}</li>`),
   ].join('');
-  return `<div class="row${worth ? ' worth' : ''}"><div class="wheel-name">Shop</div><div class="muted">${esc(s.summary)}</div>${items ? `<ul>${items}</ul>` : ''}</div>`;
+  return `<div class="row${worth ? ' worth' : ''}" data-shop><div class="shop-head"><div class="wheel-name">Shop</div><div class="tool-row">${filterBtn}${rescanBtn}</div></div><div class="muted">${esc(s.summary)}</div>${items ? `<ul>${items}</ul>` : ''}</div>`;
 };
 
 const render = () => {
@@ -510,9 +556,8 @@ const render = () => {
     ? ''
     : `<div class="body">
         ${shopRow(state.shop)}
-        ${
-          w
-            ? `<div class="row ${w.level === 'worth' ? 'worth' : w.level === 'not_worth' ? 'over' : ''}">
+        ${w
+      ? `<div class="row ${w.level === 'worth' ? 'worth' : w.level === 'not_worth' ? 'over' : ''}">
                 <div class="wheel-name">${esc(w.title)}</div>
                 <div class="wheel-spots">${esc(w.spots)}</div>
                 <div class="big">${esc(w.value)}</div>
@@ -520,11 +565,10 @@ const render = () => {
                 ${factsHtml(w.facts)}
                 ${w.warnings.map((l) => `<div class="notice">${esc(l)}</div>`).join('')}
               </div>`
-            : ''
-        }
-        ${
-          a
-            ? `<div class="row">
+      : ''
+    }
+        ${a
+      ? `<div class="row">
                 <div class="appraisal-head"><span class="big">${esc(a.title)}</span><button class="icon" data-action="close-appraisal" title="Close">×</button></div>
                 ${a.subtitle ? `<div class="muted">${esc(a.subtitle)}</div>` : ''}
                 ${a.highlight ? `<div class="max-bid">${esc(a.highlight)}</div>` : ''}
@@ -534,20 +578,18 @@ const render = () => {
                 ${a.cautions.length ? `<ul class="cautions">${a.cautions.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
                 ${a.owned ? `<div class="notice">${esc(a.owned)}</div>` : ''}
                 ${a.similar.length ? `<div class="notice">You already bought:</div><ul>${a.similar.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
-                ${
-                  a.checks?.length && state.checksOpen
-                    ? `<div class="muted footer">Before you trust it:</div><ul class="checks">${a.checks.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
-                    : ''
-                }
+                ${a.checks?.length && state.checksOpen
+        ? `<div class="muted footer">Before you trust it:</div><ul class="checks">${a.checks.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
+        : ''
+      }
                 ${a.footer ? `<div class="muted footer">${esc(a.footer)}</div>` : ''}
-                ${
-                  a.checks?.length
-                    ? `<div class="card-actions"><button data-action="checks" title="What to check before trusting this kind of item">${state.checksOpen ? 'Hide checks' : 'Checks'}</button></div>`
-                    : ''
-                }
+                ${a.checks?.length
+        ? `<div class="card-actions"><button data-action="checks" title="What to check before trusting this kind of item">${state.checksOpen ? 'Hide checks' : 'Checks'}</button></div>`
+        : ''
+      }
               </div>`
-            : ''
-        }
+      : ''
+    }
         ${state.share ? `<div class="row muted">${esc(state.share)}</div>` : ''}
       </div>`;
   const head = `<span class="title" title="${popped ? 'Whatnot Assistant' : 'Drag to move. Double-click to put it back in the corner.'}">Whatnot Assistant</span>
@@ -560,14 +602,13 @@ const render = () => {
   const auto = prefs.autoAppraise;
   const picker =
     !w && !state.collapsed
-      ? `${
-          sc
-            ? `<span class="muted">Show type</span><select data-change="scan" title="General appraises only the item being presented. Scan also lists other valuable items on the table after the answer (on by default for flea markets and yard sales).">
+      ? `${sc
+        ? `<span class="muted">Show type</span><select data-change="scan" title="General appraises only the item being presented. Scan also lists other valuable items on the table after the answer (on by default for flea markets and yard sales).">
           <option value="general"${sc.scan ? '' : ' selected'}>General</option>
           <option value="scan"${sc.scan ? ' selected' : ''}>Scan</option>
         </select>`
-            : ''
-        }<span class="muted">Appraise</span><select data-change="auto" title="Auto appraises each new auction as it starts. Manual waits for you to press Appraise. Either way, a new auction clears the last answer.">
+        : ''
+      }<span class="muted">Appraise</span><select data-change="auto" title="Auto appraises each new auction as it starts. Manual waits for you to press Appraise. Either way, a new auction clears the last answer.">
           <option value="auto"${auto ? ' selected' : ''}>Auto</option>
           <option value="manual"${auto ? '' : ' selected'}>Manual</option>
         </select>`
@@ -576,11 +617,11 @@ const render = () => {
   const bids =
     state.quickBids.length && !w && !state.collapsed
       ? state.quickBids
-          .map((b) => {
-            const tip = `${b.note ? `${b.note}. ` : ''}Types the amount into Whatnot's Custom bid box. You press Set Max Bid.`;
-            return `<button class="${b.verdict ?? ''}" data-action="quickbid" data-kind="${b.kind}" title="${esc(tip)}">${esc(b.label)}</button>`;
-          })
-          .join('')
+        .map((b) => {
+          const tip = `${b.note ? `${b.note}. ` : ''}Types the amount into Whatnot's Custom bid box. You press Set Max Bid.`;
+          return `<button class="${b.verdict ?? ''}" data-action="quickbid" data-kind="${b.kind}" title="${esc(tip)}">${esc(b.label)}</button>`;
+        })
+        .join('')
       : '';
   const tools = tl && !state.collapsed && tl.spot ? `<div class="tool-row"><span class="muted spot" title="Spot prices, refreshed every 5 minutes">${esc(tl.spot)}</span></div>` : '';
   // Rewriting a button mid-click drops the click, so each part is only rewritten when it changes.

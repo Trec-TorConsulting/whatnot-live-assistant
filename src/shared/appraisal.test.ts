@@ -247,11 +247,13 @@ describe('market price', () => {
 });
 
 describe('capFineOz', () => {
-  it('caps a gram bar the model weighed in ounces and leaves real answers alone', () => {
+  it('caps a gram bar or fractional coin the model weighed in ounces and leaves real answers alone', () => {
     expect(capFineOz('1 g Gold Bar', 1)).toBeCloseTo(0.03215, 5);
     expect(capFineOz('5 gram Silver Bar', 0.1607)).toBe(0.1607);
     expect(capFineOz('10g 14k Gold Chain', 0.1875)).toBe(0.1875);
     expect(capFineOz('1 oz Gold Eagle', 1)).toBe(1);
+    expect(capFineOz('1/10th oz Gold Eagle MS70 2022', 1)).toBe(0.1);
+    expect(capFineOz('1/10 oz Gold Maple Leaf', 1)).toBe(0.1);
     expect(capFineOz('1921 Morgan Dollar', 0.7734)).toBe(0.7734);
     expect(capFineOz('1 g Gold Bar', null)).toBeNull();
   });
@@ -263,8 +265,13 @@ describe('quickRead', () => {
     expect(r.read).toMatchObject({ name: 'Morgan Dollar', metal: 'silver', oz: 0.7734, quantity: 3, grade: 'PCGS MS 63' });
   });
 
-  it('reads generic bullion weights, including fractions', () => {
+  it('reads generic bullion weights, including fractions and ordinal suffixes', () => {
     expect(quickRead('1/10 oz Gold Panda 2024').read).toMatchObject({ metal: 'gold', oz: 0.1 });
+    expect(quickRead('1/10th oz gold eagle ms70 2022').read).toMatchObject({ name: '1/10 oz Gold Eagle', metal: 'gold', oz: 0.1 });
+    expect(quickRead('1/4th oz gold eagle 2023').read).toMatchObject({ name: '1/4 oz Gold Eagle', metal: 'gold', oz: 0.25 });
+    expect(quickRead('1/2 oz gold eagle 2023').read).toMatchObject({ name: '1/2 oz Gold Eagle', metal: 'gold', oz: 0.5 });
+    expect(quickRead('1/10th oz gold Maple Leaf 2024').read).toMatchObject({ metal: 'gold', oz: 0.1 });
+    expect(quickRead('1/4 oz gold Buffalo 2008').read).toMatchObject({ metal: 'gold', oz: 0.25 });
     expect(quickRead('Silver round 2 oz').read).toMatchObject({ metal: 'silver', oz: 2 });
     expect(quickRead('1/1000 oz 24K Gold 250th Anniversary Collectiable Gold Card').read).toMatchObject({ metal: 'gold', oz: 0.001 });
   });

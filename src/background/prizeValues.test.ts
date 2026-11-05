@@ -108,6 +108,30 @@ describe('valuePrizes', () => {
     expect(r).toMatchObject({ ok: false });
     expect(values()['vaultbox select box rip/ship']).toBeUndefined();
   });
+
+  it('uses configured Ollama first for background prize valuation even when Ollama-only is unchecked, falling back to Gemini if Ollama fails', async () => {
+    local.data.wn2_appraisalSettings = {
+      geminiApiKey: 'test-key',
+      ollamaBaseUrl: 'http://127.0.0.1:11434',
+      ollamaModel: 'qwen2.5vl',
+      ollamaOnly: false,
+    };
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        if (url.includes('/api/chat')) {
+          return json(200, { message: { content: JSON.stringify({ prizes: [{ i: 1, low: 45, high: 75 }] }) } });
+        }
+        return json(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ prizes: [{ i: 1, low: 10, high: 20 }] }) }] } }] });
+      }),
+    );
+    await valuePrizes([p('VAULTBOX SELECT BOX RIP/SHIP')], ctx);
+    expect(urls.some((u) => u.includes('/api/chat'))).toBe(true);
+    expect(urls.some((u) => u.includes('generativelanguage.googleapis.com'))).toBe(false);
+    expect(values()['vaultbox select box rip/ship']).toMatchObject({ source: 'ai', low: 45, high: 75, note: 'ollama:qwen2.5vl' });
+  });
 });
 
 describe('readEnvelopes', () => {

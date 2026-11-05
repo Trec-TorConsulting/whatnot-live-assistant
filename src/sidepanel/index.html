@@ -1,543 +1,597 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Whatnot Assistant</title>
-    <link rel="stylesheet" href="./style.css" />
-  </head>
-  <body>
-    <header class="top">
-      <h1>Whatnot Assistant</h1>
-      <span id="status-pill" class="pill">Idle</span>
-    </header>
 
-    <nav class="tabs" id="tabs">
-      <button data-tab="live" class="active">Live</button>
-      <button data-tab="share">Share</button>
-      <button data-tab="bulk">Bulk</button>
-      <button data-tab="buys">Buys</button>
-      <button data-tab="alerts">Alerts</button>
-      <button data-tab="settings">Settings</button>
-      <button data-tab="diagnose">Diagnose</button>
-    </nav>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Whatnot Assistant</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
 
-    <!-- Live -->
-    <main data-panel="live">
-      <section class="card">
-        <div class="row between">
-          <h2 id="live-title">No live show</h2>
-          <button id="live-appraise" class="primary small" type="button">Appraise</button>
-        </div>
-        <div id="live-meta" class="muted small">Open a Whatnot live show in the active tab.</div>
-        <div id="live-lot" class="lot" hidden></div>
-        <div class="row between">
-          <label class="check"><input id="overlay-show" type="checkbox" /> Show the assistant on the page (Alt+Shift+A)</label>
-          <button id="overlay-reset" class="secondary small" type="button" title="Put it back in the bottom-left corner">Reset position</button>
-        </div>
-        <label class="check" title="A new auction always clears the last answer. Off: press Appraise yourself."><input id="overlay-auto" type="checkbox" /> Appraise each new auction automatically</label>
-      </section>
+<body>
+  <header class="top">
+    <h1>Whatnot Assistant</h1>
+    <span id="status-pill" class="pill">Idle</span>
+  </header>
 
-      <section class="card" id="notes-card" hidden>
-        <h2>Show notes</h2>
-        <div id="notes-coupons" class="small"></div>
-        <div id="notes-text" class="small note-text"></div>
-      </section>
+  <nav class="tabs" id="tabs">
+    <button data-tab="live" class="active">Live</button>
+    <button data-tab="share">Share</button>
+    <button data-tab="bulk">Bulk</button>
+    <button data-tab="buys">Buys</button>
+    <button data-tab="alerts">Alerts</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="diagnose">Diagnose</button>
+  </nav>
 
-      <section class="card" id="estate-card" hidden>
-        <h2>This lot</h2>
-        <div id="estate-line" class="small"></div>
-        <div id="estate-ship" class="small"></div>
-        <div id="estate-rules" class="small"></div>
-        <div id="estate-clothing" class="small"></div>
-        <ul id="estate-wants" class="results"></ul>
-        <ol id="estate-runs" class="results"></ol>
-      </section>
+  <!-- Live -->
+  <main data-panel="live">
+    <section class="card">
+      <div class="row between">
+        <h2 id="live-title">No live show</h2>
+        <button id="live-appraise" class="primary small" type="button">Appraise</button>
+      </div>
+      <div id="live-meta" class="muted small">Open a Whatnot live show in the active tab.</div>
+      <div id="live-lot" class="lot" hidden></div>
+      <div class="row between">
+        <label class="check"><input id="overlay-show" type="checkbox" /> Show the assistant on the page
+          (Alt+Shift+A)</label>
+        <button id="overlay-reset" class="secondary small" type="button"
+          title="Put it back in the bottom-left corner">Reset position</button>
+      </div>
+      <label class="check" title="A new auction always clears the last answer. Off: press Appraise yourself."><input
+          id="overlay-auto" type="checkbox" /> Appraise each new auction automatically</label>
+    </section>
 
-      <section class="card" id="electronics-card" hidden>
-        <h2>Electronics lot</h2>
-        <div id="electronics-line" class="small"></div>
-        <div id="electronics-condition" class="small"></div>
-        <div id="electronics-msrp" class="muted small"></div>
-        <div id="electronics-sudden" class="small"></div>
-        <div id="electronics-ship" class="small"></div>
-        <div id="electronics-rules" class="small"></div>
-        <ul id="electronics-wants" class="results"></ul>
-        <ol id="electronics-runs" class="results"></ol>
-      </section>
+    <section class="card" id="notes-card" hidden>
+      <h2>Show notes</h2>
+      <div id="notes-coupons" class="small"></div>
+      <div id="notes-text" class="small note-text"></div>
+    </section>
 
-      <section class="card" id="runner-card" hidden>
-        <h2>Runner show</h2>
-        <div id="runner-ladder" class="small"></div>
-        <div id="runner-quote" class="small"></div>
-        <div id="runner-ship" class="small"></div>
-      </section>
+    <section class="card" id="estate-card" hidden>
+      <h2>This lot</h2>
+      <div id="estate-line" class="small"></div>
+      <div id="estate-ship" class="small"></div>
+      <div id="estate-rules" class="small"></div>
+      <div id="estate-clothing" class="small"></div>
+      <ul id="estate-wants" class="results"></ul>
+      <ol id="estate-runs" class="results"></ol>
+    </section>
 
-      <section class="card" id="casepack-card" hidden>
-        <h2>Wholesale / case pack</h2>
-        <div id="casepack-line" class="small"></div>
-        <div id="casepack-conflict" class="bad-text small"></div>
-        <div id="casepack-sizerun" class="small"></div>
-        <div id="casepack-claims" class="small"></div>
-        <div id="casepack-breakeven" class="small"></div>
-        <div id="casepack-rules" class="small"></div>
-        <div id="casepack-currency" class="muted small"></div>
-        <ol id="casepack-runs" class="results"></ol>
-      </section>
+    <section class="card" id="electronics-card" hidden>
+      <h2>Electronics lot</h2>
+      <div id="electronics-line" class="small"></div>
+      <div id="electronics-condition" class="small"></div>
+      <div id="electronics-msrp" class="muted small"></div>
+      <div id="electronics-sudden" class="small"></div>
+      <div id="electronics-ship" class="small"></div>
+      <div id="electronics-rules" class="small"></div>
+      <ul id="electronics-wants" class="results"></ul>
+      <ol id="electronics-runs" class="results"></ol>
+    </section>
 
-      <section class="card" id="shop-card" hidden>
+    <section class="card" id="runner-card" hidden>
+      <h2>Runner show</h2>
+      <div id="runner-ladder" class="small"></div>
+      <div id="runner-quote" class="small"></div>
+      <div id="runner-ship" class="small"></div>
+    </section>
+
+    <section class="card" id="casepack-card" hidden>
+      <h2>Wholesale / case pack</h2>
+      <div id="casepack-line" class="small"></div>
+      <div id="casepack-conflict" class="bad-text small"></div>
+      <div id="casepack-sizerun" class="small"></div>
+      <div id="casepack-claims" class="small"></div>
+      <div id="casepack-breakeven" class="small"></div>
+      <div id="casepack-rules" class="small"></div>
+      <div id="casepack-currency" class="muted small"></div>
+      <ol id="casepack-runs" class="results"></ol>
+    </section>
+
+    <section class="card" id="shop-card" hidden>
+      <div class="row between">
         <h2>Shop</h2>
-        <div id="shop-summary" class="muted small"></div>
-        <ol id="shop-hits" class="results"></ol>
-      </section>
-
-      <section class="card" id="live-appraisal-card" hidden>
-        <h2>Latest appraisal</h2>
-        <div id="live-appraisal"></div>
-        <div id="live-flip" class="small"></div>
-        <details id="live-checks-box" hidden>
-          <summary>Before you trust it</summary>
-          <ul id="live-checks" class="small"></ul>
-        </details>
-      </section>
-
-      <section class="card" id="wheel-card">
-        <div class="row between">
-          <h2>Wheel odds</h2>
-          <div class="row">
-            <button id="wheel-undo" class="secondary small" type="button">Undo</button>
-            <button id="wheel-reset" class="secondary small" type="button">Reset spins</button>
-          </div>
-        </div>
-        <div id="wheel-summary" class="lot"></div>
-        <ol id="wheel-slots" class="results wheel-slots"></ol>
-        <details id="wheel-history" hidden>
-          <summary id="wheel-history-title">Spin history</summary>
-          <ol id="wheel-hits" class="results"></ol>
-        </details>
-        <details id="wheel-setup">
-          <summary>Set up wheel</summary>
-          <label>Price per spin ($)<input id="wheel-price" type="number" min="0" step="0.01" /></label>
-          <label>Prizes, one per line: name xCount $value (? if unknown)
-            <textarea id="wheel-input" rows="6" placeholder="Silver Eagle x2 $35&#10;Wheat penny x10 $1&#10;Mystery pack x3 ?"></textarea>
-          </label>
-          <button id="wheel-save" class="primary" type="button">Save wheel</button>
-          <div id="wheel-note" class="muted small"></div>
-        </details>
-        <p id="wheel-help" class="muted small"></p>
-      </section>
-
-      <section class="card">
-        <h2>Max-bid guard</h2>
-        <p class="muted small">Warns when a bid goes past your ceiling. It never bids for you.</p>
-        <div class="grid2">
-          <label>Max for this lot ($)<input id="guard-lot" type="number" min="0" step="1" /></label>
-          <label>Default max bid ($)<input id="guard-default" type="number" min="0" step="1" /></label>
-          <label>Show budget ($)<input id="guard-budget" type="number" min="0" step="1" /></label>
-          <label>Suggested max (% of market)<input id="guard-percent" type="number" min="10" max="100" step="5" /></label>
-          <label>Daily budget ($)<input id="guard-daily" type="number" min="0" step="1" /></label>
-          <label>Weekly budget ($, from Monday)<input id="guard-weekly" type="number" min="0" step="1" /></label>
-          <label>Monthly budget ($)<input id="guard-monthly" type="number" min="0" step="1" /></label>
-        </div>
-        <div id="guard-left" class="muted small"></div>
-        <label class="check"><input id="guard-market" type="checkbox" /> Warn when a bid is above the appraised market value</label>
-        <label class="check"><input id="guard-confirm" type="checkbox" /> Hold over-limit bid clicks until I click again</label>
         <div class="row">
-          <button id="guard-save" class="primary" type="button">Save guard</button>
-          <button id="guard-clear-lot" class="secondary" type="button">Clear lot max</button>
+          <button id="shop-filter" class="secondary small" type="button" hidden>All</button>
+          <button id="shop-rescan" class="secondary small" type="button" title="Rescan the live shop">Rescan</button>
         </div>
-        <div id="guard-note" class="muted small"></div>
-      </section>
+      </div>
+      <div id="shop-summary" class="muted small"></div>
+      <ol id="shop-hits" class="results"></ol>
+    </section>
 
-      <section class="card">
-        <h2>Watch other shows</h2>
-        <p class="muted small">Opens up to 4 shows in muted background tabs. Watchlist, outbid, closing, giveaway, and mention alerts come from all of them.</p>
+    <section class="card" id="live-appraisal-card" hidden>
+      <h2>Latest appraisal</h2>
+      <div id="live-appraisal"></div>
+      <div id="live-flip" class="small"></div>
+      <details id="live-checks-box" hidden>
+        <summary>Before you trust it</summary>
+        <ul id="live-checks" class="small"></ul>
+      </details>
+    </section>
+
+    <section class="card" id="wheel-card">
+      <div class="row between">
+        <h2>Wheel odds</h2>
         <div class="row">
-          <input id="monitor-input" type="text" placeholder="Show link or id (whatnot.com/live/…)" />
-          <button id="monitor-add" class="primary small" type="button">Watch</button>
+          <button id="wheel-undo" class="secondary small" type="button">Undo</button>
+          <button id="wheel-reset" class="secondary small" type="button">Reset spins</button>
         </div>
-        <ol id="monitor-list" class="results"></ol>
-      </section>
-
-      <section class="card" id="seller-card" hidden>
-        <h2 id="seller-title">This seller</h2>
-        <div id="seller-profile" class="small"></div>
-        <div id="seller-closes" class="muted small"></div>
-        <div id="seller-history" class="muted small"></div>
-        <label>Private note (shown on the page when you join their shows)<textarea id="seller-note" rows="2" placeholder="Ships fast, great slabs"></textarea></label>
-        <label class="check"><input id="seller-blocked" type="checkbox" /> Blocklist: warn me when I join their shows</label>
-        <button id="seller-save" class="primary" type="button">Save seller note</button>
-        <div id="seller-saved" class="muted small"></div>
-      </section>
-
-      <section class="card">
-        <h2>Show stats</h2>
-        <div class="meters">
-          <div class="meter"><span>Revenue seen</span><strong id="stat-revenue">—</strong></div>
-          <div class="meter"><span>Orders</span><strong id="stat-orders">—</strong></div>
-          <div class="meter"><span>Giveaways</span><strong id="stat-giveaways">—</strong></div>
-          <div class="meter"><span>Viewers</span><strong id="stat-viewers">—</strong></div>
-        </div>
-        <h3>Top buyers</h3>
-        <ol id="stat-buyers" class="results"></ol>
-        <h3>Recent sales</h3>
-        <ol id="stat-sales" class="results"></ol>
-        <p class="muted small">Sales and lots come from the show's auction feed, which Whatnot only sends to logged-in viewers.</p>
-      </section>
-    </main>
-
-    <!-- Share -->
-    <main data-panel="share" hidden>
-      <section class="card">
-        <h2>Auto Share</h2>
-        <div id="share-status" class="muted small">Open a Whatnot live show in the active tab.</div>
-        <div class="grid2">
-          <label>Share to
-            <select id="share-target">
-              <option value="copy">Copy link</option>
-              <option value="x">X</option>
-              <option value="facebook">Facebook</option>
-            </select>
-          </label>
-          <label>Count<input id="share-count" type="number" min="1" value="10" /></label>
-        </div>
-        <label class="check"><input id="share-quiet" type="checkbox" /> Quiet mode (don't touch my clipboard or open share popups)</label>
-        <div class="row">
-          <button id="share-once" class="secondary" type="button">Share once</button>
-          <button id="share-n" class="primary" type="button">Share count</button>
-          <button id="share-auto" class="secondary" type="button">Until stopped</button>
-          <button id="share-stop" class="danger-outline" type="button">Stop</button>
-        </div>
-        <p class="muted small">
-          Sharing opens this show in a muted background tab next to yours and keeps clicking there, so your tab is never touched.
-          A share counts only after Whatnot records it. Closing that tab stops sharing. Shortcut: Alt+Shift+S starts or stops sharing on the active show.
-        </p>
-      </section>
-
-      <section class="card">
-        <h2>Share delay</h2>
-        <div class="meters">
-          <div class="meter"><span>Shares this hour</span><strong id="share-use-hour"></strong></div>
-          <div class="meter"><span>Shares today</span><strong id="share-use-day"></strong></div>
-        </div>
-        <form id="share-settings" class="settings">
-          <label>Delay between shares (sec)<span><input name="min" type="number" step="0.5" /> to <input name="max" type="number" step="0.5" /></span></label>
-          <button class="primary" type="submit">Save delay</button>
-          <div id="share-settings-note" class="muted small"></div>
-        </form>
-        <p class="muted small">No hourly, daily, or per-show caps. Sharing still pauses if Whatnot shows a warning.</p>
-      </section>
-
-      <section class="card">
-        <h2>Button locations</h2>
-        <p class="muted small">
-          If sharing can't find Whatnot's buttons, show them once: click Pick, then click the Share button on the show, then the share
-          option (Copy link, X, or Facebook). Press Esc after the Share button if it shares in one click.
-        </p>
-        <div class="row">
-          <button id="pick-share" class="primary" type="button">🎯 Pick Share buttons</button>
-          <button id="pick-clear" class="secondary" type="button">Clear picked</button>
-        </div>
-        <div id="pick-status" class="muted small"></div>
-      </section>
-
-      <section class="card">
-        <div class="row between">
-          <h2>Shares per show</h2>
-          <button id="share-stats-reset" class="secondary small" type="button">Reset</button>
-        </div>
-        <ol id="share-stats" class="results"></ol>
-      </section>
-    </main>
-
-    <!-- Bulk -->
-    <main data-panel="bulk" hidden>
-      <section id="job" class="card" hidden>
-        <div class="job-head">
-          <div>
-            <div id="job-title" class="job-title"></div>
-            <div id="job-detail" class="muted"></div>
-          </div>
-          <div class="row">
-            <button id="job-pause" class="secondary" type="button">Pause</button>
-            <button id="job-resume" class="secondary" type="button">Resume</button>
-            <button id="job-stop" class="danger-outline" type="button">Stop</button>
-            <button id="job-clear" class="secondary" type="button">Clear</button>
-          </div>
-        </div>
-        <progress id="job-progress" max="1" value="0"></progress>
-        <div id="job-summary" class="muted"></div>
-        <ol id="job-results" class="results"></ol>
-      </section>
-
-      <section class="card">
-        <h2>Follow + Bookmark</h2>
-        <p class="muted">Follows the host if you aren't already, and bookmarks their upcoming shows that aren't bookmarked yet. Nothing already done gets clicked again.</p>
-        <label class="check"><input id="follow-dry" type="checkbox" /> Preview only (no clicks)</label>
-        <button id="follow-start" class="primary" type="button">Follow + Bookmark host</button>
-      </section>
-
-      <section class="card danger-zone">
-        <h2>Unfollow / Remove bookmarks</h2>
-        <p class="muted">Only touches the host of the show you're on.</p>
-        <label class="check"><input id="undo-unfollow" type="checkbox" checked /> Unfollow the host</label>
-        <label class="check"><input id="undo-unbookmark" type="checkbox" checked /> Remove bookmarks on their upcoming shows</label>
-        <label class="check"><input id="undo-dry" type="checkbox" /> Preview only (no clicks)</label>
-        <button id="undo-start" class="danger" type="button">Unfollow / Unbookmark host</button>
-      </section>
-
-      <section class="card">
-        <h2>Rate limits</h2>
-        <div class="meters">
-          <div class="meter"><span>Actions this hour</span><strong id="use-hour"></strong></div>
-          <div class="meter"><span>Actions today</span><strong id="use-day"></strong></div>
-          <div class="meter"><span>Follows this hour</span><strong id="use-follow-hour"></strong></div>
-          <div class="meter"><span>Follows today</span><strong id="use-follow-day"></strong></div>
-        </div>
-        <div id="use-cooldown" class="muted small"></div>
-        <details>
-          <summary>Settings</summary>
-          <form id="settings" class="settings">
-            <label>Delay between clicks (sec)<span><input name="actionMin" type="number" step="0.5" /> to <input name="actionMax" type="number" step="0.5" /></span></label>
-            <label>Delay between sellers (sec)<span><input name="sellerMin" type="number" /> to <input name="sellerMax" type="number" /></span></label>
-            <label>Break every N sellers<span><input name="breakEvery" type="number" /></span></label>
-            <label>Break length (min)<span><input name="breakMin" type="number" step="0.5" /> to <input name="breakMax" type="number" step="0.5" /></span></label>
-            <label>Max actions per hour<span><input name="perHour" type="number" /></span></label>
-            <label>Max actions per day<span><input name="perDay" type="number" /></span></label>
-            <label>Max follows/unfollows per hour<span><input name="followsHour" type="number" /></span></label>
-            <label>Max follows/unfollows per day<span><input name="followsDay" type="number" /></span></label>
-            <label>Max bookmarks per seller<span><input name="perSeller" type="number" /></span></label>
-            <label>Cooldown after a warning (min)<span><input name="cooldown" type="number" /></span></label>
-            <div class="row">
-              <button class="primary" type="submit">Save</button>
-              <button id="settings-reset" class="secondary" type="button">Reset to defaults</button>
-            </div>
-            <div id="settings-note" class="muted small"></div>
-          </form>
-        </details>
-      </section>
-    </main>
-
-    <!-- Buys -->
-    <main data-panel="buys" hidden>
-      <section class="card">
-        <h2>Spending</h2>
-        <div class="meters">
-          <div class="meter"><span>Today</span><strong id="spend-today">—</strong></div>
-          <div class="meter"><span>This month</span><strong id="spend-month">—</strong></div>
-          <div class="meter"><span>All time</span><strong id="spend-all">—</strong></div>
-          <div class="meter"><span>Paid vs appraised</span><strong id="spend-vs">—</strong></div>
-        </div>
-        <div id="spend-days" class="bars"></div>
-        <h3>Top shows</h3>
-        <ol id="spend-shows" class="results"></ol>
-      </section>
-
-      <section class="card">
-        <h2>Portfolio</h2>
-        <div class="meters">
-          <div class="meter"><span>Worth now</span><strong id="port-value">—</strong></div>
-          <div class="meter"><span>Paid for those</span><strong id="port-cost">—</strong></div>
-          <div class="meter"><span>Gain</span><strong id="port-gain">—</strong></div>
-          <div class="meter"><span>Valued</span><strong id="port-count">—</strong></div>
-        </div>
-        <p class="muted small">Each item at the higher of its appraisal and its metal at today's spot. Items with neither aren't valued.</p>
-      </section>
-
-      <section class="card">
-        <div class="row between">
-          <h2>Orders</h2>
-          <button id="orders-open" class="secondary small" type="button">Open Purchases</button>
-        </div>
-        <p class="muted small">Read from Whatnot's Purchases list whenever you open it. Late packages notify you.</p>
-        <ol id="orders-list" class="results"></ol>
-      </section>
-
-      <section class="card">
-        <h2>Flip calculator</h2>
-        <div class="grid2">
-          <label>You pay, all-in ($)<input id="flip-cost" type="number" min="0" step="0.01" /></label>
-          <label>Resell for ($)<input id="flip-resale" type="number" min="0" step="0.01" /></label>
-        </div>
-        <div id="flip-result" class="big"></div>
-        <p class="muted small">Uses your Whatnot seller fee from the Alerts tab (default 8% + 2.9% + $0.30).</p>
-      </section>
-
-      <section class="card">
-        <h2>Best time to buy</h2>
-        <ol id="best-times" class="results"></ol>
-        <p class="muted small">From sales you've watched, for your watchlist items. Needs 8+ matching sales.</p>
-      </section>
-
-      <section class="card">
-        <h2>My collection</h2>
-        <label>Things I own, one per line (your Whatnot wins count too)
-          <textarea id="collection-owned" rows="4" placeholder="1881-S Morgan dollar&#10;1923 Peace dollar"></textarea>
+      </div>
+      <div id="wheel-summary" class="lot"></div>
+      <ol id="wheel-slots" class="results wheel-slots"></ol>
+      <details id="wheel-history" hidden>
+        <summary id="wheel-history-title">Spin history</summary>
+        <ol id="wheel-hits" class="results"></ol>
+      </details>
+      <details id="wheel-setup">
+        <summary>Set up wheel</summary>
+        <label>Price per spin ($)<input id="wheel-price" type="number" min="0" step="0.01" /></label>
+        <label>Prizes, one per line: name xCount $value (? if unknown)
+          <textarea id="wheel-input" rows="6"
+            placeholder="Silver Eagle x2 $35&#10;Wheat penny x10 $1&#10;Mystery pack x3 ?"></textarea>
         </label>
-        <label>Sets I'm filling, one per line: words, then the years
-          <textarea id="collection-sets" rows="2" placeholder="morgan dollar 1878-1921"></textarea>
-        </label>
-        <button id="collection-save" class="primary" type="button">Save collection</button>
-        <div id="collection-note" class="muted small"></div>
-      </section>
+        <button id="wheel-save" class="primary" type="button">Save wheel</button>
+        <div id="wheel-note" class="muted small"></div>
+      </details>
+      <p id="wheel-help" class="muted small"></p>
+    </section>
 
-      <section class="card">
-        <div class="row between">
-          <h2>Purchases</h2>
-          <button id="buys-export" class="secondary small" type="button">Export CSV</button>
-        </div>
-        <p class="muted small">Wins are recorded automatically when your Whatnot username (Settings) wins a lot in a show you're watching.</p>
-        <ol id="buys-list" class="results"></ol>
-      </section>
+    <section class="card">
+      <h2>Max-bid guard</h2>
+      <p class="muted small">Warns when a bid goes past your ceiling. It never bids for you.</p>
+      <div class="grid2">
+        <label>Max for this lot ($)<input id="guard-lot" type="number" min="0" step="1" /></label>
+        <label>Default max bid ($)<input id="guard-default" type="number" min="0" step="1" /></label>
+        <label>Show budget ($)<input id="guard-budget" type="number" min="0" step="1" /></label>
+        <label>Suggested max (% of market)<input id="guard-percent" type="number" min="10" max="100" step="5" /></label>
+        <label>Daily budget ($)<input id="guard-daily" type="number" min="0" step="1" /></label>
+        <label>Weekly budget ($, from Monday)<input id="guard-weekly" type="number" min="0" step="1" /></label>
+        <label>Monthly budget ($)<input id="guard-monthly" type="number" min="0" step="1" /></label>
+      </div>
+      <div id="guard-left" class="muted small"></div>
+      <label class="check"><input id="guard-market" type="checkbox" /> Warn when a bid is above the appraised market
+        value</label>
+      <label class="check"><input id="guard-confirm" type="checkbox" /> Hold over-limit bid clicks until I click
+        again</label>
+      <div class="row">
+        <button id="guard-save" class="primary" type="button">Save guard</button>
+        <button id="guard-clear-lot" class="secondary" type="button">Clear lot max</button>
+      </div>
+      <div id="guard-note" class="muted small"></div>
+    </section>
 
-      <section class="card">
-        <h2>Add a purchase</h2>
-        <div class="grid2">
-          <label>Item<input id="buy-title" type="text" /></label>
-          <label>Price ($)<input id="buy-price" type="number" min="0" step="0.01" /></label>
-          <label>Appraised value ($, optional)<input id="buy-appraised" type="number" min="0" step="0.01" /></label>
-          <label>Date<input id="buy-date" type="datetime-local" /></label>
-        </div>
-        <button id="buy-add" class="primary" type="button">Add purchase</button>
-      </section>
-    </main>
+    <section class="card">
+      <h2>Watch other shows</h2>
+      <p class="muted small">Opens up to 4 shows in muted background tabs. Watchlist, outbid, closing, giveaway, and
+        mention alerts come from all of them.</p>
+      <div class="row">
+        <input id="monitor-input" type="text" placeholder="Show link or id (whatnot.com/live/…)" />
+        <button id="monitor-add" class="primary small" type="button">Watch</button>
+      </div>
+      <ol id="monitor-list" class="results"></ol>
+    </section>
 
-    <!-- Alerts -->
-    <main data-panel="alerts" hidden>
-      <section class="card">
-        <h2>Notifications</h2>
-        <p class="muted small">Alerts only: nothing here ever enters giveaways or bids for you.</p>
-        <label class="check"><input id="alert-giveaways" type="checkbox" /> A giveaway starts in a show I'm watching</label>
-        <label class="check"><input id="alert-wins" type="checkbox" /> I win something</label>
-        <label class="check"><input id="alert-starting" type="checkbox" /> A bookmarked show is about to start</label>
-        <label>Minutes before start<input id="alert-lead" type="number" min="1" max="120" /></label>
-        <label>Chat keywords (comma or one per line)<textarea id="alert-keywords" rows="3" placeholder="silver eagle, giveaway, morgan"></textarea></label>
-        <button id="alert-save" class="primary" type="button">Save alerts</button>
-        <div id="alert-note" class="muted small"></div>
-      </section>
+    <section class="card" id="seller-card" hidden>
+      <h2 id="seller-title">This seller</h2>
+      <div id="seller-profile" class="small"></div>
+      <div id="seller-closes" class="muted small"></div>
+      <div id="seller-history" class="muted small"></div>
+      <label>Private note (shown on the page when you join their shows)<textarea id="seller-note" rows="2"
+          placeholder="Ships fast, great slabs"></textarea></label>
+      <label class="check"><input id="seller-blocked" type="checkbox" /> Blocklist: warn me when I join their
+        shows</label>
+      <button id="seller-save" class="primary" type="button">Save seller note</button>
+      <div id="seller-saved" class="muted small"></div>
+    </section>
 
+    <section class="card">
+      <h2>Show stats</h2>
+      <div class="meters">
+        <div class="meter"><span>Revenue seen</span><strong id="stat-revenue">—</strong></div>
+        <div class="meter"><span>Orders</span><strong id="stat-orders">—</strong></div>
+        <div class="meter"><span>Giveaways</span><strong id="stat-giveaways">—</strong></div>
+        <div class="meter"><span>Viewers</span><strong id="stat-viewers">—</strong></div>
+      </div>
+      <h3>Top buyers</h3>
+      <ol id="stat-buyers" class="results"></ol>
+      <h3>Recent sales</h3>
+      <ol id="stat-sales" class="results"></ol>
+      <p class="muted small">Sales and lots come from the show's auction feed, which Whatnot only sends to logged-in
+        viewers.</p>
+    </section>
+  </main>
 
-      <section class="card">
-        <h2>While bidding</h2>
-        <p class="muted small">Needs your Whatnot username (Settings). Shows on the page, with a sound; a desktop notification when the show tab is out of sight.</p>
-        <label class="check"><input id="buyer-outbid" type="checkbox" /> Someone outbids me</label>
-        <label class="check"><input id="buyer-mentions" type="checkbox" /> Someone @mentions me in chat</label>
-        <label class="check"><input id="buyer-sound" type="checkbox" /> Play a sound</label>
-        <div class="grid2">
-          <label>Closing alert (seconds left, 0 = off)<input id="buyer-seconds" type="number" min="0" max="30" /></label>
-          <label>Warn after losing in a row (0 = off)<input id="buyer-tilt" type="number" min="0" max="20" /></label>
-        </div>
-        <p class="muted small">The closing alert is for lots you're winning, were outbid on, or that match your watchlist.</p>
-        <label>Watchlist, one per line: words in the lot title, then your max (optional)
-          <textarea id="buyer-watch" rows="4" placeholder="1921 morgan $45&#10;silver eagle $38&#10;walking liberty"></textarea>
-        </label>
-        <p class="muted small">Alerts when a matching lot comes up. Its max becomes the bid guard's ceiling for that lot.</p>
-        <label>Quick chat lines, one per line (150 characters max each)
-          <textarea id="buyer-templates" rows="4"></textarea>
-        </label>
-        <div class="grid2">
-          <label>My sales tax (%)<input id="buyer-tax" type="number" min="0" max="20" step="0.1" /></label>
-          <label>Whatnot seller fee (%)<input id="buyer-fee" type="number" min="0" max="40" step="0.1" /></label>
-        </div>
-        <label>Find shows: words to look for in show titles on any Whatnot page (comma or one per line)
-          <textarea id="buyer-shows" rows="2" placeholder="morgan, silver eagle, key date"></textarea>
-        </label>
-        <button id="buyer-save" class="primary" type="button">Save</button>
-        <div id="buyer-note" class="muted small"></div>
-      </section>
-
-      <section class="card">
-        <h2>Shows matching my words</h2>
-        <p class="muted small">Found as you browse Whatnot (home, categories, profiles). You're notified once per show.</p>
-        <ol id="show-matches" class="results"></ol>
-      </section>
-
-      <section class="card">
-        <h2>Bookmarked shows coming up</h2>
-        <p class="muted small">Collected when you (or a bulk run) view seller profiles with bookmarked shows.</p>
-        <ol id="alert-watched" class="results"></ol>
-      </section>
-    </main>
-
-    <!-- Settings -->
-    <main data-panel="settings" hidden>
-      <section class="card">
-        <h2>Your Whatnot account</h2>
-        <label>Whatnot username (for recording your wins)<input id="profile-username" type="text" placeholder="your_username" /></label>
-        <button id="profile-save" class="primary" type="button">Save</button>
-      </section>
-
-      <section class="card">
-        <h2>Appraisal (coins, cards, vintage, and more)</h2>
-        <p id="ondevice-status" class="muted small"></p>
-        <div class="row">
-          <button id="ondevice-setup" class="secondary" type="button" hidden>Set up on-device AI</button>
-          <button id="ondevice-recheck" class="secondary" type="button" hidden>Check again</button>
-        </div>
-        <label>Cloud AI
-          <select id="cloud-provider">
-            <option value="gemini">Gemini</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="openrouter">OpenRouter</option>
+  <!-- Share -->
+  <main data-panel="share" hidden>
+    <section class="card">
+      <h2>Auto Share</h2>
+      <div id="share-status" class="muted small">Open a Whatnot live show in the active tab.</div>
+      <div class="grid2">
+        <label>Share to
+          <select id="share-target">
+            <option value="copy">Copy link</option>
+            <option value="x">X</option>
+            <option value="facebook">Facebook</option>
           </select>
         </label>
-        <label>API key<input id="cloud-key" type="password" autocomplete="off" placeholder="AIza…" /></label>
-        <label>Model (blank = automatic)<input id="cloud-model" type="text" autocomplete="off" placeholder="Cheapest vision model" /></label>
-        <label>PCGS API token (optional, for real sale prices)<input id="pcgs-token" type="password" autocomplete="off" /></label>
-        <label>PSA API token (optional, free: checks graded-card certs)<input id="psa-token" type="password" autocomplete="off" /></label>
-        <label>Discogs token (optional, free: record prices)<input id="discogs-token" type="password" autocomplete="off" /></label>
-        <label>Ollama server (backup when Gemini is slow or down)<input id="ollama-url" type="url" autocomplete="off" placeholder="http://192.168.4.10:31434" /></label>
-        <label>Ollama vision model<input id="ollama-model" type="text" autocomplete="off" placeholder="qwen3-vl:4b" /></label>
-        <label class="check"><input id="ollama-only" type="checkbox" /> Use Ollama only (skip cloud AI)</label>
-        <p class="muted small">Checked: appraisals go straight to this server. Cloud AI and Chrome's on-device model are not called. Unchecked: Ollama starts only after the preferred cloud AI has had 5 seconds. The model has to accept images.</p>
-        <div class="row">
-          <button id="appraisal-save" class="primary" type="button">Save keys</button>
-          <button id="cloud-test" class="secondary" type="button">Test</button>
-          <button id="ollama-test" class="secondary" type="button">Test Ollama</button>
-          <button id="pcgs-test" class="secondary" type="button">Test PCGS</button>
-        </div>
-        <div id="appraisal-note" class="muted small"></div>
-        <div class="row">
-          <p id="gemini-usage" class="muted small"></p>
-          <button id="gemini-usage-reset" class="secondary" type="button" hidden>Reset count</button>
-        </div>
-        <p id="sold-count" class="muted small"></p>
-        <p class="muted small">Shortcut: Alt+Shift+V appraises the item on the active show.</p>
-      </section>
+        <label>Count<input id="share-count" type="number" min="1" value="10" /></label>
+      </div>
+      <label class="check"><input id="share-quiet" type="checkbox" /> Quiet mode (don't touch my clipboard or open share
+        popups)</label>
+      <div class="row">
+        <button id="share-once" class="secondary" type="button">Share once</button>
+        <button id="share-n" class="primary" type="button">Share count</button>
+        <button id="share-auto" class="secondary" type="button">Until stopped</button>
+        <button id="share-stop" class="danger-outline" type="button">Stop</button>
+      </div>
+      <p class="muted small">
+        Sharing opens this show in a muted background tab next to yours and keeps clicking there, so your tab is never
+        touched.
+        A share counts only after Whatnot records it. Closing that tab stops sharing. Shortcut: Alt+Shift+S starts or
+        stops sharing on the active show.
+      </p>
+    </section>
 
-      <section class="card">
-        <h2>Selector overrides</h2>
-        <p class="muted small">
-          If a Whatnot redesign breaks detection, patch it here without a new build. Keys: followButton, showCard, bookmarkButton,
-          shareButton, shareTargets {copy, x, facebook}, bidButton, warningPattern. A hosted URL must allow CORS (GitHub raw or gist works).
-        </p>
-        <label>Overrides URL (optional)<input id="overrides-url" type="url" placeholder="https://raw.githubusercontent.com/…/overrides.json" /></label>
-        <label>Pasted JSON (optional)<textarea id="overrides-inline" rows="5" placeholder='{"followButton": "button[data-testid=follow]"}'></textarea></label>
-        <button id="overrides-save" class="primary" type="button">Save and apply</button>
-        <div id="overrides-status" class="muted small"></div>
-      </section>
-    </main>
+    <section class="card">
+      <h2>Share delay</h2>
+      <div class="meters">
+        <div class="meter"><span>Shares this hour</span><strong id="share-use-hour"></strong></div>
+        <div class="meter"><span>Shares today</span><strong id="share-use-day"></strong></div>
+      </div>
+      <form id="share-settings" class="settings">
+        <label>Delay between shares (sec)<span><input name="min" type="number" step="0.5" /> to <input name="max"
+              type="number" step="0.5" /></span></label>
+        <button class="primary" type="submit">Save delay</button>
+        <div id="share-settings-note" class="muted small"></div>
+      </form>
+      <p class="muted small">No hourly, daily, or per-show caps. Sharing still pauses if Whatnot shows a warning.</p>
+    </section>
 
-    <!-- Diagnose -->
-    <main data-panel="diagnose" hidden>
-      <section class="card">
-        <h2>Diagnose this tab</h2>
-        <p class="muted small">Shows what the extension detects on the active Whatnot page. Use it before a real run, and after Whatnot changes its site.</p>
-        <label class="check"><input id="diag-highlight" type="checkbox" checked /> Outline detected elements on the page</label>
-        <div class="row">
-          <button id="diag-run" class="primary" type="button">Diagnose</button>
-          <button id="diag-copy" class="secondary" type="button">Copy report</button>
+    <section class="card">
+      <h2>Button locations</h2>
+      <p class="muted small">
+        If sharing can't find Whatnot's buttons, show them once: click Pick, then click the Share button on the show,
+        then the share
+        option (Copy link, X, or Facebook). Press Esc after the Share button if it shares in one click.
+      </p>
+      <div class="row">
+        <button id="pick-share" class="primary" type="button">🎯 Pick Share buttons</button>
+        <button id="pick-clear" class="secondary" type="button">Clear picked</button>
+      </div>
+      <div id="pick-status" class="muted small"></div>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Shares per show</h2>
+        <button id="share-stats-reset" class="secondary small" type="button">Reset</button>
+      </div>
+      <ol id="share-stats" class="results"></ol>
+    </section>
+  </main>
+
+  <!-- Bulk -->
+  <main data-panel="bulk" hidden>
+    <section id="job" class="card" hidden>
+      <div class="job-head">
+        <div>
+          <div id="job-title" class="job-title"></div>
+          <div id="job-detail" class="muted"></div>
         </div>
-        <div id="diag-summary"></div>
-        <details>
-          <summary>Raw report</summary>
-          <pre id="diag-raw"></pre>
-        </details>
-      </section>
-    </main>
+        <div class="row">
+          <button id="job-pause" class="secondary" type="button">Pause</button>
+          <button id="job-resume" class="secondary" type="button">Resume</button>
+          <button id="job-stop" class="danger-outline" type="button">Stop</button>
+          <button id="job-clear" class="secondary" type="button">Clear</button>
+        </div>
+      </div>
+      <progress id="job-progress" max="1" value="0"></progress>
+      <div id="job-summary" class="muted"></div>
+      <ol id="job-results" class="results"></ol>
+    </section>
 
-    <div id="toast" class="toast" hidden></div>
-    <script type="module" src="./main.ts"></script>
-  </body>
+    <section class="card">
+      <h2>Follow + Bookmark</h2>
+      <p class="muted">Follows the host if you aren't already, and bookmarks their upcoming shows that aren't bookmarked
+        yet. Nothing already done gets clicked again.</p>
+      <label class="check"><input id="follow-dry" type="checkbox" /> Preview only (no clicks)</label>
+      <button id="follow-start" class="primary" type="button">Follow + Bookmark host</button>
+    </section>
+
+    <section class="card danger-zone">
+      <h2>Unfollow / Remove bookmarks</h2>
+      <p class="muted">Only touches the host of the show you're on.</p>
+      <label class="check"><input id="undo-unfollow" type="checkbox" checked /> Unfollow the host</label>
+      <label class="check"><input id="undo-unbookmark" type="checkbox" checked /> Remove bookmarks on their upcoming
+        shows</label>
+      <label class="check"><input id="undo-dry" type="checkbox" /> Preview only (no clicks)</label>
+      <button id="undo-start" class="danger" type="button">Unfollow / Unbookmark host</button>
+    </section>
+
+    <section class="card">
+      <h2>Rate limits</h2>
+      <div class="meters">
+        <div class="meter"><span>Actions this hour</span><strong id="use-hour"></strong></div>
+        <div class="meter"><span>Actions today</span><strong id="use-day"></strong></div>
+        <div class="meter"><span>Follows this hour</span><strong id="use-follow-hour"></strong></div>
+        <div class="meter"><span>Follows today</span><strong id="use-follow-day"></strong></div>
+      </div>
+      <div id="use-cooldown" class="muted small"></div>
+      <details>
+        <summary>Settings</summary>
+        <form id="settings" class="settings">
+          <label>Delay between clicks (sec)<span><input name="actionMin" type="number" step="0.5" /> to <input
+                name="actionMax" type="number" step="0.5" /></span></label>
+          <label>Delay between sellers (sec)<span><input name="sellerMin" type="number" /> to <input name="sellerMax"
+                type="number" /></span></label>
+          <label>Break every N sellers<span><input name="breakEvery" type="number" /></span></label>
+          <label>Break length (min)<span><input name="breakMin" type="number" step="0.5" /> to <input name="breakMax"
+                type="number" step="0.5" /></span></label>
+          <label>Max actions per hour<span><input name="perHour" type="number" /></span></label>
+          <label>Max actions per day<span><input name="perDay" type="number" /></span></label>
+          <label>Max follows/unfollows per hour<span><input name="followsHour" type="number" /></span></label>
+          <label>Max follows/unfollows per day<span><input name="followsDay" type="number" /></span></label>
+          <label>Max bookmarks per seller<span><input name="perSeller" type="number" /></span></label>
+          <label>Cooldown after a warning (min)<span><input name="cooldown" type="number" /></span></label>
+          <div class="row">
+            <button class="primary" type="submit">Save</button>
+            <button id="settings-reset" class="secondary" type="button">Reset to defaults</button>
+          </div>
+          <div id="settings-note" class="muted small"></div>
+        </form>
+      </details>
+    </section>
+  </main>
+
+  <!-- Buys -->
+  <main data-panel="buys" hidden>
+    <section class="card">
+      <h2>Spending</h2>
+      <div class="meters">
+        <div class="meter"><span>Today</span><strong id="spend-today">—</strong></div>
+        <div class="meter"><span>This month</span><strong id="spend-month">—</strong></div>
+        <div class="meter"><span>All time</span><strong id="spend-all">—</strong></div>
+        <div class="meter"><span>Paid vs appraised</span><strong id="spend-vs">—</strong></div>
+      </div>
+      <div id="spend-days" class="bars"></div>
+      <h3>Top shows</h3>
+      <ol id="spend-shows" class="results"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Portfolio</h2>
+      <div class="meters">
+        <div class="meter"><span>Worth now</span><strong id="port-value">—</strong></div>
+        <div class="meter"><span>Paid for those</span><strong id="port-cost">—</strong></div>
+        <div class="meter"><span>Gain</span><strong id="port-gain">—</strong></div>
+        <div class="meter"><span>Valued</span><strong id="port-count">—</strong></div>
+      </div>
+      <p class="muted small">Each item at the higher of its appraisal and its metal at today's spot. Items with neither
+        aren't valued.</p>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Orders</h2>
+        <button id="orders-open" class="secondary small" type="button">Open Purchases</button>
+      </div>
+      <p class="muted small">Read from Whatnot's Purchases list whenever you open it. Late packages notify you.</p>
+      <ol id="orders-list" class="results"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Flip calculator</h2>
+      <div class="grid2">
+        <label>You pay, all-in ($)<input id="flip-cost" type="number" min="0" step="0.01" /></label>
+        <label>Resell for ($)<input id="flip-resale" type="number" min="0" step="0.01" /></label>
+      </div>
+      <div id="flip-result" class="big"></div>
+      <p class="muted small">Uses your Whatnot seller fee from the Alerts tab (default 8% + 2.9% + $0.30).</p>
+    </section>
+
+    <section class="card">
+      <h2>Best time to buy</h2>
+      <ol id="best-times" class="results"></ol>
+      <p class="muted small">From sales you've watched, for your watchlist items. Needs 8+ matching sales.</p>
+    </section>
+
+    <section class="card">
+      <h2>My collection</h2>
+      <label>Things I own, one per line (your Whatnot wins count too)
+        <textarea id="collection-owned" rows="4" placeholder="1881-S Morgan dollar&#10;1923 Peace dollar"></textarea>
+      </label>
+      <label>Sets I'm filling, one per line: words, then the years
+        <textarea id="collection-sets" rows="2" placeholder="morgan dollar 1878-1921"></textarea>
+      </label>
+      <button id="collection-save" class="primary" type="button">Save collection</button>
+      <div id="collection-note" class="muted small"></div>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Purchases</h2>
+        <button id="buys-export" class="secondary small" type="button">Export CSV</button>
+      </div>
+      <p class="muted small">Wins are recorded automatically when your Whatnot username (Settings) wins a lot in a show
+        you're watching.</p>
+      <ol id="buys-list" class="results"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Add a purchase</h2>
+      <div class="grid2">
+        <label>Item<input id="buy-title" type="text" /></label>
+        <label>Price ($)<input id="buy-price" type="number" min="0" step="0.01" /></label>
+        <label>Appraised value ($, optional)<input id="buy-appraised" type="number" min="0" step="0.01" /></label>
+        <label>Date<input id="buy-date" type="datetime-local" /></label>
+      </div>
+      <button id="buy-add" class="primary" type="button">Add purchase</button>
+    </section>
+  </main>
+
+  <!-- Alerts -->
+  <main data-panel="alerts" hidden>
+    <section class="card">
+      <h2>Notifications</h2>
+      <p class="muted small">Alerts only: nothing here ever enters giveaways or bids for you.</p>
+      <label class="check"><input id="alert-giveaways" type="checkbox" /> A giveaway starts in a show I'm
+        watching</label>
+      <label class="check"><input id="alert-wins" type="checkbox" /> I win something</label>
+      <label class="check"><input id="alert-starting" type="checkbox" /> A bookmarked show is about to start</label>
+      <label>Minutes before start<input id="alert-lead" type="number" min="1" max="120" /></label>
+      <label>Chat keywords (comma or one per line)<textarea id="alert-keywords" rows="3"
+          placeholder="silver eagle, giveaway, morgan"></textarea></label>
+      <button id="alert-save" class="primary" type="button">Save alerts</button>
+      <div id="alert-note" class="muted small"></div>
+    </section>
+
+
+    <section class="card">
+      <h2>While bidding</h2>
+      <p class="muted small">Needs your Whatnot username (Settings). Shows on the page, with a sound; a desktop
+        notification when the show tab is out of sight.</p>
+      <label class="check"><input id="buyer-outbid" type="checkbox" /> Someone outbids me</label>
+      <label class="check"><input id="buyer-mentions" type="checkbox" /> Someone @mentions me in chat</label>
+      <label class="check"><input id="buyer-sound" type="checkbox" /> Play a sound</label>
+      <div class="grid2">
+        <label>Closing alert (seconds left, 0 = off)<input id="buyer-seconds" type="number" min="0" max="30" /></label>
+        <label>Warn after losing in a row (0 = off)<input id="buyer-tilt" type="number" min="0" max="20" /></label>
+      </div>
+      <p class="muted small">The closing alert is for lots you're winning, were outbid on, or that match your watchlist.
+      </p>
+      <label>Watchlist, one per line: words in the lot title, then your max (optional)
+        <textarea id="buyer-watch" rows="4"
+          placeholder="1921 morgan $45&#10;silver eagle $38&#10;walking liberty"></textarea>
+      </label>
+      <p class="muted small">Alerts when a matching lot comes up. Its max becomes the bid guard's ceiling for that lot.
+      </p>
+      <label>Quick chat lines, one per line (150 characters max each)
+        <textarea id="buyer-templates" rows="4"></textarea>
+      </label>
+      <div class="grid2">
+        <label>My sales tax (%)<input id="buyer-tax" type="number" min="0" max="20" step="0.1" /></label>
+        <label>Whatnot seller fee (%)<input id="buyer-fee" type="number" min="0" max="40" step="0.1" /></label>
+      </div>
+      <label>Find shows: words to look for in show titles on any Whatnot page (comma or one per line)
+        <textarea id="buyer-shows" rows="2" placeholder="morgan, silver eagle, key date"></textarea>
+      </label>
+      <button id="buyer-save" class="primary" type="button">Save</button>
+      <div id="buyer-note" class="muted small"></div>
+    </section>
+
+    <section class="card">
+      <h2>Shows matching my words</h2>
+      <p class="muted small">Found as you browse Whatnot (home, categories, profiles). You're notified once per show.
+      </p>
+      <ol id="show-matches" class="results"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Bookmarked shows coming up</h2>
+      <p class="muted small">Collected when you (or a bulk run) view seller profiles with bookmarked shows.</p>
+      <ol id="alert-watched" class="results"></ol>
+    </section>
+  </main>
+
+  <!-- Settings -->
+  <main data-panel="settings" hidden>
+    <section class="card">
+      <h2>Your Whatnot account</h2>
+      <label>Whatnot username (for recording your wins)<input id="profile-username" type="text"
+          placeholder="your_username" /></label>
+      <button id="profile-save" class="primary" type="button">Save</button>
+    </section>
+
+    <section class="card">
+      <h2>Appraisal (coins, cards, vintage, and more)</h2>
+      <p id="ondevice-status" class="muted small"></p>
+      <div class="row">
+        <button id="ondevice-setup" class="secondary" type="button" hidden>Set up on-device AI</button>
+        <button id="ondevice-recheck" class="secondary" type="button" hidden>Check again</button>
+      </div>
+      <label>Cloud AI
+        <select id="cloud-provider">
+          <option value="gemini">Gemini</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+      </label>
+      <label>API key<input id="cloud-key" type="password" autocomplete="off" placeholder="AIza…" /></label>
+      <label>Model (blank = automatic)<input id="cloud-model" type="text" autocomplete="off"
+          placeholder="Cheapest vision model" /></label>
+      <label>PCGS API token (optional, for real sale prices)<input id="pcgs-token" type="password"
+          autocomplete="off" /></label>
+      <label>PSA API token (optional, free: checks graded-card certs)<input id="psa-token" type="password"
+          autocomplete="off" /></label>
+      <label>Discogs token (optional, free: record prices)<input id="discogs-token" type="password"
+          autocomplete="off" /></label>
+      <label>Ollama server (background AI + backup when cloud AI is slow)<input id="ollama-url" type="url"
+          autocomplete="off" placeholder="http://192.168.4.10:31434" /></label>
+      <label>Ollama vision model<input id="ollama-model" type="text" autocomplete="off"
+          placeholder="qwen3-vl:4b" /></label>
+      <label class="check"><input id="ollama-only" type="checkbox" /> Use Ollama only (skip cloud AI)</label>
+      <p class="muted small">Checked: every AI task goes straight to this server; cloud AI is not called. Unchecked:
+        cloud AI handles fast live appraisals (with Ollama as a 5s backup), while Ollama runs background tasks first
+        (shop scan, key-date and item info, wheel prizes, envelopes, and table scans). The model has to accept images.
+      </p>
+      <div class="row">
+        <button id="appraisal-save" class="primary" type="button">Save keys</button>
+        <button id="cloud-test" class="secondary" type="button">Test</button>
+        <button id="ollama-test" class="secondary" type="button">Test Ollama</button>
+        <button id="pcgs-test" class="secondary" type="button">Test PCGS</button>
+      </div>
+      <div id="appraisal-note" class="muted small"></div>
+      <div class="row">
+        <p id="gemini-usage" class="muted small"></p>
+        <button id="gemini-usage-reset" class="secondary" type="button" hidden>Reset count</button>
+      </div>
+      <p id="sold-count" class="muted small"></p>
+      <p class="muted small">Shortcut: Alt+Shift+V appraises the item on the active show.</p>
+    </section>
+
+    <section class="card">
+      <h2>Selector overrides</h2>
+      <p class="muted small">
+        If a Whatnot redesign breaks detection, patch it here without a new build. Keys: followButton, showCard,
+        bookmarkButton,
+        shareButton, shareTargets {copy, x, facebook}, bidButton, warningPattern. A hosted URL must allow CORS (GitHub
+        raw or gist works).
+      </p>
+      <label>Overrides URL (optional)<input id="overrides-url" type="url"
+          placeholder="https://raw.githubusercontent.com/…/overrides.json" /></label>
+      <label>Pasted JSON (optional)<textarea id="overrides-inline" rows="5"
+          placeholder='{"followButton": "button[data-testid=follow]"}'></textarea></label>
+      <button id="overrides-save" class="primary" type="button">Save and apply</button>
+      <div id="overrides-status" class="muted small"></div>
+    </section>
+  </main>
+
+  <!-- Diagnose -->
+  <main data-panel="diagnose" hidden>
+    <section class="card">
+      <h2>Diagnose this tab</h2>
+      <p class="muted small">Shows what the extension detects on the active Whatnot page. Use it before a real run, and
+        after Whatnot changes its site.</p>
+      <label class="check"><input id="diag-highlight" type="checkbox" checked /> Outline detected elements on the
+        page</label>
+      <div class="row">
+        <button id="diag-run" class="primary" type="button">Diagnose</button>
+        <button id="diag-copy" class="secondary" type="button">Copy report</button>
+      </div>
+      <div id="diag-summary"></div>
+      <details>
+        <summary>Raw report</summary>
+        <pre id="diag-raw"></pre>
+      </details>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+
 </html>

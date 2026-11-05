@@ -588,7 +588,8 @@ const withMelt = async (item: AppraisalItem) => {
   const known = SERIES[item.series_key];
   const piece = !known && !isPcgsPriceable(item.item_type) ? jewelryFineOz(item) : null;
   const metal = known?.metal ?? piece?.metal ?? item.metal;
-  const oz = known?.oz ?? piece?.oz ?? (item.item_type === 'jewelry_watch' ? null : capFineOz(item.item_name ?? '', item.fine_weight_oz ?? null));
+  const rawOz = known?.oz ?? piece?.oz ?? (item.item_type === 'jewelry_watch' ? null : (item.fine_weight_oz ?? null));
+  const oz = item.item_type === 'jewelry_watch' ? rawOz : capFineOz(item.item_name ?? '', rawOz);
   const quantity = Math.max(1, item.quantity || 1);
   const spot = oz && isMetal(metal) ? await getSpot(metal) : null;
   const melt = spot && oz && isMetal(metal) ? meltFor(metal, oz, quantity, spot) : null;
@@ -814,6 +815,18 @@ const appraiseWithGemini = async (
 
 export type GeminiJson = { ok: true; text: string; model: string; usage?: CallUsage } | { ok: false; error: string; needsKey?: boolean };
 
+// Ask the configured Ollama server directly when one is set, even if Ollama-only is unchecked.
+export const localOllamaJson = async (
+  system: string,
+  prompt: string,
+  schema: object,
+  image?: string,
+): Promise<GeminiJson | null> => {
+  const settings = await getAppraisalSettings();
+  if (!ollamaReady(settings)) return null;
+  return ollamaJson(settings, system, prompt, schema, image);
+};
+
 // JSON with the same model racing, retries and cooldowns as appraisals. An image is read at the
 // model's default resolution: envelope handwriting needs it. A table scan passes lowImage so the
 // same frame is billed as a coarse look at shelf items, not a second full read.
@@ -823,11 +836,12 @@ export const geminiJson = async (
   schema: object,
   image?: string,
   lowImage = false,
+  skipOllama = false,
 ): Promise<GeminiJson> => {
   const settings = await getAppraisalSettings();
   if (settings.ollamaOnly) return ollamaJson(settings, system, prompt, schema, image);
   const providers = providersWithKeys(settings);
-  const ollama = ollamaReady(settings);
+  const ollama = !skipOllama && ollamaReady(settings);
   if (!providers.length && !ollama) return { ok: false, needsKey: true, error: 'no cloud key' };
   if (!providers.length) return ollamaJson(settings, system, prompt, schema, image);
   return raceCloud(

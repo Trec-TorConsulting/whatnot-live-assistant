@@ -333,6 +333,38 @@ export const findChatInput = (): HTMLInputElement | null =>
     document.querySelectorAll<HTMLInputElement>('input[data-testid="chat-input"], input[placeholder^="say something" i]'),
   ).find((el) => isVisible(el) && !el.disabled && !el.readOnly) ?? null;
 
+// --- Live Shop drawer ---
+
+const NAV_CHROME = 'nav, [role="navigation"], [role="banner"], header';
+
+export const findShopTabButton = (): HTMLElement | null => {
+  const byTestId = Array.from(document.querySelectorAll<HTMLElement>('[data-testid*="shop-tab" i]')).find(isVisible);
+  if (byTestId) return byTestId;
+  for (const el of document.querySelectorAll<HTMLElement>('[role="tab"], button, [role="button"]')) {
+    if (!isVisible(el) || el.closest(NAV_CHROME)) continue;
+    const text = normalize(`${textOf(el)} ${el.getAttribute('aria-label') ?? ''}`);
+    if (/^shop(\s*\(\d+\)|\s+\d+|\s*·\s*\d+)?$/i.test(text)) return el;
+  }
+  return null;
+};
+
+export const findShopSearchInput = (): HTMLInputElement | null => {
+  const explicit = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[data-testid*="shop-search" i], input[data-testid*="search-shop" i]'),
+  ).find((el) => isVisible(el) && !el.disabled && !el.readOnly);
+  if (explicit) return explicit;
+  const chat = findChatInput();
+  for (const el of document.querySelectorAll<HTMLInputElement>(
+    'input[type="search"], input[placeholder*="search" i], input[aria-label*="search" i]',
+  )) {
+    if (el === chat || !isVisible(el) || el.disabled || el.readOnly || el.closest(NAV_CHROME)) continue;
+    const hint = `${el.placeholder ?? ''} ${el.getAttribute('aria-label') ?? ''}`.toLowerCase();
+    if (/say something|search whatnot/.test(hint)) continue;
+    return el;
+  }
+  return null;
+};
+
 // --- Bidding box ---
 
 const visibleTestId = <T extends HTMLElement = HTMLElement>(id: string) =>

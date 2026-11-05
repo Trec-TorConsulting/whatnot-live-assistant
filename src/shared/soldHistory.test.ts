@@ -153,6 +153,15 @@ describe('findComps', () => {
     expect(joggerComps?.count).toBe(2);
     expect(joggerComps?.median).toBe(38);
   });
+
+  it('does not match a 1/10th oz gold eagle against 1 oz gold eagle sales, while matching 1/10 oz sales', () => {
+    const eagleSales = [
+      sold('1 oz gold eagle ms70 2022', 4300, { key: 'ge1a', showType: 'coins' }),
+      sold('2022 gold eagle ms70', 4350, { key: 'ge1b', showType: 'coins' }),
+      sold('1/10 oz gold eagle ms70 2022', 310, { key: 'ge10a', showType: 'coins' }),
+    ];
+    expect(findComps(['1/10th oz gold eagle ms70 2022'], eagleSales, now, 8, 'coins').map((c) => c.price)).toEqual([310]);
+  });
 });
 
 describe('summarizeComps', () => {

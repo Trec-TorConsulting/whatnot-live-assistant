@@ -1,5 +1,6 @@
 // Paid sales seen in shows you watched, kept as real Whatnot comps for appraisals. Buyers aren't
 // stored; giveaways and $0 sales are dropped since they say nothing about value.
+import { quickRead } from './appraisal';
 import { isGenericCaseLot, packCount } from './casePack';
 import { toUsd } from './currency';
 import { specsConflict } from './deviceSpecs';
@@ -70,13 +71,16 @@ export const addSold = (list: SoldItem[], items: SoldItem[]): SoldItem[] => {
 const isYear = (t: string) => /^(1[6-9]\d\d|20\d\d)$/.test(t);
 const meaningful = (s: string) => new Set([...titleTokens(s)].filter((t) => !NOISE.has(t)));
 
-// Share of the wanted words found in a sale title. Conflicting years, device specs, or pack counts rule a sale out;
+// Share of the wanted words found in a sale title. Conflicting years, device specs, pack counts, or bullion weights rule a sale out;
 // a title with a missing spec can still match, since sellers often leave it off.
 const matchScore = (wantText: string, want: Set<string>, title: string) => {
   if (specsConflict(wantText, title)) return 0;
   const wantPack = packCount(wantText).count ?? 1;
   const havePack = packCount(title).count ?? 1;
   if (wantPack !== havePack) return 0;
+  const wantOz = quickRead(wantText).read?.oz ?? null;
+  const haveOz = quickRead(title).read?.oz ?? null;
+  if (wantOz !== null && haveOz !== null && Math.abs(wantOz - haveOz) > 1e-4) return 0;
   const have = meaningful(title);
   const wantYears = [...want].filter(isYear);
   const haveYears = [...have].filter(isYear);

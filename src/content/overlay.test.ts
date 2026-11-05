@@ -270,6 +270,58 @@ describe('overlay', () => {
     expect(shadow().textContent).not.toContain('1 oz silver round');
   });
 
+  it('renders shop stock badges and wires click-to-focus, dismiss, filter, and rescan controls', () => {
+    const focused: string[] = [];
+    const dismissed: string[] = [];
+    const filters: string[] = [];
+    let rescanned = 0;
+    overlay.mount({
+      shopFocus: (title) => focused.push(title),
+      shopDismiss: (id) => dismissed.push(id),
+      shopFilter: (mode) => filters.push(mode),
+      shopRescan: () => {
+        rescanned += 1;
+      },
+    });
+    overlay.setShop({
+      summary: 'Checked 6 shop items.',
+      hasAuctions: true,
+      filter: 'all',
+      hits: [
+        {
+          id: 'r1',
+          title: '1 oz silver round',
+          quantity: 1,
+          mode: 'bin',
+          kind: 'steal',
+          label: 'Steal',
+          text: '1 oz silver round — $20. Under melt ($30)',
+        },
+        {
+          id: 'r2',
+          title: '1921 Morgan Dollar',
+          quantity: 4,
+          mode: 'bin',
+          kind: 'deal',
+          label: 'Deal',
+          text: '1921 Morgan Dollar — $25. Watchlist',
+        },
+      ],
+    });
+    const text = shadow().textContent ?? '';
+    expect(text).toContain('[1 left]');
+    expect(text).toContain('[4 in stock]');
+    shadow().querySelector<HTMLElement>('[data-action="shop-focus"]')!.click();
+    expect(focused).toEqual(['1 oz silver round']);
+    shadow().querySelector<HTMLElement>('[data-action="shop-dismiss"]')!.click();
+    expect(dismissed).toEqual(['r1']);
+    shadow().querySelector<HTMLElement>('[data-action="shop-filter"]')!.click();
+    expect(filters).toEqual(['bin']);
+    shadow().querySelector<HTMLElement>('[data-action="shop-rescan"]')!.click();
+    expect(rescanned).toBe(1);
+    overlay.setShop(null);
+  });
+
   it('shows the template lot before an appraisal', () => {
     overlay.mount({});
     overlay.setEstate(

@@ -245,8 +245,8 @@ export const buildEstateView = (input: {
   const runs = (input.runs ?? []).map((r) =>
     [`Lot ${r.number ?? '?'}`, r.name, formatMoney(r.price)].filter(Boolean).join(' · '),
   );
-  if (!line && !shippingNote && !rules && !wants.length && !clothing && !runs.length) return null;
-  return { line, shippingNote, rules: rules || null, wants, clothing: clothing || null, runs };
+  if (!line && !shippingNote && !rules && !clothing && !runs.length) return null;
+  return { line, shippingNote, rules: rules || null, wants: [], clothing: clothing || null, runs };
 };
 
 export const estateViewFromSession = (

@@ -448,22 +448,19 @@ const sellerRow = (s: SellerView | null) => {
 
 const estateRow = (v: EstateView | null) => {
   if (!v) return '';
-  const wants = v.wants.map((w) => `<div class="${w.hit ? 'good' : 'muted'}">${esc(w.text)}</div>`).join('');
-  const runs = v.runs.map((r) => `<li>${esc(r)}</li>`).join('');
+  const lastSold = v.runs.length ? `<div class="muted small">Last sold: ${esc(v.runs[0]!)}</div>` : '';
   return `<div class="row" data-estate>
       ${v.line ? `<div>${esc(v.line)}</div>` : ''}
       ${v.shippingNote ? `<div class="notice">${esc(v.shippingNote)}</div>` : ''}
       ${v.rules ? `<div class="notice">${esc(v.rules)}</div>` : ''}
       ${v.clothing ? `<div>${esc(v.clothing)}</div>` : ''}
-      ${wants}
-      ${runs ? `<ul>${runs}</ul>` : ''}
+      ${lastSold}
     </div>`;
 };
 
 const electronicsRow = (v: ElectronicsView | null) => {
   if (!v) return '';
-  const wants = v.wants.map((w) => `<div class="${w.hit ? 'good' : 'muted'}">${esc(w.text)}</div>`).join('');
-  const runs = v.runs.map((r) => `<li>${esc(r)}</li>`).join('');
+  const lastSold = v.runs.length ? `<div class="muted small">Last sold: ${esc(v.runs[0]!)}</div>` : '';
   return `<div class="row" data-electronics>
       ${v.line ? `<div>${esc(v.line)}</div>` : ''}
       ${v.specLine ? `<div>${esc(v.specLine)}</div>` : ''}
@@ -474,8 +471,7 @@ const electronicsRow = (v: ElectronicsView | null) => {
       ${v.suddenDeath ? `<div class="notice">${esc(v.suddenDeath)}</div>` : ''}
       ${v.shippingNote ? `<div class="notice">${esc(v.shippingNote)}</div>` : ''}
       ${v.rules ? `<div class="notice">${esc(v.rules)}</div>` : ''}
-      ${wants}
-      ${runs ? `<ul>${runs}</ul>` : ''}
+      ${lastSold}
     </div>`;
 };
 
@@ -490,7 +486,7 @@ const runnerRow = (v: RunnerView | null) => {
 
 const casePackRow = (v: CasePackView | null) => {
   if (!v) return '';
-  const runs = v.runs.map((r) => `<li>${esc(r)}</li>`).join('');
+  const lastSold = v.runs.length ? `<div class="muted small">Last sold: ${esc(v.runs[0]!)}</div>` : '';
   return `<div class="row" data-casepack>
       ${v.line ? `<div>${esc(v.line)}</div>` : ''}
       ${v.conflict ? `<div class="notice">${esc(v.conflict)}</div>` : ''}
@@ -499,7 +495,7 @@ const casePackRow = (v: CasePackView | null) => {
       ${v.breakEven ? `<div>${esc(v.breakEven)}</div>` : ''}
       ${v.shippingRules ? `<div class="notice">${esc(v.shippingRules)}</div>` : ''}
       ${v.currencyNote ? `<div class="muted">${esc(v.currencyNote)}</div>` : ''}
-      ${runs ? `<ul>${runs}</ul>` : ''}
+      ${lastSold}
     </div>`;
 };
 

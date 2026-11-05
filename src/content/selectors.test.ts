@@ -216,6 +216,13 @@ describe('findShopTabButton & findShopSearchInput', () => {
     `;
     expect(findShopTabButton()?.id).toBe('shop-tab');
     expect(findShopSearchInput()?.id).toBe('shop-search');
+
+    document.getElementById('shop-tab')!.textContent = 'Buy It Now 85';
+    expect(findShopTabButton()?.id).toBe('shop-tab');
+
+    document.getElementById('shop-tab')!.textContent = 'Store';
+    expect(findShopTabButton()?.id).toBe('shop-tab');
+
     rect.mockRestore();
     document.body.innerHTML = '';
   });

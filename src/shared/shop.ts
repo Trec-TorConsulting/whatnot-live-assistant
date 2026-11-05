@@ -51,7 +51,7 @@ export interface ShopHit {
 }
 
 export interface ShopScan {
-  status: 'ready' | 'error';
+  status: 'ready' | 'error' | 'scanning';
   binCount: number;
   auctionCount?: number;
   hits: ShopHit[];
@@ -87,25 +87,43 @@ const listingIdOf = (o: Record<string, unknown>, title?: string | null, price?: 
   str(o.id ?? o.uuid ?? o.listingId ?? o.productId) ?? (title && price != null ? `${title}|${price}` : null);
 
 const explicitQuantityOf = (o: Record<string, unknown>): number | null =>
-  num(o.quantity ?? o.inventory ?? obj(o.inventoryLevel)?.quantity);
+  num(o.quantity ?? o.inventory ?? obj(o.inventoryLevel)?.quantity ?? obj(o.inventoryLevel)?.available ?? obj(o.inventory)?.quantity);
 
 const readListing = (o: Record<string, unknown>): ShopListing | null => {
-  const type = str(o.transactionType ?? o.transaction_type ?? obj(o.listing)?.transactionType ?? obj(o.product)?.transactionType);
-  if (!type || GIVEAWAY_TYPE.test(type)) return null;
-  const auction = AUCTION_TYPE.test(type);
-  if (!auction && !BIN_TYPE.test(type)) return null;
-  const status = str(o.status ?? o.publicStatus ?? o.state ?? o.listingStatus);
+  const type = str(
+    o.transactionType ??
+      o.transaction_type ??
+      o.listingType ??
+      o.type ??
+      obj(o.listing)?.transactionType ??
+      obj(o.listing)?.listingType ??
+      obj(o.listing)?.type ??
+      obj(o.product)?.transactionType ??
+      obj(o.product)?.listingType ??
+      obj(o.product)?.type,
+  );
+  if (type && GIVEAWAY_TYPE.test(type)) return null;
+  const auction = type ? AUCTION_TYPE.test(type) : false;
+  if (type && !auction && !BIN_TYPE.test(type)) return null;
+  if (!type && money(o.buyNowPrice) == null && money(o.binPrice) == null && money(o.buyItNowPrice) == null && o.isBuyNow !== true) {
+    return null;
+  }
+  const status = str(o.status ?? o.publicStatus ?? o.state ?? o.listingStatus ?? obj(o.listing)?.status);
   if (status && SOLD_STATUS.test(status)) return null;
   const explicitQty = explicitQuantityOf(o);
   if (explicitQty !== null && explicitQty <= 0) return null;
-  const title = str(o.title ?? o.name ?? o.productName ?? obj(o.product)?.title ?? obj(o.listing)?.title);
+  const title = str(o.title ?? o.name ?? o.productName ?? obj(o.product)?.title ?? obj(o.listing)?.title ?? obj(o.product)?.name);
   if (!title || title.length < 2) return null;
   const price =
     money(o.price) ??
     money(o.buyNowPrice) ??
     money(o.binPrice) ??
+    money(o.buyItNowPrice) ??
+    money(obj(o.listing)?.price) ??
+    money(obj(o.product)?.price) ??
     money(o.priceCents, true) ??
-    money(o.buyNowPriceCents, true);
+    money(o.buyNowPriceCents, true) ??
+    money(o.buyItNowPriceCents, true);
   if (price === null || price <= 0) return null;
   const rawQty = explicitQty ?? 1;
   const quantity = Math.max(1, Math.min(999, Math.round(rawQty)));
@@ -146,7 +164,7 @@ const readListing = (o: Record<string, unknown>): ShopListing | null => {
   };
 };
 
-const MAX_LISTINGS = 400;
+export const MAX_LISTINGS = 3000;
 
 export const parseShopListings = (body: unknown): ShopListing[] => {
   const found = new Map<string, ShopListing>();
@@ -276,6 +294,40 @@ export const shopCursor = (body: unknown): string | null => {
   const STEAL_RATIO = 0.6;
   export const MAX_SHOP_HITS = 8;
 
+  // Every must-have carries a market price. Until one is known it says so instead of staying silent.
+  export const NO_MARKET_LINE = 'Market: no price yet';
+  // Melt is deliberately absent: it is a floor, not what the item sells for.
+  const PRICE_LINE_RE =
+    /(?:^|\.\s)(?:Market|Guide|AI est\.|Under AI est\.|Prints|Discogs listed from)\s+\$/;
+
+  export const hasPriceLine = (reason: string): boolean => PRICE_LINE_RE.test(reason);
+
+  const joinNotes = (parts: (string | null | undefined)[]): string =>
+    parts
+      .filter((s): s is string => Boolean(s && s.trim()))
+      .join('. ')
+      .replace(/\.\./g, '.');
+
+  export const stripNoMarket = (reason: string): string =>
+    !reason.includes(NO_MARKET_LINE)
+      ? reason
+      : joinNotes(reason.split(/\.\s+/).filter((p) => p.trim().replace(/\.$/, '') !== NO_MARKET_LINE));
+
+  // Puts a price line first on a hit's reason, replacing the "no price yet" placeholder.
+  export const withPriceLine = (reason: string, line: string): string => {
+    const rest = stripNoMarket(reason);
+    return rest.includes(line) ? rest : joinNotes([line, rest]);
+  };
+
+  // A must-have with no price line gets the placeholder so the gap is visible.
+  export const ensureMustPrice = <T extends Pick<ShopHit, 'kind' | 'reason'>>(hit: T): T => {
+    if (hit.kind !== 'must' || hasPriceLine(hit.reason)) {
+      const reason = stripNoMarket(hit.reason);
+      return reason === hit.reason ? hit : { ...hit, reason };
+    }
+    return hit.reason.startsWith(NO_MARKET_LINE) ? hit : { ...hit, reason: joinNotes([NO_MARKET_LINE, hit.reason]) };
+  };
+
   export interface ShopScoreInput {
     listings: ShopListing[];
     sold: SoldItem[];
@@ -403,6 +455,12 @@ export const shopCursor = (body: unknown): string | null => {
         if (!kind) continue;
 
         const notes: string[] = [];
+        if (kind === 'must') {
+          if (median !== null && comps) notes.push(`Market ${formatMoney(median)} (median of ${comps.count} sales)`);
+          else notes.push(NO_MARKET_LINE);
+          // Melt is a floor, not a market price, so it never stands in for one.
+          if (melt !== null && melt > 0) notes.push(`Melt ${formatMoney(melt)}`);
+        }
         if (underMelt && melt !== null) notes.push(`Under melt (${formatMoney(melt)})`);
         if (stealComps && median !== null && comps) notes.push(`Under ${formatMoney(median)} median of ${comps.count} sales`);
         if (kind === 'deal' && dealComps && max !== null && comps) {
@@ -476,6 +534,10 @@ export const shopCursor = (body: unknown): string | null => {
 
       export const shopSummary = (scan: Pick<ShopScan, 'status' | 'binCount' | 'auctionCount' | 'coupons'>): string => {
         if (scan.status === 'error') return "Couldn't read this show's shop.";
+        if (scan.status === 'scanning') {
+          const noun = scan.auctionCount ? 'items' : 'buy-it-now items';
+          return `Scanning shop… ${scan.binCount} ${noun} checked.`;
+        }
         if (!scan.binCount) return scan.auctionCount ? 'No shop items.' : 'No buy-it-now items in this shop.';
         const noun = scan.auctionCount ? 'shop' : 'buy-it-now';
         const base = `Checked ${scan.binCount} ${noun} item${scan.binCount === 1 ? '' : 's'}.`;
@@ -535,7 +597,7 @@ export const shopCursor = (body: unknown): string | null => {
         }
       }
 
-      const reason = h.reason.includes(line) ? h.reason : `${line}. ${h.reason}`;
+      const reason = withPriceLine(h.reason, line);
       if (reason === h.reason && nextKind === h.kind) {
         out.push({ hit: h, edge });
       } else {
@@ -692,8 +754,8 @@ export const shopCursor = (body: unknown): string | null => {
         }
       }
 
-      const combined = [...notes.filter((n) => !hit.reason.includes(n)), hit.reason].filter(Boolean).join('. ');
-      updated.push({ ...hit, kind, reason: combined, edge });
+      const combined = joinNotes([...notes.filter((n) => !hit.reason.includes(n)), stripNoMarket(hit.reason)]);
+      updated.push(ensureMustPrice({ ...hit, kind, reason: combined, edge }));
     }
 
     for (const item of listings) {
@@ -714,7 +776,7 @@ export const shopCursor = (body: unknown): string | null => {
           quantity: item.quantity,
           kind: 'must',
           mode: item.mode ?? 'bin',
-          reason: `⚠ PSA cert mismatch (${psaMismatch.name})`,
+          reason: `${NO_MARKET_LINE}. ⚠ PSA cert mismatch (${psaMismatch.name})`,
           edge: 0,
         });
         continue;
@@ -750,7 +812,7 @@ export const shopCursor = (body: unknown): string | null => {
   export const monitorShopBadge = (
     shop: Pick<ShopScan, 'status' | 'hits'> | null | undefined,
   ): { text: string; kind: 'steal' | 'deal' } | null => {
-    if (!shop || shop.status !== 'ready' || !shop.hits.length) return null;
+    if (!shop || (shop.status !== 'ready' && shop.status !== 'scanning') || !shop.hits.length) return null;
     const steals = shop.hits.filter((h) => h.kind === 'steal');
     if (steals.length === 1) {
       return { kind: 'steal', text: `Shop steal: ${steals[0]!.title} ${formatMoney(steals[0]!.price)}` };
@@ -869,7 +931,7 @@ export const shopCursor = (body: unknown): string | null => {
         price: effectivePrice,
       };
       if (existing) {
-        if (existing.kind === 'must' && !/^(?:Market|Guide)\s+\$/.test(existing.reason)) {
+        if (existing.kind === 'must' && !hasPriceLine(existing.reason)) {
           mustFirst.push(entry);
         }
         continue;
@@ -941,20 +1003,20 @@ export const shopCursor = (body: unknown): string | null => {
         ? `Under AI est. ${formatMoney(est.low)}${est.high > est.low ? `–${formatMoney(est.high)}` : ''}`
         : formatAiRange(est.low, est.high);
       const info = est.info && !hit.reason.toLowerCase().includes(est.info.toLowerCase()) ? est.info : '';
-      const hasPriceLine = /^(?:Market|Guide|AI est\.|Under AI est\.)\s+/.test(hit.reason);
+      const priced = hasPriceLine(hit.reason);
       const parts = [
-        hit.kind === 'must' && rangeLine && !hasPriceLine ? rangeLine : null,
-        hit.reason,
+        hit.kind === 'must' && rangeLine && (underAiDeal || !priced) ? rangeLine : null,
+        stripNoMarket(hit.reason),
         info || null,
       ].filter((s): s is string => Boolean(s));
       const reason = parts.join('. ').replace(/\.\./g, '.');
       const ref = est.low > 0 ? est.low : 0;
-      return {
+      return ensureMustPrice({
         ...hit,
         kind: underAiDeal ? 'deal' : hit.kind,
         reason,
         edge: ref > 0 ? (ref - hit.price) / ref : 0,
-      };
+      });
     });
 
     const existingIds = new Set(hits.map((h) => h.id));

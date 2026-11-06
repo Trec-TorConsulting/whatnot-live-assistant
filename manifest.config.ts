@@ -20,6 +20,10 @@ export default defineManifest({
     'https://db.ygoprodeck.com/*',
     'https://api.psacard.com/*',
     'https://api.discogs.com/*',
+    // Coin wholesale/CPG, FMV guide, and recent auction / eBay sold comps.
+    'https://*.greysheet.com/*',
+    'https://*.ebay.com/*',
+    'https://*.numismedia.com/*',
     // Default Ollama port on this machine. A server on another host is granted from Settings.
     'http://127.0.0.1:*/*',
     'http://localhost:*/*',

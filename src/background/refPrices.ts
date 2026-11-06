@@ -1,12 +1,15 @@
 // Free card, record, and cert databases, asked once the model has named the item. A price only
 // counts as the item's market price when the database lands on one exact print; a name that fits
 // several prints shows their spread instead.
-import type { AppraisalItem, CardId } from '../shared/appraisal';
+import { isPcgsPriceable, type AppraisalItem, type CardId } from '../shared/appraisal';
+import { fmvLookup } from '../shared/fmv';
 import { titleTokens } from '../shared/purchases';
 import type { RefLookupResult, RefPrice } from '../shared/refPrice';
-import { getAppraisalSettings, getItem, setItem } from '../shared/storage';
+import { getAppraisalSettings, getItem, setItem, type AppraisalSettings } from '../shared/storage';
 import { DAY, SECOND } from '../shared/time';
 import { fetchWithTimeout } from './appraisal';
+import { ebaySoldLookup } from './ebayComps';
+import { greysheetLookup } from './greysheet';
 
 const TIMEOUT_MS = 4 * SECOND;
 const PRICE_TTL_MS = DAY;
@@ -210,7 +213,7 @@ const discogs = async (item: Partial<AppraisalItem>, token: string): Promise<Ref
 
 type Ask = { key: string; ttl: number; run: () => Promise<RefPrice | null> };
 
-const asksFor = (item: Partial<AppraisalItem>, settings: { psaToken: string; discogsToken: string }) => {
+const asksFor = (item: Partial<AppraisalItem>, settings: AppraisalSettings) => {
   const asks: Ask[] = [];
   const notes: string[] = [];
   const card = item.card;
@@ -229,6 +232,34 @@ const asksFor = (item: Partial<AppraisalItem>, settings: { psaToken: string; dis
   if (item.item_type === 'vinyl_media' && name) {
     if (settings.discogsToken) asks.push({ key: `discogs|${norm(name)}`, ttl: PRICE_TTL_MS, run: () => discogs(item, settings.discogsToken) });
     else notes.push('Add a free Discogs token in Settings for record prices.');
+  }
+  // Greysheet (CDN) BYOK lookup for coins and currency
+  const isCoin = !item.item_type || isPcgsPriceable(item.item_type) || item.item_type === 'banknote';
+  if (isCoin && name) {
+    if (settings.greysheetApiKey && settings.greysheetToken) {
+      asks.push({
+        key: `greysheet|${norm(name)}|${item.year ?? ''}|${item.grade ?? ''}`,
+        ttl: PRICE_TTL_MS,
+        run: () => greysheetLookup(item, settings),
+      });
+    }
+    // NumisMedia FMV guide price for US coins
+    const fmvHit = fmvLookup(item);
+    if (fmvHit) {
+      asks.push({
+        key: `fmv|${norm(name)}|${item.year ?? ''}|${item.grade ?? ''}`,
+        ttl: PRICE_TTL_MS,
+        run: async () => fmvHit,
+      });
+    }
+    // Recent auction and eBay completed/sold comps for coins and numismatics
+    if (name.trim().length >= 3) {
+      asks.push({
+        key: `ebay|${norm(name)}|${item.year ?? ''}|${item.grade ?? ''}`,
+        ttl: 30 * 60 * 1000,
+        run: () => ebaySoldLookup(item),
+      });
+    }
   }
   return { asks, notes };
 };

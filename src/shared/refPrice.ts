@@ -1,7 +1,7 @@
 // Prices and checks from outside databases, looked up once the model has named the item. They
 // arrive after the answer is on screen, so a slow database never delays the max bid.
 
-export type RefSource = 'scryfall' | 'pokemontcg' | 'ygoprodeck' | 'psa' | 'discogs';
+export type RefSource = 'scryfall' | 'pokemontcg' | 'ygoprodeck' | 'psa' | 'discogs' | 'greysheet' | 'fmv' | 'ebay';
 
 export interface RefPrice {
   source: RefSource;
@@ -25,14 +25,31 @@ export const REF_LABEL: Record<RefSource, string> = {
   ygoprodeck: 'TCGplayer',
   psa: 'PSA cert',
   discogs: 'Discogs',
+  greysheet: 'Greysheet CPG',
+  fmv: 'NumisMedia FMV',
+  ebay: 'eBay Sold Comps',
 };
 
 export type RefLookupResult = { ok: true; refs: RefPrice[]; notes: string[] };
 
 // A raw card's own market price can set its value; a slabbed card's grade changes the price too
-// much for a raw price to stand in.
-export const marketOf = (refs: RefPrice[] | undefined, slabbed: boolean) =>
-  slabbed ? null : (refs?.find((r) => r.kind === 'market' && r.value && r.value > 0)?.value ?? null);
+// much for a raw card price to stand in. Graded numismatic sources (Greysheet, FMV, eBay sold)
+// can value a slabbed coin when they reflect the slab's grade.
+export const marketOf = (refs: RefPrice[] | undefined, slabbed: boolean) => {
+  if (!refs?.length) return null;
+  if (!slabbed) {
+    return refs.find((r) => r.kind === 'market' && r.value && r.value > 0)?.value ?? null;
+  }
+  return (
+    refs.find(
+      (r) =>
+        (r.source === 'greysheet' || r.source === 'fmv' || r.source === 'ebay') &&
+        r.kind === 'market' &&
+        r.value &&
+        r.value > 0,
+    )?.value ?? null
+  );
+};
 
 // The cert's own description, for Whatnot sold matching, when it agrees with what was read.
 export const verifiedName = (refs: RefPrice[] | undefined) => refs?.find((r) => r.kind === 'verified' && !r.mismatch)?.name ?? null;

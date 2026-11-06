@@ -132,6 +132,7 @@ export interface MessageMap {
   TEST_OLLAMA: { req: Record<string, never>; res: TestResult };
   ON_DEVICE_STATUS: { req: { recheck?: boolean }; res: { status: OnDeviceStatus } };
   TEST_PCGS: { req: Record<string, never>; res: TestResult };
+  TEST_GREYSHEET: { req: Record<string, never>; res: TestResult };
 
   // Purchases
   PURCHASE_ADD: { req: { purchase: Omit<Purchase, 'key'> }; res: Result };

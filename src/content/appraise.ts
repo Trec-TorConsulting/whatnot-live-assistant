@@ -299,7 +299,14 @@ const addRefs = async (id: string, item: Partial<AppraisalItem>, others: OtherIt
 };
 
 const needsRefs = (item: Partial<AppraisalItem>) =>
-  Boolean(item.card?.name || (item.is_slabbed && /\bpsa\b/i.test(item.grading_service ?? '')) || item.item_type === 'vinyl_media');
+  Boolean(
+    item.card?.name ||
+      (item.is_slabbed && /\bpsa\b/i.test(item.grading_service ?? '')) ||
+      item.item_type === 'vinyl_media' ||
+      !item.item_type ||
+      isPcgsPriceable(item.item_type) ||
+      item.item_type === 'banknote',
+  );
 
 // A PCGS cert in the listing title beats one the model may have misread on camera.
 const applyListingCert = (item: Partial<AppraisalItem>, cert: string | null | undefined) => {

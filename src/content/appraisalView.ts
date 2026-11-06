@@ -141,7 +141,13 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
       continue;
     }
     const value = ref.kind === 'range' && ref.high ? range(ref.value, ref.high) : formatMoney(ref.value);
-    const note = ref.kind === 'listed' ? 'lowest asking' : ref.kind === 'market' && record.slabbed ? 'raw price; graded sells differently' : ref.detail;
+    const isGradedComp = ref.source === 'greysheet' || ref.source === 'fmv' || ref.source === 'ebay';
+    const note =
+      ref.kind === 'listed'
+        ? (ref.detail ?? 'lowest asking')
+        : ref.kind === 'market' && record.slabbed && !isGradedComp
+          ? 'raw price; graded sells differently'
+          : ref.detail;
     facts.push({ label: REF_LABEL[ref.source], value, detail: [ref.name, note].filter(Boolean).join(' · ') });
   }
   const auctions = record.price?.auctions;

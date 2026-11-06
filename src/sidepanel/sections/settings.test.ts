@@ -12,6 +12,8 @@ const markup = `
   <input id="cloud-key" type="password" />
   <input id="cloud-model" />
   <input id="pcgs-token" type="password" />
+  <input id="greysheet-api-key" type="password" />
+  <input id="greysheet-token" type="password" />
   <input id="psa-token" type="password" />
   <input id="discogs-token" type="password" />
   <input id="ollama-url" />
@@ -21,6 +23,7 @@ const markup = `
   <button id="cloud-test" type="button"></button>
   <button id="ollama-test" type="button"></button>
   <button id="pcgs-test" type="button"></button>
+  <button id="greysheet-test" type="button"></button>
   <div id="appraisal-note"></div>
   <p id="gemini-usage"></p>
   <button id="gemini-usage-reset" type="button"></button>
@@ -115,5 +118,19 @@ describe('cloud provider dropdown', () => {
     document.querySelector<HTMLButtonElement>('#appraisal-save')!.click();
     await vi.waitFor(() => expect(note().textContent).toMatch(/blocked OpenAI/));
     expect(set).not.toHaveBeenCalled();
+  });
+
+  it('loads and saves Greysheet credentials', async () => {
+    const { data } = await boot({ greysheetApiKey: 'init-key', greysheetToken: 'init-token' });
+    const gKey = document.querySelector<HTMLInputElement>('#greysheet-api-key')!;
+    const gTok = document.querySelector<HTMLInputElement>('#greysheet-token')!;
+    expect(gKey.value).toBe('init-key');
+    expect(gTok.value).toBe('init-token');
+
+    gKey.value = 'updated-key';
+    gTok.value = 'updated-token';
+    document.querySelector<HTMLButtonElement>('#appraisal-save')!.click();
+    await vi.waitFor(() => expect(saved(data).greysheetApiKey).toBe('updated-key'));
+    expect(saved(data).greysheetToken).toBe('updated-token');
   });
 });

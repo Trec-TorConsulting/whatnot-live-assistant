@@ -59,6 +59,9 @@ export interface AppraisalSettings {
   openrouterApiKey: string;
   openrouterModel: string;
   pcgsToken: string;
+  // Greysheet (CDN) API credentials for wholesale and CPG prices (BYOK).
+  greysheetApiKey: string;
+  greysheetToken: string;
   // Free tokens for PSA cert checks and Discogs record prices; blank skips them.
   psaToken: string;
   discogsToken: string;
@@ -230,6 +233,8 @@ export const getAppraisalSettings = async (): Promise<AppraisalSettings> => {
     openrouterApiKey: '',
     openrouterModel: '',
     pcgsToken: '',
+    greysheetApiKey: '',
+    greysheetToken: '',
     psaToken: '',
     discogsToken: '',
     ollamaBaseUrl: '',

@@ -1,6 +1,6 @@
 # Whatnot Live Assistant
 
-Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.20.3. In Chrome the extension is named **Whatnot Assistant**.
+Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.20.4. In Chrome the extension is named **Whatnot Assistant**.
 
 It runs on a show you already have open. API keys stay in the browser. Nothing in this repository is a key, a login, or a bid.
 
@@ -49,7 +49,7 @@ The extension reads the listing first, then fills in prices it can actually look
 
 - Chrome's on-device model runs first when Chrome says it is available.
 - Gemini runs when the on-device model is missing or fails. An optional Ollama server can stand in when Gemini is slow, or handle every appraisal if you turn that on.
-- Coin prices come from PCGS when you add a token. Graded-card certs can use a PSA token. Record prices can use a Discogs token. Card prices also use Scryfall, Pokémon TCG, and YGOPRODeck after the item is identified.
+- Coin prices come from PCGS when you add a token, and Greysheet (CDN) when you add your dealer API key and token (BYOK). Coins also reference the NumisMedia Fair Market Value (FMV) guide and recent auction / eBay completed sold comps. Graded-card certs can use a PSA token. Record prices can use a Discogs token. Card prices also use Scryfall, Pokémon TCG, and YGOPRODeck after the item is identified.
 - On case-pack and wholesale shows, the appraisal values one piece and reconciles the stated piece count against the visible count to compute the pack total and per-piece cost. Seller MSRP, retail, comp, and struck-through flash prices are labeled as seller claims rather than market value.
 
 A figure with no sale behind it is labeled as an estimate. The extension does not invent certification numbers.
@@ -82,6 +82,7 @@ Save keys in **Settings**. They stay in Chrome's local extension storage on that
 | --- | --- |
 | Gemini API key | Appraisals when on-device AI is unavailable |
 | PCGS token | Coin sale prices |
+| Greysheet API key & token | Wholesale & CPG retail prices (BYOK) |
 | PSA token | Graded-card cert checks |
 | Discogs token | Record prices |
 | Ollama URL | A model you run yourself |

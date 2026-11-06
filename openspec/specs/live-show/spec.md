@@ -254,3 +254,25 @@ The overlay and sidepanel SHALL show remaining stock on buy-it-now hits (`1 left
 #### Scenario: Filter to wishlist items only
 - **WHEN** the shop contains both general deals and wishlist matches and the user selects `Wishlist`
 - **THEN** only hits matching the user's wishlist are displayed in the shop list
+
+### Requirement: Table scan action and overlay card
+The live show overlay and sidepanel SHALL provide a "Scan Table" button and keyboard shortcut (Alt+Shift+T). When triggered, the assistant SHALL capture the current video frame, initiate a table scan appraisal, and display the ranked picks, spatial locations, and any warnings in a dedicated on-screen card.
+
+#### Scenario: User clicks Scan Table in overlay
+- **WHEN** the user clicks the "Scan Table" button on the in-stream assistant overlay
+- **THEN** the extension captures the video frame, queries the appraisal model, and displays the table scan card with top picks and locations
+
+#### Scenario: User presses Alt+Shift+T shortcut
+- **WHEN** the user presses Alt+Shift+T on an active Whatnot show
+- **THEN** the extension executes the table scan action and presents the resulting picks card
+
+### Requirement: Shop listing inline appraisal controls
+The shop view in both the in-stream overlay and sidepanel SHALL render an "Appraise" action button on each displayed Buy-It-Now listing row. When clicked, the row SHALL transition through a loading state to display the appraised market value, spread indicator, and pricing source badge directly within the listing row.
+
+#### Scenario: Shop row renders appraisal button
+- **WHEN** the user views the shop list in the sidepanel or overlay
+- **THEN** every Buy-It-Now row includes an "Appraise" button alongside the existing "Find" action
+
+#### Scenario: Appraised result rendered in shop row
+- **WHEN** appraisal completes for a listing in the sidepanel shop hits
+- **THEN** the row displays the appraised market price, margin delta, and provider source badge

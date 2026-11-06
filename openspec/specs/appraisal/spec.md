@@ -48,7 +48,7 @@ The extension SHALL NOT create a PCGS number or a certification number when the 
 - **THEN** the extension does not fill one in
 
 ### Requirement: Market value order
-Per piece, market value SHALL prefer a PCGS auction median, then a raw card market price, then the median of at least two matching Whatnot sales, then the midpoint of a positive AI estimate, then melt. The PCGS price guide SHALL be shown and SHALL NOT set the market value or the suggested max. Suggested max SHALL be the configured percent of market value, except melt which uses 100 percent of melt, and SHALL NOT sit below melt. Low confidence SHALL NOT produce a bid headline.
+Per piece, market value SHALL prefer a PCGS auction median, then a verified numismatic or raw card market price (from Greysheet, NumisMedia FMV, eBay sold median, or TCGplayer), then the median of at least two matching Whatnot sales, then the midpoint of a positive AI estimate, then melt. The PCGS price guide SHALL be shown and SHALL NOT set the market value or the suggested max. Suggested max SHALL be the configured percent of market value, except melt which uses 100 percent of melt, and SHALL NOT sit below melt. Low confidence SHALL NOT produce a bid headline.
 
 #### Scenario: Guide only
 - **WHEN** the only PCGS figure is the price guide and no other price source applies

@@ -25,6 +25,8 @@ const el = {
   cloudKey: $<HTMLInputElement>('#cloud-key'),
   cloudModel: $<HTMLInputElement>('#cloud-model'),
   pcgsToken: $<HTMLInputElement>('#pcgs-token'),
+  greysheetApiKey: $<HTMLInputElement>('#greysheet-api-key'),
+  greysheetToken: $<HTMLInputElement>('#greysheet-token'),
   psaToken: $<HTMLInputElement>('#psa-token'),
   discogsToken: $<HTMLInputElement>('#discogs-token'),
   ollamaUrl: $<HTMLInputElement>('#ollama-url'),
@@ -34,6 +36,7 @@ const el = {
   cloudTest: $<HTMLButtonElement>('#cloud-test'),
   ollamaTest: $<HTMLButtonElement>('#ollama-test'),
   pcgsTest: $<HTMLButtonElement>('#pcgs-test'),
+  greysheetTest: $<HTMLButtonElement>('#greysheet-test'),
   appraisalNote: $('#appraisal-note'),
   geminiUsage: $('#gemini-usage'),
   geminiUsageReset: $<HTMLButtonElement>('#gemini-usage-reset'),
@@ -185,6 +188,8 @@ const saveAppraisal = async () => {
   }
   const next = withProviderCredentials(loaded, provider, key, el.cloudModel.value.trim());
   next.pcgsToken = el.pcgsToken.value.trim();
+  next.greysheetApiKey = el.greysheetApiKey.value.trim();
+  next.greysheetToken = el.greysheetToken.value.trim();
   next.psaToken = el.psaToken.value.trim();
   next.discogsToken = el.discogsToken.value.trim();
   next.ollamaBaseUrl = ollamaBaseUrl;
@@ -201,6 +206,8 @@ export const initSettings = async () => {
   loaded = appraisal;
   showProvider(appraisal.preferredProvider);
   el.pcgsToken.value = appraisal.pcgsToken;
+  el.greysheetApiKey.value = appraisal.greysheetApiKey;
+  el.greysheetToken.value = appraisal.greysheetToken;
   el.psaToken.value = appraisal.psaToken;
   el.discogsToken.value = appraisal.discogsToken;
   el.ollamaUrl.value = appraisal.ollamaBaseUrl;
@@ -238,7 +245,7 @@ export const initSettings = async () => {
     el.appraisalNote.className = 'small muted';
   });
 
-  const runTest = async (kind: 'TEST_GEMINI' | 'TEST_OLLAMA' | 'TEST_PCGS') => {
+  const runTest = async (kind: 'TEST_GEMINI' | 'TEST_OLLAMA' | 'TEST_PCGS' | 'TEST_GREYSHEET') => {
     if (!(await saveAppraisal())) return;
     el.appraisalNote.textContent = 'Testing…';
     el.appraisalNote.className = 'small muted';
@@ -260,6 +267,7 @@ export const initSettings = async () => {
   });
   el.ollamaTest.addEventListener('click', () => void runTest('TEST_OLLAMA'));
   el.pcgsTest.addEventListener('click', () => void runTest('TEST_PCGS'));
+  el.greysheetTest.addEventListener('click', () => void runTest('TEST_GREYSHEET'));
 
   el.overridesSave.addEventListener('click', async () => {
     const inline = el.overridesInline.value;

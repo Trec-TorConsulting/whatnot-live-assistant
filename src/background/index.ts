@@ -22,6 +22,7 @@ import {
   stopJob,
   tick,
 } from './jobRunner';
+import { testGreysheet } from './greysheet';
 import { checkOnDevice, onDeviceState, warmOnDevice } from './onDevice';
 import { ALARM_OVERRIDES, refreshOverrides } from './overrides';
 import { clearPickedShare, savePickedShare } from './picks';
@@ -130,6 +131,7 @@ handleMessages({
   TEST_OLLAMA: () => testOllama(),
   ON_DEVICE_STATUS: async ({ recheck }) => ({ status: await (recheck ? checkOnDevice(true) : onDeviceState()) }),
   TEST_PCGS: () => testPcgs(),
+  TEST_GREYSHEET: () => testGreysheet(),
 
   PURCHASE_ADD: ({ purchase }) => addManualPurchase(purchase),
   PURCHASE_DELETE: ({ key }) => deletePurchase(key),

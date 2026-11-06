@@ -523,6 +523,10 @@
           placeholder="Cheapest vision model" /></label>
       <label>PCGS API token (optional, for real sale prices)<input id="pcgs-token" type="password"
           autocomplete="off" /></label>
+      <label>Greysheet / CDN API key (optional, BYOK for wholesale & CPG prices)<input id="greysheet-api-key" type="password"
+          autocomplete="off" placeholder="CDN API Key" /></label>
+      <label>Greysheet / CDN API token<input id="greysheet-token" type="password"
+          autocomplete="off" placeholder="CDN API Token" /></label>
       <label>PSA API token (optional, free: checks graded-card certs)<input id="psa-token" type="password"
           autocomplete="off" /></label>
       <label>Discogs token (optional, free: record prices)<input id="discogs-token" type="password"
@@ -541,6 +545,7 @@
         <button id="cloud-test" class="secondary" type="button">Test</button>
         <button id="ollama-test" class="secondary" type="button">Test Ollama</button>
         <button id="pcgs-test" class="secondary" type="button">Test PCGS</button>
+        <button id="greysheet-test" class="secondary" type="button">Test Greysheet</button>
       </div>
       <div id="appraisal-note" class="muted small"></div>
       <div class="row">

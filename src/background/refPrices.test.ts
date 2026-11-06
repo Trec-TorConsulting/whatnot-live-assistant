@@ -89,4 +89,71 @@ describe('refLookup', () => {
     expect(res.notes[0]).toMatch(/Discogs token/);
     expect(calls).toEqual([]);
   });
+
+  it('includes NumisMedia FMV and eBay sold comps for coins', async () => {
+    stubFetch([
+      [
+        /ebay\.com/,
+        `<ul>
+          <li class="s-item">
+            <span class="s-item__title">1881-S Morgan Dollar MS65</span>
+            <span class="s-item__price">$210.00</span>
+          </li>
+        </ul>`,
+      ],
+    ]);
+    const res = await refLookup({
+      item_type: 'coin',
+      item_name: '1881-S Morgan Dollar',
+      grade: 'MS 65',
+      grade_number: 65,
+    });
+    const sources = res.refs.map((r) => r.source);
+    expect(sources).toContain('fmv');
+    expect(sources).toContain('ebay');
+    const fmv = res.refs.find((r) => r.source === 'fmv');
+    expect(fmv?.value).toBe(210);
+  });
+
+  it('queries Greysheet when BYOK credentials are configured', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea({
+          wn2_appraisalSettings: {
+            psaToken: '',
+            discogsToken: '',
+            greysheetApiKey: 'my-key',
+            greysheetToken: 'my-token',
+          },
+        }),
+        session: fakeArea(),
+      },
+    });
+    stubFetch([
+      [
+        /greysheet\.com/,
+        {
+          items: [
+            {
+              name: '1921 Peace Dollar MS63',
+              cpg: 400,
+              wholesale: 320,
+              link: 'https://www.greysheet.com/test',
+            },
+          ],
+        },
+      ],
+    ]);
+    const res = await refLookup({
+      item_type: 'coin',
+      item_name: '1921 Peace Dollar',
+      grade: 'MS 63',
+    });
+    const greysheet = res.refs.find((r) => r.source === 'greysheet');
+    expect(greysheet).toMatchObject({
+      source: 'greysheet',
+      value: 400,
+      detail: expect.stringContaining('CPG retail $400'),
+    });
+  });
 });

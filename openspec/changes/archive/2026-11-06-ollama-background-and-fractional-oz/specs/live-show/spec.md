@@ -61,6 +61,10 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 - **WHEN** a tools shop auction for "2457-21 M12 Ratchet Kit" starts at $169 and two watched sales of 2457-21 are higher
 - **THEN** that auction can be listed
 
+#### Scenario: Zero-quantity listing is ignored
+- **WHEN** a buy-it-now node has quantity or inventory equal to 0
+- **THEN** it is not included in the parsed shop listings or scored as a hit
+
 #### Scenario: Local AI enriches key date and finds underpriced deal
 - **WHEN** the shop has an unpriced key-date coin and a specific collectible priced at no more than 60 percent of the local AI low estimate
 - **THEN** the background local AI pass adds the `AI est.` range and collector info to the key-date hit and lists the underpriced item as a deal

@@ -71,11 +71,15 @@ A prize whose title or detail is an envelope, lope, bag, mystery, or a similar h
 - **THEN** that prize is not priced from the title
 
 ### Requirement: Punctuation is not a different prize
-Titles that match once punctuation and symbols are removed SHALL share one price. A decimal, a fraction, and a slash between words SHALL stay, so "1.51 grams", "1/10 oz", and "rip/ship" do not collapse into a different prize.
+Titles that match once punctuation and symbols are removed SHALL share one price. A decimal, a fraction (including an ordinal fraction such as `1/10th oz`, `1/4th oz`, or `1/2nd oz`), and a slash between words SHALL stay, so "1.51 grams", "1/10 oz", "1/10th oz", and "rip/ship" do not collapse into a different prize and fractional bullion prizes melt at their fractional ounce weight.
 
 #### Scenario: Wheat cent copied with junk characters
 - **WHEN** two spots are "random (.01) Wheat cent (us mint) poor.://" and "random (.01) Wheat cent (us .mint) poor"
 - **THEN** both use one price
+
+#### Scenario: Ordinal fractional gold eagle prize
+- **WHEN** a wheel prize is titled "1/10th oz Gold Eagle" and gold spot is $4,130
+- **THEN** its melt value is 0.1 oz ($413) rather than 1 oz ($4,130)
 
 ### Requirement: Break description lists the numbered hits
 The break description SHALL be read with the prize list. When that description has no such list, or the list was cut off, the same lines in the seller's published show notes SHALL be read too. A line already named in a complete break description SHALL NOT be added again. Lines of the form "2x 2024 1oz silver" SHALL be priced and split across the numbered spots still on the wheel. A trailing "good", "fair", or "poor" SHALL NOT replace a grade such as PR70 or MS69. "Ase" SHALL be read as American Silver Eagle. "Clad" and "gilt" SHALL NOT be melted. A face value such as "(.01)" or ".50" SHALL NOT be read as a weight. "1/1000 gold" SHALL be read as one one-thousandth of an ounce. Whatnot keeps 1000 characters: a description that long, or one that ends mid-word, is incomplete, the coins it does not list count as zero, and the numbered hits SHALL be labeled a floor. A repeated list after that cutoff SHALL NOT be added again. A sticker whose number is N SHALL price "Item #N" or "Spot #N" from the camera, and SHALL NOT price an envelope.

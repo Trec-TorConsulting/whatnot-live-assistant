@@ -21,5 +21,5 @@
 - [x] 4.1 Add `always leads a must-have with a market price, or says none is known yet` to `src/shared/shop.test.ts` and overlay last-sold compact test to `src/content/overlay.test.ts`.
 - [x] 4.2 Bump the version to `0.20.2` in `package.json` and `README.md`, and update the README Live feature line.
 - [x] 4.3 Run `npm run build` and `npm test`, and validate with `openspec validate must-have-market-price`.
-- [ ] 4.4 After local testing, commit on branch `must-have-market-price`, push, open a PR into `main`, and merge with `gh pr merge --admin`.
+- [x] 4.4 After local testing, commit on branch `must-have-market-price`, push, open a PR into `main`, and merge with `gh pr merge --admin`.
 

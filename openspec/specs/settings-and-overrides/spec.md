@@ -12,10 +12,6 @@ The username SHALL be trimmed and a single leading @ SHALL be removed. Appraisal
 - **WHEN** the user saves @name
 - **THEN** the stored username is name
 
-#### Scenario: Greysheet BYOK saved
-- **WHEN** the user enters a Greysheet API key and API token and clicks Save keys
-- **THEN** both credentials are saved in extension storage and the Test Greysheet button validates connection to the CDN Public API V2
-
 #### Scenario: Second key kept
 - **WHEN** the user saves an OpenAI key, selects Gemini, and saves again
 - **THEN** the OpenAI key remains and Gemini is the preferred provider
@@ -23,6 +19,10 @@ The username SHALL be trimmed and a single leading @ SHALL be removed. Appraisal
 #### Scenario: Existing Gemini key
 - **WHEN** stored settings contain only a Gemini key
 - **THEN** the dropdown shows Gemini and that key
+
+#### Scenario: Greysheet BYOK saved
+- **WHEN** the user enters a Greysheet API key and API token and clicks Save keys
+- **THEN** both credentials are saved in extension storage and the Test Greysheet button validates connection to the CDN Public API V2
 
 ### Requirement: Pacing guardrails
 Bulk pacing values SHALL be clamped to the documented guardrails, and an hourly cap SHALL be reduced so it does not exceed its daily cap. Missing pacing settings SHALL become the defaults. If a save is adjusted, the Bulk form SHALL say so and show the clamped values.

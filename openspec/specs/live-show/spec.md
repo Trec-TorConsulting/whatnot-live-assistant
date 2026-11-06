@@ -96,7 +96,7 @@ A tab marked as the auto-share worker SHALL NOT forward live signals, refetch br
 - **THEN** no win signal is sent from that tab
 
 ### Requirement: Shop buy-it-now scan
-When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key date. A specific title qualifies at any quantity. The opener ($1, or the start most shop auctions share at $5 or less), a template, a pull bucket, a generic device class, a giveaway, a joke-priced row, and a parts row SHALL NOT be listed as a steal or a deal. The scan SHALL NOT buy or place a bid.
+When a live show opens, the system SHALL read that show's shop and SHALL list buy-it-now items and named one-off auctions priced under melt, under watched sales, on the watchlist, or a known key, semi-key, or variety date. When local AI is available, a background pass SHALL add a conservative `AI est.` range and collector note to unpriced hits and list items priced at or below 60 percent of the local AI low estimate as a deal. Openers, templates, pull buckets, generic device classes, giveaways, joke rows, and parts rows SHALL NOT be listed, and the scan SHALL NOT buy or bid.
 
 #### Scenario: Pre-bid next to a cheap buy-it-now
 - **WHEN** the shop has a template auction that can be pre-bid and a buy-it-now coin priced under melt
@@ -117,6 +117,10 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 #### Scenario: Fractional ounce
 - **WHEN** a buy-it-now title says 1/1000 oz gold and the price is above that fraction of spot
 - **THEN** it is not listed as under melt
+
+#### Scenario: Ordinal fractional gold eagle above fractional melt
+- **WHEN** a buy-it-now title says "1/10th oz gold eagle ms70 2022" at $525 and gold spot is $4,130 ($413 melt)
+- **THEN** it is not listed as a steal under melt
 
 #### Scenario: Copper Libertad
 - **WHEN** a buy-it-now title names a Libertad as copper, cobre, bronze, or brass
@@ -150,6 +154,14 @@ When a live show opens, the system SHALL read that show's shop and SHALL list bu
 - **WHEN** a tools shop auction for "2457-21 M12 Ratchet Kit" starts at $169 and two watched sales of 2457-21 are higher
 - **THEN** that auction can be listed
 
+#### Scenario: Zero-quantity listing is ignored
+- **WHEN** a buy-it-now node has quantity or inventory equal to 0
+- **THEN** it is not included in the parsed shop listings or scored as a hit
+
+#### Scenario: Local AI enriches key date and finds underpriced deal
+- **WHEN** the shop has an unpriced key-date coin and a specific collectible priced at no more than 60 percent of the local AI low estimate
+- **THEN** the background local AI pass adds the `AI est.` range and collector info to the key-date hit and lists the underpriced item as a deal
+
 ### Requirement: Show notes
 The system SHALL read the seller's published show notes for the open show and SHALL read a later edit. The Live panel SHALL show the note and any coupon code in it. A code SHALL NOT be claimed. The note text SHALL be included in appraisal and wheel prompts. Lines of the form "2x 2024 1oz silver" in the notes SHALL price numbered wheel hits when the break description has no such list or was cut off. An unpublished note SHALL be ignored.
 
@@ -167,3 +179,74 @@ The Live panel SHALL show the current host's saved profile numbers, the user's p
 #### Scenario: Host changes during fetch
 - **WHEN** the host changes before a profile fetch returns
 - **THEN** the late result is not applied to the new host
+
+### Requirement: Must-have market price
+Every must-have in the shop check SHALL lead with its current market price: a PCGS auction median or guide, a card or record reference price, a local AI estimate, or the median of two or more watched sales. When none is known it SHALL say `Market: no price yet` until a lookup finds one. Steals and deals SHALL NOT show the placeholder.
+
+#### Scenario: Key date with no sales
+- **WHEN** a buy-it-now key date has no watched sales, no melt, and no reference price
+- **THEN** it is listed as a must-have whose note starts with `Market: no price yet`
+
+#### Scenario: Key date with watched sales
+- **WHEN** a buy-it-now key date at $48 has two watched sales at $50 and $60
+- **THEN** it is listed as a must-have whose note starts with `Market $55 (median of 2 sales)`
+
+#### Scenario: PCGS price arrives
+- **WHEN** a must-have says `Market: no price yet` and the PCGS lookup returns `Guide $110 (PCGS G-4)`
+- **THEN** the note starts with `Guide $110 (PCGS G-4)` and no longer says `no price yet`
+
+#### Scenario: Local AI estimate arrives
+- **WHEN** a must-have says `Market: no price yet` and local AI estimates $220 to $350
+- **THEN** the note starts with `AI est. $220–$350` and no longer says `no price yet`
+
+#### Scenario: PSA check without a price
+- **WHEN** a must-have's only reference result is a PSA cert verification
+- **THEN** the note still starts with `Market: no price yet`
+
+#### Scenario: Steal
+- **WHEN** a buy-it-now is listed as a steal under melt
+- **THEN** its note does not say `Market: no price yet`
+
+### Requirement: Melt is not a market price
+On a must-have, melt SHALL be shown as a floor after the market line and SHALL NOT replace it. Must-haves without a market price SHALL be looked up at PCGS, reference sources, and local AI before other shop rows.
+
+#### Scenario: Silver key date with melt only
+- **WHEN** a silver key date is priced above melt and has no watched sales
+- **THEN** its note starts with `Market: no price yet` and then shows `Melt $X`, and it is sent to the price lookups ahead of rows that already have a market price
+
+### Requirement: Live shop sync and rescan
+When a shop GraphQL response arrives again or the user clicks Rescan, the system SHALL update existing listings by id, apply any changed price or quantity, and remove listings whose status is sold or whose quantity is zero. When a paid sale event arrives on the live socket matching a shop listing by id or buy-it-now title, the system SHALL decrement that listing's quantity or remove it when none remain.
+
+#### Scenario: Price drop on re-read
+- **WHEN** an active buy-it-now listing's price drops from $40 to $18 on a later shop read below $30 melt
+- **THEN** the updated price replaces the old entry and the item is scored as a steal at $18
+
+#### Scenario: Live sale exhausts buy-it-now stock
+- **WHEN** a buy-it-now steal has quantity 1 and a paid sale for that listing arrives on the live socket
+- **THEN** the listing is removed from the shop hits immediately
+
+#### Scenario: Manual rescan
+- **WHEN** the user triggers Rescan on the overlay or sidepanel
+- **THEN** the content script requests a fresh shop fetch from the first page
+
+### Requirement: Shop subtitle and spec enrichment
+The shop scan SHALL read a listing's subtitle alongside its title for melt weight and purity, watchlist matching, sold comps, key-date callouts, device specs, tool platform and part numbers, missing-charger warnings, and buyer chat-want matches.
+
+#### Scenario: Metal weight in subtitle
+- **WHEN** a buy-it-now row is titled "Vintage Ring #14" with subtitle "14K Gold 5.2 grams" at $100 and gold melt is $250
+- **THEN** `shopMelt` reads the subtitle weight and scores the ring as a steal under melt
+
+#### Scenario: Tool specs and chat want on a shop hit
+- **WHEN** a buyer asked "2457-21?" in chat and a shop deal is titled "2457-21 M12 Ratchet Kit"
+- **THEN** the hit reason includes the tool quick read and notes that it matches a chat want
+
+### Requirement: Shop hit controls and scarcity badges
+The overlay and sidepanel SHALL show remaining stock on buy-it-now hits (`1 left` or `N in stock`), allow dismissing individual hits (`×`) for the current show to reveal the next ranked hit from the scored pool, and provide a `BIN only` / `All` toggle when the shop has one-off auctions.
+
+#### Scenario: Dismissing a hit reveals the ninth hit
+- **WHEN** nine shop hits are scored and the user dismisses one of the top eight
+- **THEN** the dismissed hit is hidden for that show and the ninth hit appears in the list
+
+#### Scenario: Filter to buy-it-now only
+- **WHEN** the shop has both buy-it-now and auction hits and the user selects `BIN only`
+- **THEN** only buy-it-now hits are displayed

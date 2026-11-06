@@ -165,7 +165,7 @@ describe('wheelView', () => {
     const board = { at: NOW, prizes: ['b1#envelope #2', 'b1#envelope #3'], items };
     const v = wheelView(wheel({ prizes }), lot(), { 'wheat penny': 10 }, {}, NOW, board);
     expect(v.value).toBe('Worth ≥ $8 a spin');
-    expect(v.facts.find((f) => f.label === 'Top item')).toEqual({ label: 'Top item', value: '$1,000', detail: '1 kilo silver bar' });
+    expect(v.facts.find((f) => f.label === 'Envelope chase')).toEqual({ label: 'Envelope chase', value: '$1,000', detail: '1 kilo silver bar' });
     expect(v.facts.find((f) => f.label === 'Sealed share')?.value).toBe('$500');
     expect(v.facts.find((f) => f.label === 'Envelope average')?.value).toBe('incomplete');
     expect(v.warnings).toContain('2 prizes have no value yet (counted as $0).');

@@ -285,7 +285,7 @@ const renderAuto = (b: BreakSnapshot) => {
   const boardLine =
     pool.sealed > 0
       ? [
-          pool.topValue !== null ? `Top item ${pool.topName} ${formatMoney(pool.topValue)}` : null,
+          pool.topValue !== null ? `envelope chase ${pool.topName} ${formatMoney(pool.topValue)}` : null,
           pool.share !== null && !pool.shareIncomplete ? `sealed share ${formatMoney(pool.share)}` : 'sealed share incomplete',
           pool.average !== null && !pool.averageIncomplete
             ? `envelope average ${pool.averageIsFloor ? '≥ ' : ''}${formatMoney(pool.average)}`

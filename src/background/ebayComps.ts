@@ -5,6 +5,7 @@ import type { AppraisalItem } from '../shared/appraisal';
 import type { RefPrice } from '../shared/refPrice';
 import { SECOND } from '../shared/time';
 import { fetchWithTimeout } from './appraisal';
+import { scheduleDomain } from './rateGate';
 
 const TIMEOUT_MS = 5 * SECOND;
 
@@ -100,15 +101,17 @@ export const ebaySoldLookup = async (item: Partial<AppraisalItem>): Promise<RefP
   const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1&_sop=13`;
 
   try {
-    const res = await fetchWithTimeout(
-      url,
-      {
-        credentials: 'include',
-        headers: {
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    const res = await scheduleDomain(url, () =>
+      fetchWithTimeout(
+        url,
+        {
+          credentials: 'include',
+          headers: {
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
         },
-      },
-      TIMEOUT_MS,
+        TIMEOUT_MS,
+      ),
     );
 
     if (!res.ok) {

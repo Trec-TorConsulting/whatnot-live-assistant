@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ON_DEVICE_HEADSTART_MS, appraise, geminiJson, gradeGuide, priceLookup } from './appraisal';
+import { resetDomainRates, setDomainRateDisabled } from './rateGate';
 
 const fakeArea = (initial: Record<string, unknown> = {}) => {
   const data: Record<string, unknown> = { ...initial };
@@ -57,7 +58,16 @@ const run = async () => {
 };
 
 beforeEach(() => {
+  setDomainRateDisabled(true);
+  resetDomainRates();
   vi.useFakeTimers();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('gold-api')) return json(200, { price: 30 });
+      return json(200, {});
+    }),
+  );
   vi.stubGlobal('chrome', {
     storage: {
       local: fakeArea({ wn2_appraisalSettings: { geminiApiKey: 'test-key' } }),
@@ -67,6 +77,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setDomainRateDisabled(false);
+  resetDomainRates();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });

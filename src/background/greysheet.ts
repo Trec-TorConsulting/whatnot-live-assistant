@@ -7,6 +7,7 @@ import type { RefPrice } from '../shared/refPrice';
 import { getAppraisalSettings } from '../shared/storage';
 import { SECOND } from '../shared/time';
 import { fetchWithTimeout } from './appraisal';
+import { scheduleDomain } from './rateGate';
 
 export const GREYSHEET_API_BASE = 'https://cpgpublicapiv2.greysheet.com/api';
 const TIMEOUT_MS = 6 * SECOND;
@@ -40,16 +41,19 @@ export const testGreysheet = async (): Promise<TestResult> => {
     return { ok: false, error: 'Enter both a Greysheet API key and API token first.' };
   }
   try {
-    const res = await fetchWithTimeout(
-      `${GREYSHEET_API_BASE}/GetNodeRequest?NodeId=1`,
-      {
-        headers: {
-          'x-api-key': greysheetApiKey,
-          'x-api-token': greysheetToken,
-          Accept: 'application/json',
+    const url = `${GREYSHEET_API_BASE}/GetNodeRequest?NodeId=1`;
+    const res = await scheduleDomain(url, () =>
+      fetchWithTimeout(
+        url,
+        {
+          headers: {
+            'x-api-key': greysheetApiKey,
+            'x-api-token': greysheetToken,
+            Accept: 'application/json',
+          },
         },
-      },
-      TIMEOUT_MS,
+        TIMEOUT_MS,
+      ),
     );
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: 'Greysheet rejected the credentials. Verify your key and token.' };
@@ -79,16 +83,19 @@ export const greysheetLookup = async (
 
   try {
     // Search CDN Public API V2
-    const res = await fetchWithTimeout(
-      `${GREYSHEET_API_BASE}/Search?q=${encodeURIComponent(query)}&apiLevel=advanced`,
-      {
-        headers: {
-          'x-api-key': apiKey,
-          'x-api-token': token,
-          Accept: 'application/json',
+    const url = `${GREYSHEET_API_BASE}/Search?q=${encodeURIComponent(query)}&apiLevel=advanced`;
+    const res = await scheduleDomain(url, () =>
+      fetchWithTimeout(
+        url,
+        {
+          headers: {
+            'x-api-key': apiKey,
+            'x-api-token': token,
+            Accept: 'application/json',
+          },
         },
-      },
-      TIMEOUT_MS,
+        TIMEOUT_MS,
+      ),
     );
 
     if (res.status === 401 || res.status === 403) {

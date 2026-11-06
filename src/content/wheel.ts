@@ -67,7 +67,7 @@ export const wheelView = (
   const envelopeFacts: WheelFact[] =
     pool.sealed > 0
       ? [
-          { label: 'Top item', value: pool.topValue !== null ? formatMoney(pool.topValue) : '—', detail: pool.topName },
+          { label: 'Envelope chase', value: pool.topValue !== null ? formatMoney(pool.topValue) : '—', detail: pool.topName },
           { label: 'Sealed share', value: pool.share !== null && !pool.shareIncomplete ? formatMoney(pool.share) : 'incomplete', detail: null },
           {
             label: 'Envelope average',

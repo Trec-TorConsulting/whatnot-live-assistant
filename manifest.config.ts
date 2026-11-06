@@ -28,7 +28,11 @@ export default defineManifest({
     'http://127.0.0.1:*/*',
     'http://localhost:*/*',
   ],
-  optional_host_permissions: ['http://*:*/*', 'https://*:*/*'],
+  optional_host_permissions: [
+    'https://api.openai.com/*',
+    'https://api.anthropic.com/*',
+    'https://openrouter.ai/*',
+  ],
   background: {
     service_worker: 'src/background/index.ts',
     type: 'module',

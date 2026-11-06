@@ -341,6 +341,9 @@ export const ensureScheduled = () =>
     if (job.status === 'waiting' && job.nextRunAt && !(await chrome.alarms.get(ALARM_TICK))) {
       await scheduleTick(job.nextRunAt);
     }
+    if (job.status === 'running' && !job.inFlight && !(await chrome.alarms.get(ALARM_TICK))) {
+      await scheduleTick(Date.now() + SECOND);
+    }
     if (job.inFlight && !(await chrome.alarms.get(ALARM_WATCHDOG))) {
       await chrome.alarms.create(ALARM_WATCHDOG, { when: Math.max(Date.now() + SECOND, job.inFlight.deadlineAt) });
     }

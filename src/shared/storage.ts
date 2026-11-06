@@ -278,30 +278,52 @@ export interface PrizeStatus {
 export const liveKey = (tabId: number) => `live_${tabId}`;
 export const latestAppraisalKey = (tabId: number) => `appraisal_${tabId}`;
 
+const sessionStore = () => chrome.storage?.session ?? chrome.storage?.local;
+
 export const getSession = async <K extends keyof SessionSchema>(key: K): Promise<SessionSchema[K] | undefined> => {
+  const store = sessionStore();
+  if (!store) return undefined;
   const k = storageKey(key);
-  return (await chrome.storage.session.get(k))[k] as SessionSchema[K] | undefined;
+  return (await store.get(k))[k] as SessionSchema[K] | undefined;
 };
 
 export const setSession = async <K extends keyof SessionSchema>(key: K, value: SessionSchema[K]) => {
-  await chrome.storage.session.set({ [storageKey(key)]: value });
+  const store = sessionStore();
+  if (!store) return;
+  await store.set({ [storageKey(key)]: value });
+};
+
+export const removeSession = async <K extends keyof SessionSchema>(key: K) => {
+  const store = sessionStore();
+  if (!store) return;
+  await store.remove(storageKey(key));
 };
 
 export const getTabLive = async (tabId: number) => {
+  const store = sessionStore();
+  if (!store) return undefined;
   const k = storageKey(liveKey(tabId));
-  return (await chrome.storage.session.get(k))[k] as LiveSession | undefined;
+  return (await store.get(k))[k] as LiveSession | undefined;
 };
 
-export const setTabLive = (tabId: number, session: LiveSession | null) =>
-  session ? chrome.storage.session.set({ [storageKey(liveKey(tabId))]: session }) : chrome.storage.session.remove(storageKey(liveKey(tabId)));
+export const setTabLive = (tabId: number, session: LiveSession | null) => {
+  const store = sessionStore();
+  if (!store) return Promise.resolve();
+  return session ? store.set({ [storageKey(liveKey(tabId))]: session }) : store.remove(storageKey(liveKey(tabId)));
+};
 
 export const getTabAppraisal = async (tabId: number) => {
+  const store = sessionStore();
+  if (!store) return undefined;
   const k = storageKey(latestAppraisalKey(tabId));
-  return (await chrome.storage.session.get(k))[k] as AppraisalRecord | undefined;
+  return (await store.get(k))[k] as AppraisalRecord | undefined;
 };
 
-export const setTabAppraisal = (tabId: number, record: AppraisalRecord) =>
-  chrome.storage.session.set({ [storageKey(latestAppraisalKey(tabId))]: record });
+export const setTabAppraisal = (tabId: number, record: AppraisalRecord) => {
+  const store = sessionStore();
+  if (!store) return Promise.resolve();
+  return store.set({ [storageKey(latestAppraisalKey(tabId))]: record });
+};
 
 export const onSessionKeyChanged = (key: string, cb: (value: unknown) => void) => {
   const k = storageKey(key);

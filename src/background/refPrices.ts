@@ -10,6 +10,7 @@ import { DAY, SECOND } from '../shared/time';
 import { fetchWithTimeout } from './appraisal';
 import { ebaySoldLookup } from './ebayComps';
 import { greysheetLookup } from './greysheet';
+import { scheduleDomain } from './rateGate';
 
 const TIMEOUT_MS = 4 * SECOND;
 const PRICE_TTL_MS = DAY;
@@ -21,7 +22,9 @@ class LookupError extends Error {}
 const getJson = async <T>(url: string, headers: Record<string, string> = {}): Promise<T | null> => {
   let res: Response;
   try {
-    res = await fetchWithTimeout(url, { headers: { Accept: 'application/json', ...headers } }, TIMEOUT_MS);
+    res = await scheduleDomain(url, () =>
+      fetchWithTimeout(url, { headers: { Accept: 'application/json', ...headers } }, TIMEOUT_MS),
+    );
   } catch (err) {
     throw new LookupError((err as Error).name === 'AbortError' ? `took over ${TIMEOUT_MS / SECOND}s` : 'unreachable');
   }

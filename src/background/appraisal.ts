@@ -39,6 +39,7 @@ import {
 } from '../shared/storage';
 import { DAY, MINUTE, SECOND } from '../shared/time';
 import { ON_DEVICE_MODEL, appraiseOnDevice, type OnDeviceResult } from './onDevice';
+import { scheduleDomain } from './rateGate';
 
 // --- Spot prices (gold-api.com), cached in session storage so they stay warm across wakeups ---
 
@@ -59,9 +60,11 @@ export const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs
 const refreshSpot = (symbol: string) => {
   spotInFlight[symbol] ??= (async () => {
     try {
-      const res = await fetchWithTimeout(`https://api.gold-api.com/price/${symbol}`, {}, 8 * SECOND);
-      const data = (await res.json()) as { price?: unknown };
-      if (typeof data.price !== 'number') return null;
+      const url = `https://api.gold-api.com/price/${symbol}`;
+      const res = await scheduleDomain(url, () => fetchWithTimeout(url, {}, 8 * SECOND)).catch(() => null);
+      if (!res || !res.ok) return null;
+      const data = (await res.json().catch(() => null)) as { price?: unknown } | null;
+      if (!data || typeof data.price !== 'number') return null;
       const store = (await getSession('spot')) ?? {};
       store[symbol] = { price: data.price, at: Date.now() };
       await setSession('spot', store);
@@ -78,16 +81,20 @@ const refreshSpot = (symbol: string) => {
 // A cached price comes back immediately (refreshed in the background when stale).
 export const getSpot = async (metal: Metal) => {
   const symbol = SPOT_SYMBOLS[metal];
-  const cached = (await getSession('spot'))?.[symbol];
-  if (cached && Date.now() - cached.at < SPOT_TTL_MS) return cached.price;
-  if (cached) {
-    void refreshSpot(symbol);
-    return cached.price;
+  try {
+    const cached = (await getSession('spot'))?.[symbol];
+    if (cached && Date.now() - cached.at < SPOT_TTL_MS) return cached.price;
+    if (cached) {
+      void refreshSpot(symbol).catch(() => null);
+      return cached.price;
+    }
+    return await refreshSpot(symbol);
+  } catch {
+    return null;
   }
-  return refreshSpot(symbol);
 };
 
-export const warmSpots = () => Promise.all([getSpot('silver'), getSpot('gold')]);
+export const warmSpots = () => Promise.all([getSpot('silver'), getSpot('gold')]).catch(() => [null, null]);
 
 export const quickAppraise = async (pageText: string) => {
   const result = quickRead(pageText);
@@ -160,7 +167,10 @@ const pcgsGet = async (
   }
   try {
     await setPcgsUsage({ ...usage, calls: usage.calls + 1 });
-    const res = await fetchWithTimeout(`${PCGS_BASE}/${path}`, { headers: { Authorization: `bearer ${token}` } }, 5 * SECOND);
+    const url = `${PCGS_BASE}/${path}`;
+    const res = await scheduleDomain(url, () =>
+      fetchWithTimeout(url, { headers: { Authorization: `bearer ${token}` } }, 5 * SECOND),
+    );
     const data = (await res.json().catch(() => ({}))) as PcgsData;
     if (res.status === 401 || res.status === 500) return { error: 'PCGS rejected the token. Generate a new one.' };
     if (res.status === 429) {

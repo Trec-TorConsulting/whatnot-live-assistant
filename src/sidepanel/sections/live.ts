@@ -40,7 +40,7 @@ import {
   type Monitor,
   type OverlayPrefs,
 } from '../../shared/storage';
-import { monitorShopBadge, shopSummary, type ShopHit } from '../../shared/shop';
+import { formatListingSpread, monitorShopBadge, shopSummary, type ShopHit } from '../../shared/shop';
 import { formatDuration } from '../../shared/time';
 import { $, li, liveIdOfTab, numberOf, onActiveTab, runCommand, setNumber, toast } from '../ui';
 
@@ -84,6 +84,7 @@ const el = {
   shopFilter: $<HTMLButtonElement>('#shop-filter'),
   shopRescan: $<HTMLButtonElement>('#shop-rescan'),
   appraise: $<HTMLButtonElement>('#live-appraise'),
+  tableScan: $<HTMLButtonElement>('#live-table-scan'),
   overlayShow: $<HTMLInputElement>('#overlay-show'),
   overlayReset: $<HTMLButtonElement>('#overlay-reset'),
   overlayAuto: $<HTMLInputElement>('#overlay-auto'),
@@ -404,7 +405,23 @@ const renderShop = () => {
             : h.quantity > 1 && h.quantity <= 99
               ? ` [${h.quantity} in stock]`
               : '';
-      const item = li(`${shopLabel(h)}${stock}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}`, h.kind === 'steal' ? 'good' : '');
+      const appraisal = h.appraisal ?? shop.appraisals?.[h.id];
+      const appraisalText = appraisal ? ` · ${formatListingSpread(appraisal)}` : '';
+      const isGood = h.kind === 'steal' || Boolean(appraisal?.isDeal);
+      const item = li(`${shopLabel(h)}${stock}: ${h.title} — ${formatMoney(h.price)}. ${h.reason}${appraisalText}`, isGood ? 'good' : '');
+      const appraiseBtn = Object.assign(document.createElement('button'), {
+        className: 'secondary small',
+        textContent: appraisal ? 'Re-Value' : 'Appraise',
+        type: 'button',
+        title: 'Appraise this item vs asking price',
+      });
+      appraiseBtn.addEventListener('click', async () => {
+        appraiseBtn.disabled = true;
+        appraiseBtn.textContent = 'Valuing…';
+        if (tabId !== null) {
+          await sendToTab(tabId, 'SHOP_APPRAISE', { id: h.id }).catch(() => undefined);
+        }
+      });
       const find = Object.assign(document.createElement('button'), {
         className: 'secondary small',
         textContent: 'Find',
@@ -423,7 +440,7 @@ const renderShop = () => {
       dismiss.addEventListener('click', () => {
         if (tabId !== null) void sendToTab(tabId, 'SHOP_DISMISS', { id: h.id }).catch(() => undefined);
       });
-      item.append(' ', find, ' ', dismiss);
+      item.append(' ', appraiseBtn, ' ', find, ' ', dismiss);
       return item;
     }),
     ...(shop.perPieceRows ?? []).map((r) => li(`${r.title} — ${r.label}`, 'muted')),
@@ -645,6 +662,10 @@ export const initLive = async () => {
   el.appraise.addEventListener('click', () => {
     if (tabId === null) return toast('Open a Whatnot live show first.');
     void runCommand(sendToTab(tabId, 'APPRAISE_NOW', {}), 'Appraising…');
+  });
+  el.tableScan.addEventListener('click', () => {
+    if (tabId === null) return toast('Open a Whatnot live show first.');
+    void runCommand(sendToTab(tabId, 'TABLE_SCAN_NOW', {}), 'Scanning table…');
   });
   el.shopRescan.addEventListener('click', () => {
     if (tabId === null) return toast('Open a Whatnot live show first.');

@@ -29,6 +29,7 @@ import { clearPickedShare, savePickedShare } from './picks';
 import { readEnvelopes, readNamedPrizes, valuePrizes } from './prizeValues';
 import { refLookup } from './refPrices';
 import { evaluateShopItems } from './shopAi';
+import { appraiseListingText } from './shopAppraisal';
 import { scanTable } from './tableScan';
 import { acquireShareForSession, claimShareWork, forgetTab, shareDone, startShare, stopShare, toggleShare } from './share';
 import { ensureContent, reconnectWhatnotTabs } from './tabs';
@@ -105,6 +106,7 @@ handleMessages({
   QUICK_APPRAISE: ({ pageText }) => quickAppraise(pageText),
   WHEEL_VALUE: ({ prizes, context }) => valuePrizes(prizes.slice(0, 200), context),
   SHOP_AI: ({ items, showTitle, showType }) => evaluateShopItems(items.slice(0, 20), showTitle, showType),
+  APPRAISE_SHOP_LISTING: async (payload) => ({ ok: true, appraisal: await appraiseListingText(payload) }),
   ENVELOPE_READ: ({ breakId, image, prizes, others, context, soldHidden }) =>
     readEnvelopes(breakId, image, prizes.slice(0, 100), others.slice(0, 100), context, soldHidden),
   PRIZE_READ: ({ breakId, image, prizes, context }) => readNamedPrizes(breakId, image, prizes.slice(0, 60), context),
@@ -168,7 +170,9 @@ chrome.commands.onCommand.addListener(async (command) => {
   const tabId = await activeTabId();
   if (tabId === undefined) return;
   if (command === 'toggle-share') await toggleShare(tabId);
-  if (command === 'appraise') await sendToTab(tabId, 'APPRAISE_NOW', {}).catch(() => undefined);});
+  if (command === 'appraise') await sendToTab(tabId, 'APPRAISE_NOW', {}).catch(() => undefined);
+  if (command === 'table-scan') await sendToTab(tabId, 'TABLE_SCAN_NOW', {}).catch(() => undefined);
+});
 
 const ensureAlarms = async () => {
   if (!(await chrome.alarms.get(ALARM_WATCH))) await chrome.alarms.create(ALARM_WATCH, { periodInMinutes: 5 });

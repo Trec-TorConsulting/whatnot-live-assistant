@@ -10,7 +10,7 @@ const fakeArea = (initial: Record<string, unknown> = {}) => {
   };
 };
 
-const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+const json = (status: number, body: unknown) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 
 const stubFetch = (routes: [RegExp, unknown][]) => {
   const calls: string[] = [];
@@ -113,6 +113,8 @@ describe('refLookup', () => {
     expect(sources).toContain('ebay');
     const fmv = res.refs.find((r) => r.source === 'fmv');
     expect(fmv?.value).toBe(210);
+    const ebay = res.refs.find((r) => r.source === 'ebay');
+    expect(ebay?.value).toBe(210);
   });
 
   it('queries Greysheet when BYOK credentials are configured', async () => {

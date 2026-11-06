@@ -1,7 +1,7 @@
 import { handleMessages, send, STALE_CONTEXT } from '../shared/messages';
 import type { SellerTask } from '../shared/types';
 import { isNewLot, type LiveSession, type LiveSignal } from '../shared/live';
-import { appraiseNow, newAuction, watchAppraisal } from './appraise';
+import { appraiseNow, appraiseTableNow, newAuction, watchAppraisal } from './appraise';
 import { hideWorkerBanner, showWorkerBanner } from './banner';
 import { quickBid, refreshGuard, startBidGuard } from './bidGuard';
 import { resetBuyer, startBuyer } from './buyer';
@@ -11,7 +11,7 @@ import { claimPage, contextAlive, every, onRetire } from './lifecycle';
 import { isShareWorker, markShareWorker, onLive, resetForPath, startLiveBridge } from './live';
 import { startCasePack } from './casePack';
 import { startEstate } from './estate';
-import { dismissShopHit, ensureShopListener, focusShopHit, rescanShop, resetShop, setShopFilter, startShopWatch } from './shop';
+import { appraiseShopListing, dismissShopHit, ensureShopListener, focusShopHit, rescanShop, resetShop, setShopFilter, startShopWatch } from './shop';
 import { overlay } from './overlay';
 import { loadOverrides } from './overridesState';
 import { startPicker } from './picker';
@@ -116,12 +116,14 @@ const syncToPath = () => {
   if (isLivePath()) {
     overlay.mount({
       appraise: () => void appraiseAndGuard(),
+      tableScan: () => void appraiseTableNow(),
       pasteToChat: (view) => void sendToChat(chatLine(view)),
       chatText: (text) => void sendToChat(text.slice(0, CHAT_MAX)),
       quickBid: (kind) => void quickBid(kind),
       savePrefs: (prefs) => void setItem('overlay', prefs),
       pickScan: (scan) => void pickScan(scan),
       shopRescan: () => rescanShop(),
+      shopAppraise: (id) => void appraiseShopListing(id),
       shopFocus: (title) => void focusShopHit(title),
       shopDismiss: (id) => dismissShopHit(id),
       shopFilter: (mode) => setShopFilter(mode),
@@ -155,10 +157,20 @@ const main = async () => {
       void appraiseAndGuard();
       return { ok: true };
     },
+    TABLE_SCAN_NOW: () => {
+      if (!isLivePath()) return { ok: false, error: 'Open a live show to scan the table.' };
+      void appraiseTableNow();
+      return { ok: true };
+    },
     SHOP_RESCAN: () => {
       if (!isLivePath()) return { ok: false, error: 'Open a live show to rescan the shop.' };
       rescanShop();
       return { ok: true };
+    },
+    SHOP_APPRAISE: async ({ id }) => {
+      if (!isLivePath()) return { ok: false };
+      const appraisal = await appraiseShopListing(id);
+      return { ok: Boolean(appraisal), appraisal: appraisal ?? undefined };
     },
     SHOP_FOCUS: ({ title }) => {
       if (!isLivePath()) return { ok: false, error: 'Open a live show to search the shop.' };

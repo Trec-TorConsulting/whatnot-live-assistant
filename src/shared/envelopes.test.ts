@@ -205,4 +205,21 @@ describe('named prizes read off the video', () => {
     expect(unseenPrizes(named(), { 'graded morgan': 70 }, auto).map((p) => `${p.title} ${p.detail}`.trim())).toEqual(['Morgan MS 63', 'Morgan MS 65']);
     expect(unseenPrizes(wheel(), {}, {}).map((p) => p.title)).toEqual(['BUFFALO NICKEL RANDOM YEAR']);
   });
+
+  it('marks multi floors on wheel rows based on game show notes', () => {
+    const notes =
+      'Revers randomized wheels \n10 spots \nYou either get a wheat cent, buffalo nickel or the hit\nWhoever gets the hit gets to pick a item off the board';
+    const b: BreakSnapshot = {
+      ...wheel(0),
+      prizes: [prize('Wheat Cent', 5), prize('Buffalo Nickel', 4), prize('Board Pick Hit', 1)],
+    };
+    const rows = wheelRows(b, { 'wheat cent': 0.15, 'buffalo nickel': 0.75, 'board pick hit': 50 }, {}, null, notes);
+    const wheat = rows.find((r) => r.title === 'Wheat Cent');
+    const buffalo = rows.find((r) => r.title === 'Buffalo Nickel');
+    const hit = rows.find((r) => r.title === 'Board Pick Hit');
+
+    expect(wheat?.floor).toBe(true);
+    expect(buffalo?.floor).toBe(true);
+    expect(hit?.floor).toBeFalsy();
+  });
 });

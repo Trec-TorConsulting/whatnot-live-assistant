@@ -41,6 +41,7 @@ export type WheelVerdict = 'worth' | 'not_worth' | 'unclear' | 'empty';
 export interface WheelEnd {
   label: string;
   value: number | null;
+  valueHigh?: number | null;
   left: number;
   chance: number;
   // Spin price minus this value. Positive means a hit loses that much.
@@ -81,6 +82,53 @@ export const emptyWheel = (liveId: string, now = Date.now()): WheelState => ({ l
 
 const SLOT_LINE_RE = /^(.*?)(?:\s+x\s*(\d+)|\s+(\d+)\s*x)?(?:\s+\$\s*([\d,]+(?:\.\d{1,2})?)|\s+\$?\?)?$/i;
 
+const FLOOR_RULE_PATTERNS = [
+  /\byou(?:\s+either)?\s+get\s+(?:a|an\s+)?(.+?)\s+or\s+(?:the\s+)?(?:hit|winner|top|chase|grand\s+prize|board\s+pick|pick(?:\s+a?\s+item)?(?:\s+off\s+the\s+board)?)\b/i,
+  /\bmulti[\s-]*floors?\s*(?:are|is|:|=)\s*(.+?)(?:\.|\n|chase|top|hit|$)/i,
+  /\bfloors?\s*(?:are|is|:|=)\s*(.+?)(?:\.|\n|chase|top|hit|$)/i,
+  /\b(?:floor|floors)\s*[:=-]\s*(.+?)(?:\.|\n|chase|top|hit|$)/i,
+];
+
+// Parses floor items from show notes describing games, e.g.
+// "You either get a wheat cent, buffalo nickel or the hit" -> ['wheat cent', 'buffalo nickel']
+export const extractFloorsFromNotes = (notes: string | null | undefined): string[] => {
+  if (!notes) return [];
+  const floors: string[] = [];
+  const seen = new Set<string>();
+
+  for (const re of FLOOR_RULE_PATTERNS) {
+    const match = notes.match(re);
+    if (!match?.[1]) continue;
+    const parts = match[1]
+      .split(/,|\/|\s+or\s+/i)
+      .map((s) => s.replace(/\b(?:either|a|an|the)\b/gi, ' ').replace(/\s+/g, ' ').trim())
+      .filter((s) => s.length >= 2 && !/^(?:hit|winner|chase|top|grand\s+prize|board\s+pick)$/i.test(s));
+
+    for (const part of parts) {
+      const key = part.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        floors.push(key);
+      }
+    }
+    if (floors.length) break;
+  }
+
+  return floors;
+};
+
+export const isFloorSlot = (label: string, floorPatterns: string[] = []): boolean => {
+  if (/\b(?:multi[\s-]*floor|floor)\b/i.test(label)) return true;
+  if (!floorPatterns.length) return false;
+  const clean = label.toLowerCase().replace(/\s+/g, ' ');
+  const normClean = clean.replace(/\b(penny|pennies)\b/g, 'cent');
+  return floorPatterns.some((pattern) => {
+    const p = pattern.toLowerCase().trim();
+    const normP = p.replace(/\b(penny|pennies)\b/g, 'cent');
+    return clean.includes(p) || normClean.includes(normP) || new RegExp(`\\b${normP}\\b`, 'i').test(normClean);
+  });
+};
+
 // One prize per line: "Silver Eagle x2 $35", "Wheat penny 10x $1", or "Mystery x3 ?" for unpriced.
 export const parseWheelSlots = (text: string): WheelSlot[] => {
   const slots: WheelSlot[] = [];
@@ -92,7 +140,8 @@ export const parseWheelSlots = (text: string): WheelSlot[] => {
     if (!m || !label) continue;
     const total = Math.max(1, Math.min(999, parseInt(m[2] ?? m[3] ?? '1', 10)));
     const value = m[4] ? parseFloat(m[4].replace(/,/g, '')) : null;
-    slots.push({ label, total, left: total, value });
+    const isFloor = /\b(?:multi[\s-]*floor|floor)\b/i.test(label);
+    slots.push({ label, total, left: total, value, ...(isFloor ? { floor: true } : {}) });
   }
   return slots;
 };
@@ -134,27 +183,48 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 const endOf = (group: SlotOdds[], price: number | null): WheelEnd => {
   const ranked = [...group].sort((a, b) => b.left - a.left || a.label.localeCompare(b.label));
   const names = [...new Set(ranked.map((s) => s.label))];
-  const value = ranked[0]!.value;
-  const label = names.length === 1 ? names[0]! : names.length <= 3 ? names.join(', ') : `${names[0]}, ${names[1]} + ${names.length - 2} more`;
+  const values = group.map((s) => s.value).filter((v): v is number => v !== null);
+  const minValue = values.length ? Math.min(...values) : null;
+  const maxValue = values.length ? Math.max(...values) : null;
+  const totalLeft = group.reduce((n, s) => n + s.left, 0);
+  const totalChance = group.reduce((n, s) => n + s.chance, 0);
+  const weightedSum = group.reduce((sum, s) => sum + (s.value ?? 0) * s.left, 0);
+  const avgValue = totalLeft > 0 ? cents(weightedSum / totalLeft) : minValue;
+  const label =
+    names.length === 1
+      ? names[0]!
+      : names.length <= 3
+        ? names.join(', ')
+        : `${names[0]}, ${names[1]} + ${names.length - 2} more`;
   return {
     label,
-    value,
-    left: group.reduce((n, s) => n + s.left, 0),
-    chance: group.reduce((n, s) => n + s.chance, 0),
-    loss: price !== null && value !== null ? cents(price - value) : null,
+    value: minValue,
+    valueHigh: maxValue !== null && maxValue !== minValue ? maxValue : undefined,
+    left: totalLeft,
+    chance: totalChance,
+    loss: price !== null && avgValue !== null ? cents(price - avgValue) : null,
     indexes: group.map((s) => s.index),
   };
 };
 
 // The top is every prize at the highest known value. The floor is every prize at the lowest known
-// value, the bottom you can still win. A big quantity is only how that cheap prize is recognized.
+// value, the bottom you can still win. When slots are marked as floor (e.g. from multi-floor show
+// rules, reverse wheel notes, or explicit floor labels), all floor slots are grouped together.
 const wheelEnds = (live: SlotOdds[], price: number | null) => {
   const priced = live.filter((s) => s.value !== null);
   const amounts = priced.map((s) => s.value!);
   const max = amounts.length ? Math.max(...amounts) : null;
   const min = amounts.length ? Math.min(...amounts) : null;
   const topSlots = max === null ? [] : priced.filter((s) => s.value === max);
-  const floorSlots = min === null || min === max ? [] : priced.filter((s) => s.value === min);
+
+  const explicitFloors = live.filter((s) => s.floor || /\b(?:multi[\s-]*floor|floor)\b/i.test(s.label));
+  let floorSlots: SlotOdds[];
+  if (explicitFloors.length) {
+    floorSlots = explicitFloors;
+  } else {
+    floorSlots = min === null || min === max ? [] : priced.filter((s) => s.value === min);
+  }
+
   return {
     top: topSlots.length ? endOf(topSlots, price) : null,
     floor: floorSlots.length ? endOf(floorSlots, price) : null,

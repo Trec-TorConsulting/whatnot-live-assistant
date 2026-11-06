@@ -4,6 +4,7 @@ import type { ElectronicsView } from '../shared/electronics';
 import type { EstateView } from '../shared/estate';
 import type { RunnerView } from '../shared/runner';
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from '../shared/storage';
+import { formatListingSpread, type ListingAppraisal } from '../shared/shop';
 
 const HOST_ID = 'wn2-overlay';
 
@@ -59,6 +60,7 @@ export interface ShopHitView {
   label: string;
   text: string;
   onWishlist?: boolean;
+  appraisal?: ListingAppraisal;
 }
 
 export interface ShopView {
@@ -163,6 +165,7 @@ let floor = { mode: '', px: 0, shorterSince: 0 };
 let shrinkTimer: ReturnType<typeof setTimeout> | undefined;
 let handlers: {
   appraise?: () => void;
+  tableScan?: () => void;
   pasteToChat?: (view: AppraisalView) => void;
   chatText?: (text: string) => void;
   quickBid?: (kind: QuickBidButton['kind']) => void;
@@ -172,6 +175,7 @@ let handlers: {
   shopFocus?: (title: string) => void;
   shopDismiss?: (id: string) => void;
   shopFilter?: (mode: 'all' | 'bin' | 'wishlist') => void;
+  shopAppraise?: (id: string) => void;
 } = {};
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let prefs: OverlayPrefs = DEFAULT_OVERLAY_PREFS;
@@ -290,6 +294,7 @@ const ensure = () => {
       state.collapsed = !state.collapsed;
       render();
     } else if (action === 'appraise') handlers.appraise?.();
+    else if (action === 'table-scan') handlers.tableScan?.();
     else if (action === 'popout') void popOut();
     else if (action === 'close') {
       if (popped) popped.close();
@@ -305,6 +310,9 @@ const ensure = () => {
       render();
     } else if (action === 'shop-rescan') {
       handlers.shopRescan?.();
+    } else if (action === 'shop-appraise') {
+      const id = (e.target as HTMLElement).closest<HTMLElement>('[data-id]')?.dataset.id;
+      if (id) handlers.shopAppraise?.(id);
     } else if (action === 'shop-focus') {
       const title = (e.target as HTMLElement).closest<HTMLElement>('[data-title]')?.dataset.title;
       if (title) handlers.shopFocus?.(title);
@@ -520,16 +528,20 @@ const shopRow = (s: ShopView | null) => {
   const rescanBtn = `<button class="icon" data-action="shop-rescan" title="Rescan the live shop">↻</button>`;
   const items = [
     ...s.hits.map((h) => {
-      const cls = h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : '';
+      const cls = h.kind === 'steal' || h.appraisal?.isDeal ? 'good' : h.kind === 'deal' ? 'notice' : '';
       const stock = stockBadge(h.quantity, h.mode);
       const wishBadge = h.onWishlist ? ' <span class="badge wishlist-badge">[Wishlist]</span>' : '';
+      const appraisalText = h.appraisal ? ` · ${formatListingSpread(h.appraisal)}` : '';
       const body = h.title
-        ? `<span class="shop-hit" data-action="shop-focus" data-title="${esc(h.title)}" title="Click to find in Whatnot's shop"><span class="${cls}">${esc(h.label)}</span>${wishBadge}${stock} ${esc(h.text)}</span>`
-        : `<span class="${cls}">${esc(h.label)}</span>${wishBadge}${stock} ${esc(h.text)}`;
+        ? `<span class="shop-hit" data-action="shop-focus" data-title="${esc(h.title)}" title="Click to find in Whatnot's shop"><span class="${cls}">${esc(h.label)}</span>${wishBadge}${stock} ${esc(h.text)}${appraisalText ? `<span class="muted">${esc(appraisalText)}</span>` : ''}</span>`
+        : `<span class="${cls}">${esc(h.label)}</span>${wishBadge}${stock} ${esc(h.text)}${appraisalText ? `<span class="muted">${esc(appraisalText)}</span>` : ''}`;
+      const appraiseBtn = h.id
+        ? ` <button class="icon shop-appraise" data-action="shop-appraise" data-id="${esc(h.id)}" title="Appraise this item vs asking price">Val</button>`
+        : '';
       const dismiss = h.id
         ? ` <button class="icon shop-dismiss" data-action="shop-dismiss" data-id="${esc(h.id)}" title="Dismiss this item">×</button>`
         : '';
-      return `<li class="shop-item">${body}${dismiss}</li>`;
+      return `<li class="shop-item">${body}${appraiseBtn}${dismiss}</li>`;
     }),
     ...(s.perPieceRows ?? []).map((row) => `<li class="muted">${esc(row)}</li>`),
   ].join('');
@@ -594,7 +606,7 @@ const render = () => {
         ${state.share ? `<div class="row muted">${esc(state.share)}</div>` : ''}
       </div>`;
   const head = `<span class="title" title="${popped ? 'Whatnot Assistant' : 'Drag to move. Double-click to put it back in the corner.'}">Whatnot Assistant</span>
-    ${w ? '' : '<button class="primary" data-action="appraise" title="Appraise the item on screen (Alt+Shift+V)">Appraise</button>'}
+    ${w ? '' : '<button class="primary" data-action="appraise" title="Appraise the item on screen (Alt+Shift+V)">Appraise</button><button class="secondary" data-action="table-scan" title="Scan table for top valuable items (Alt+Shift+T)">Scan Table</button>'}
     ${!popped && documentPip() ? '<button class="icon" data-action="popout" title="Open in its own window, to move to another monitor">⧉</button>' : ''}
     <button class="icon" data-action="collapse" title="${state.collapsed ? 'Expand' : 'Collapse'}">${state.collapsed ? '▸' : '▾'}</button>
     <button class="icon" data-action="close" title="${popped ? 'Put it back on the page' : 'Hide (Alt+Shift+A or the side panel brings it back)'}">×</button>`;

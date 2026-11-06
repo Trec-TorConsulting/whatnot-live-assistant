@@ -58,21 +58,27 @@ export const messageView = (status: AppraisalView['status'], title: string, caut
   similar: [],
 });
 
-export const idleTableView = (items: TableItem[]): AppraisalView => {
+export const tableScanView = (items: TableItem[], onDemand = true): AppraisalView => {
+  const cautions = items.filter((t): t is TableItem & { warning: string } => Boolean(t.warning)).map((t) => `${t.name}: ${t.warning}`);
   const facts: Fact[] = items.slice(0, MAX_TABLE_FACTS).map((t, i) => {
     const rest = i === MAX_TABLE_FACTS - 1 && items.length > MAX_TABLE_FACTS ? ` · +${items.length - MAX_TABLE_FACTS} more` : '';
+    const loc = t.where ? `[${t.where}]` : '';
     return {
-      label: i === 0 ? 'On the stall' : '',
+      label: i === 0 ? (onDemand ? 'Top Pick' : 'On the stall') : `#${i + 1}`,
       value: `${t.source === 'melt' ? `≥ ${formatMoney(t.low)}` : range(t.low, t.high)}${t.quantity > 1 ? ` each ×${t.quantity}` : ''}`,
-      detail: [t.name, t.where, TABLE_SOURCE[t.source]].filter(Boolean).join(' · ') + rest,
+      detail: [loc, t.name, TABLE_SOURCE[t.source]].filter(Boolean).join(' ') + rest,
     };
   });
   return {
-    ...messageView('done', 'On the stall'),
+    ...messageView('done', onDemand ? 'Table Top Picks' : 'On the stall', cautions),
     facts,
-    footer: items.length ? 'Idle stall scan while waiting for R/P.' : 'Stall scan found nothing worth calling out.',
+    footer: items.length
+      ? `${items.length} item${items.length === 1 ? '' : 's'} ranked across the scene.`
+      : 'Table scan found no collectible items clearly visible.',
   };
 };
+
+export const idleTableView = (items: TableItem[]): AppraisalView => tableScanView(items, false);
 
 // Before the video is read: a key date in the lot title is a fact worth showing right away, even
 // for coins with no metal value (the quick read only covers precious metal).

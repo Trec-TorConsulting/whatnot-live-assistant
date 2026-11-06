@@ -10,8 +10,10 @@ import {
   applyShopRefs,
   applyShopWorth,
   ensureMustPrice,
+  evaluateListingSpread,
   extractShopQuery,
   extractShopRefQuery,
+  formatListingSpread,
   hasPriceLine,
   isShopOperation,
   MAX_LISTINGS,
@@ -834,5 +836,29 @@ describe('shop query text', () => {
     expect(parsed.length).toBe(600);
     expect(parsed[0]).toMatchObject({ id: 'item-0', title: 'Silver Coin #0', price: 25, mode: 'bin' });
     expect(MAX_LISTINGS).toBeGreaterThanOrEqual(3000);
+  });
+
+  it('evaluates listing spread and flags deals and overpriced listings', () => {
+    // Deal: asking $40, market $65 -> delta +$25 (+63% deal)
+    const deal = evaluateListingSpread('item-1', 40, 65, 'fmv');
+    expect(deal.delta).toBe(25);
+    expect(deal.marginPercent).toBe(63);
+    expect(deal.isDeal).toBe(true);
+    expect(deal.isOverpriced).toBe(false);
+    expect(formatListingSpread(deal)).toContain('Val: $65');
+    expect(formatListingSpread(deal)).toContain('+$25 (+63% Deal)');
+
+    // Overpriced: asking $50, market $28 -> delta -$22 (-44% overpriced)
+    const overpriced = evaluateListingSpread('item-2', 50, 28, 'ebay');
+    expect(overpriced.delta).toBe(-22);
+    expect(overpriced.marginPercent).toBe(-44);
+    expect(overpriced.isDeal).toBe(false);
+    expect(overpriced.isOverpriced).toBe(true);
+    expect(formatListingSpread(overpriced)).toContain('-$22 (-44% Overpriced)');
+
+    // Fair: asking $50, market $52 -> +$2 (+4%), neither deal nor overpriced
+    const fair = evaluateListingSpread('item-3', 50, 52, 'melt');
+    expect(fair.isDeal).toBe(false);
+    expect(fair.isOverpriced).toBe(false);
   });
 });

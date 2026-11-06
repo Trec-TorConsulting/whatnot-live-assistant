@@ -9,7 +9,7 @@ import type { PrizeContext, PrizeItem } from './prizeValue';
 import type { Purchase } from './purchases';
 import type { SoldItem } from './soldHistory';
 import type { RefLookupResult } from './refPrice';
-import type { ShopAiEstimate, ShopAiInputItem, ShopFilterMode } from './shop';
+import type { ListingAppraisal, ShopAiEstimate, ShopAiInputItem, ShopFilterMode } from './shop';
 import type { ShowType } from './showType';
 import type { TableItem } from './tableScan';
 import type { ShareSession, CloudProvider } from './storage';
@@ -108,6 +108,7 @@ export interface MessageMap {
 
   // Appraisal
   APPRAISE_NOW: { req: Record<string, never>; res: Result }; APPRAISE: { req: AppraisalContext & { image: string }; res: GeminiResult };
+  TABLE_SCAN_NOW: { req: Record<string, never>; res: Result };
   TABLE_SCAN: { req: AppraisalContext & { image: string; mainItem: string }; res: TableScanResult };
   QUICK_APPRAISE: { req: { pageText: string }; res: QuickResult & { melt: Melt | null } };
   PRICE_LOOKUP: { req: { item: Partial<AppraisalItem> }; res: PriceLookupResult };
@@ -120,6 +121,11 @@ export interface MessageMap {
   APPRAISAL_SAVE: { req: { record: AppraisalRecord }; res: Result };
   WHEEL_VALUE: { req: { prizes: PrizeItem[]; context: PrizeContext }; res: Result };
   SHOP_AI: { req: { items: ShopAiInputItem[]; showTitle?: string | null; showType?: ShowType }; res: ShopAiResult };
+  APPRAISE_SHOP_LISTING: {
+    req: { id: string; title: string; subtitle?: string | null; price: number };
+    res: { ok: true; appraisal: ListingAppraisal } | { ok: false; error: string };
+  };
+  SHOP_APPRAISE: { req: { id: string }; res: { ok: boolean; appraisal?: ListingAppraisal } };
   SHOP_RESCAN: { req: Record<string, never>; res: Result };
   SHOP_FOCUS: { req: { title: string }; res: Result };
   SHOP_DISMISS: { req: { id: string }; res: Result };

@@ -4,6 +4,7 @@
 // one spot each. That keeps the spin's worth and its odds exact when the counts agree.
 import { isHiddenSpot, isNumberedPrize, prizeKey, prizePriceKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
 import { manifestFrom, type PrizeValue } from './prizeValue';
+import { extractFloorsFromNotes, isFloorSlot, prizeSlotLabel } from './wheel';
 
 export interface EnvelopeBoard {
   at: number;
@@ -233,22 +234,24 @@ export const wheelRows = (
 ): WheelRow[] => {
   const summary = envelopeSummary(b, yours, auto, board);
   const { claimed } = splitBoard(b, yours, board?.items ?? []);
+  const floorPatterns = extractFloorsFromNotes(notes);
   return prizeRows(b, yours, auto).map((row) => {
     const prize = b.prizes.find((p) => p.title === row.title && p.detail === row.detail);
+    const isFloor = isFloorSlot(prizeSlotLabel(row), floorPatterns);
     if (prize && isNumberedPrize(prize.title)) {
-      if (row.value !== null) return row;
+      if (row.value !== null) return { ...row, ...(isFloor ? { floor: true } : {}) };
       const share = numberedShare(b, auto, notes);
-      if (!share) return row;
-      return { ...row, value: share.value, floor: share.floor, auto: null, inside: null };
+      if (!share) return { ...row, ...(isFloor ? { floor: true } : {}) };
+      return { ...row, value: share.value, floor: share.floor || isFloor, auto: null, inside: null };
     }
     if (!prize || !isHiddenSpot(prize)) {
       const claim = claimed.get(prizeValueKey(prize ?? { title: row.title, detail: row.detail }));
-      if (!claim || row.value !== null) return row;
-      return { ...row, inside: claim.inside ?? row.inside, value: claim.low, auto: claim, fromBoard: false };
+      if (!claim || row.value !== null) return { ...row, ...(isFloor ? { floor: true } : {}) };
+      return { ...row, inside: claim.inside ?? row.inside, value: claim.low, auto: claim, fromBoard: false, ...(isFloor ? { floor: true } : {}) };
     }
     const mine = yours[row.key] ?? (row.titleKey ? yours[row.titleKey] : undefined);
-    if (mine !== undefined) return { ...row, value: mine, auto: null };
-    if (summary.average === null) return { ...row, value: null, auto: null, inside: null };
-    return { ...row, value: summary.average, auto: null, inside: null };
+    if (mine !== undefined) return { ...row, value: mine, auto: null, ...(isFloor ? { floor: true } : {}) };
+    if (summary.average === null) return { ...row, value: null, auto: null, inside: null, ...(isFloor ? { floor: true } : {}) };
+    return { ...row, value: summary.average, auto: null, inside: null, ...(isFloor ? { floor: true } : {}) };
   });
 };

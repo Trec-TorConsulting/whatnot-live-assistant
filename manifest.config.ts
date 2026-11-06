@@ -52,7 +52,12 @@ export default defineManifest({
     'toggle-assistant': {
       suggested_key: { default: 'Alt+Shift+A' },
       description: 'Show or hide the assistant panel on the page',
-    },  },
+    },
+    'table-scan': {
+      suggested_key: { default: 'Alt+Shift+T' },
+      description: 'Scan table for top valuable items',
+    },
+  },
   content_scripts: [
     {
       matches: ['https://*.whatnot.com/*'],

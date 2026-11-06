@@ -273,11 +273,17 @@ describe('overlay', () => {
   it('renders shop stock badges and wires click-to-focus, dismiss, filter, and rescan controls', () => {
     const focused: string[] = [];
     const dismissed: string[] = [];
+    const appraised: string[] = [];
     const filters: string[] = [];
     let rescanned = 0;
+    let tableScans = 0;
     overlay.mount({
       shopFocus: (title) => focused.push(title),
       shopDismiss: (id) => dismissed.push(id),
+      shopAppraise: (id) => appraised.push(id),
+      tableScan: () => {
+        tableScans += 1;
+      },
       shopFilter: (mode) => filters.push(mode),
       shopRescan: () => {
         rescanned += 1;
@@ -338,6 +344,8 @@ describe('overlay', () => {
     expect(filters).toEqual(['bin', 'wishlist', 'all']);
     shadow().querySelector<HTMLElement>('[data-action="shop-rescan"]')!.click();
     expect(rescanned).toBe(1);
+    shadow().querySelector<HTMLElement>('[data-action="table-scan"]')!.click();
+    expect(tableScans).toBe(1);
     overlay.setShop(null);
   });
 

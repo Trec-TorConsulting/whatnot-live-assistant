@@ -40,6 +40,44 @@ export interface ShopListing {
 export type ShopHitKind = 'steal' | 'deal' | 'must';
 export type ShopFilterMode = 'all' | 'bin' | 'wishlist';
 
+export interface ListingAppraisal {
+  listingId: string;
+  marketValue: number;
+  valueSource: 'melt' | 'pcgs' | 'greysheet' | 'fmv' | 'ebay' | 'ai';
+  delta: number;
+  marginPercent: number;
+  isDeal: boolean;
+  isOverpriced: boolean;
+}
+
+export const evaluateListingSpread = (
+  listingId: string,
+  askingPrice: number,
+  marketValue: number,
+  valueSource: ListingAppraisal['valueSource'] = 'ai',
+): ListingAppraisal => {
+  const delta = Math.round((marketValue - askingPrice) * 100) / 100;
+  const marginPercent = askingPrice > 0 ? Math.round((delta / askingPrice) * 100) : 0;
+  const isDeal = delta > 0 && marginPercent >= 15;
+  const isOverpriced = delta < 0 && Math.abs(marginPercent) >= 15;
+  return {
+    listingId,
+    marketValue,
+    valueSource,
+    delta,
+    marginPercent,
+    isDeal,
+    isOverpriced,
+  };
+};
+
+export const formatListingSpread = (appraisal: ListingAppraisal): string => {
+  const sign = appraisal.delta >= 0 ? '+' : '';
+  const pctSign = appraisal.marginPercent >= 0 ? '+' : '';
+  const tag = appraisal.isDeal ? ' Deal' : appraisal.isOverpriced ? ' Overpriced' : '';
+  return `Val: ${formatMoney(appraisal.marketValue)} · ${sign}${formatMoney(appraisal.delta)} (${pctSign}${appraisal.marginPercent}%${tag})`;
+};
+
 export interface ShopHit {
   id: string;
   title: string;
@@ -50,6 +88,7 @@ export interface ShopHit {
   mode?: 'bin' | 'auction';
   onWishlist?: boolean;
   wishlistCeiling?: number | null;
+  appraisal?: ListingAppraisal;
 }
 
 export interface ShopScan {
@@ -60,6 +99,7 @@ export interface ShopScan {
   perPieceRows?: PerPieceShopRow[];
   filter?: ShopFilterMode;
   coupons?: string[];
+  appraisals?: Record<string, ListingAppraisal>;
 }
 
 const obj = (v: unknown): Record<string, unknown> | null =>

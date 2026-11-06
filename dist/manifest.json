@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Whatnot Assistant",
-  "version": "0.21.0",
+  "version": "0.23.0",
   "description": "Follow and bookmark the current show, auto sharing, collectible appraisal, live show stats, a max-bid guard, purchase tracking, and alerts for Whatnot.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -69,6 +69,12 @@
         "default": "Alt+Shift+A"
       },
       "description": "Show or hide the assistant panel on the page"
+    },
+    "table-scan": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Scan table for top valuable items"
     }
   },
   "content_scripts": [
@@ -84,7 +90,7 @@
     },
     {
       "js": [
-        "assets/index.ts-loader-Czyda-mK.js"
+        "assets/index.ts-loader-85JF47jN.js"
       ],
       "matches": [
         "https://*.whatnot.com/*"
@@ -98,9 +104,10 @@
         "https://*.whatnot.com/*"
       ],
       "resources": [
-        "assets/shop-uSCyEsNw.js",
-        "assets/wheel-CKjcn1cW.js",
-        "assets/src-content-index.ts-2ps2chEQ.js"
+        "assets/shop-Dzq1fFky.js",
+        "assets/refPrice-D3pDVV6p.js",
+        "assets/sellerInfo-D6Z9YqHV.js",
+        "assets/src-content-index.ts-BIO5ATfg.js"
       ],
       "use_dynamic_url": false
     }

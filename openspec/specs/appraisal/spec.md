@@ -73,7 +73,7 @@ The same JPEG under the same show type SHALL reuse the identification for about 
 - **THEN** the model is not called again for that identification
 
 ### Requirement: Quick melt
-Before the frame returns, a listing line with a known series or an explicit ounce weight SHALL produce a melt floor from spot metal prices. Fetching that spot price SHALL NOT delay sending the frame to the model. Spot SHALL come from gold-api.com, with a short session cache. Plated, filled, and similar stamps SHALL have no melt. A failed spot fetch with no cache SHALL leave melt empty. The quick read SHALL NOT call PCGS.
+Before the frame returns, a listing line with a known series or an explicit ounce weight SHALL produce a melt floor from spot metal prices. Fractional weights (including `1/10th oz`, `1/4th oz`, `1/2nd oz`, `.10 oz`, `0.25 oz`, `tenth oz`, `quarter oz`, and `half oz`) SHALL use that fraction, SHALL NOT match a 1 oz bullion pattern, and SHALL cap `fine_weight_oz`. Spot SHALL come from gold-api.com without delaying the model call. Plated or filled stamps SHALL have no melt, and quick read SHALL NOT call PCGS.
 
 #### Scenario: Spot price is slow
 - **WHEN** the listing has a metal weight and the spot price has not come back yet
@@ -86,6 +86,10 @@ Before the frame returns, a listing line with a known series or an explicit ounc
 #### Scenario: Fractional ounce
 - **WHEN** the listing states a fraction of an ounce, such as 1/1000 oz gold
 - **THEN** melt uses that fraction of an ounce, not the number after the slash
+
+#### Scenario: Ordinal fractional gold eagle
+- **WHEN** the listing is "1/10th oz gold eagle ms70 2022" and gold spot is $4,130
+- **THEN** quick melt uses 0.1 oz ($413) rather than a full 1 oz Gold Eagle ($4,130), and a model answer of 1 oz is capped at 0.1 oz
 
 ### Requirement: Automatic appraisal and flea scan
 Automatic appraisal SHALL run for each new auction only when that overlay preference is on. A flea-market table scan SHALL run only when scan is on, which defaults to on for a flea show type. The scan SHALL list other visible items and SHALL NOT change the main max bid.
@@ -232,3 +236,14 @@ When a stated piece count exists and the model counted one piece, the market val
 #### Scenario: Nothing stated
 - **WHEN** no piece count is stated and the model counts 3
 - **THEN** the value uses 3
+
+### Requirement: Background local Ollama routing
+When an Ollama URL and model are configured with Ollama-only unchecked, foreground live appraisals SHALL try on-device AI and the preferred cloud provider first with Ollama as the five-second hedge, while background AI tasks SHALL try the local Ollama server first. On wheel, camera, and table-scan tasks, an Ollama failure SHALL fall back to on-device and saved cloud providers without retrying Ollama. Background shop enrichment SHALL use local AI only.
+
+#### Scenario: Ollama configured with Ollama-only unchecked on a background task
+- **WHEN** a Gemini key and a local Ollama server are both saved, Ollama-only is unchecked, and background prize valuation runs
+- **THEN** the local Ollama server is asked first and Gemini is not called when Ollama answers
+
+#### Scenario: Ollama fails on a background task
+- **WHEN** a Gemini key and a local Ollama server are both saved, Ollama-only is unchecked, and the local Ollama server fails during background prize valuation
+- **THEN** the request falls back to on-device AI or Gemini without retrying Ollama

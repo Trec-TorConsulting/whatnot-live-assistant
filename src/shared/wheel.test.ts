@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { emptyWheel, formatWheelSlots, hitSlot, parseWheelSlots, resetSpins, undoSpin, wheelOdds, type WheelState } from './wheel';
+import {
+  emptyWheel,
+  extractFloorsFromNotes,
+  formatWheelSlots,
+  hitSlot,
+  isFloorSlot,
+  parseWheelSlots,
+  resetSpins,
+  undoSpin,
+  wheelOdds,
+  type WheelState,
+} from './wheel';
 
 const wheel = (text: string, price: number | null): WheelState => ({ ...emptyWheel('show1', 0), price, slots: parseWheelSlots(text) });
 
@@ -67,6 +78,36 @@ describe('wheelOdds', () => {
   it('is unclear without a price and empty when no spots are left', () => {
     expect(wheelOdds(wheel('Eagle $40', null)).verdict).toBe('unclear');
     expect(wheelOdds(hitSlot(wheel('Eagle $40', 10), 0)).verdict).toBe('empty');
+  });
+
+  it('handles multi floors with different values and combines them in floor odds', () => {
+    const odds = wheelOdds(
+      wheel('Wheat cent (floor) 5x $0.15\nBuffalo nickel (floor) 4x $0.75\nBoard pick hit $50', 10),
+    );
+    expect(odds.floor).toMatchObject({
+      label: 'Wheat cent (floor), Buffalo nickel (floor)',
+      value: 0.15,
+      valueHigh: 0.75,
+      left: 9,
+      chance: 0.9,
+    });
+    expect(odds.top).toMatchObject({
+      label: 'Board pick hit',
+      value: 50,
+      left: 1,
+      chance: 0.1,
+    });
+  });
+
+  it('extracts multi floors from game show notes and matches slots', () => {
+    const notes =
+      'Revers randomized wheels \n10 spots \nYou either get a wheat cent, buffalo nickel or the hit\nWhoever gets the hit gets to pick a item off the board \n\nPlay responsibly and no refunds thank you ';
+    const floors = extractFloorsFromNotes(notes);
+    expect(floors).toEqual(['wheat cent', 'buffalo nickel']);
+    expect(isFloorSlot('Wheat Cent', floors)).toBe(true);
+    expect(isFloorSlot('Wheat Penny', floors)).toBe(true);
+    expect(isFloorSlot('1936 Buffalo Nickel', floors)).toBe(true);
+    expect(isFloorSlot('Board pick hit', floors)).toBe(false);
   });
 });
 

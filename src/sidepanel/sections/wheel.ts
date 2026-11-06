@@ -117,8 +117,16 @@ const verdictLine = (o: WheelOdds, price: number | null, priceLabel = 'the price
 
 const verdictClass = (o: WheelOdds) => (o.verdict === 'worth' ? 'good small' : o.verdict === 'not_worth' ? 'bad-text small' : 'muted small');
 
+const endPriceText = (e: WheelEnd) => {
+  if (e.value === null) return 'no value yet';
+  if (e.valueHigh && e.valueHigh !== e.value) {
+    return `${formatMoney(e.value)}–${formatMoney(e.valueHigh)}`;
+  }
+  return formatMoney(e.value);
+};
+
 const endText = (e: WheelEnd) =>
-  [e.label, e.value !== null ? formatMoney(e.value) : 'no value yet', `${e.left} left`, `${pct(e.chance)} chance`, hitOutcome(e.loss)].filter(Boolean).join(' · ');
+  [e.label, endPriceText(e), `${e.left} left`, `${pct(e.chance)} chance`, hitOutcome(e.loss)].filter(Boolean).join(' · ');
 
 const endLines = (o: WheelOdds) => {
   const lines: HTMLElement[] = [];
@@ -182,7 +190,7 @@ const bidAdvice = (b: BreakSnapshot, o: WheelOdds, prizes: StatPrize[], price: n
       lines.push(
         div(
           'muted small',
-          `Getting there means hitting the floor: ${o.floor.label} (${formatMoney(o.floor.value)}, ${pct(o.floor.chance)} of the spots).`,
+          `Getting there means hitting the floor: ${o.floor.label} (${endPriceText(o.floor)}, ${pct(o.floor.chance)} of the spots).`,
         ),
       );
     }

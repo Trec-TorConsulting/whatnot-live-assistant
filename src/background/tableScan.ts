@@ -22,8 +22,10 @@ export const scanTable = async ({ image, mainItem, ...context }: AppraisalContex
   const now = Date.now();
   const items = await Promise.all(
     parseTableAnswer(answer.text, mainItem).map(async (row): Promise<TableItem> => {
-      const real = await realPrice(row.name, sold, now);
-      return real ? { ...row, low: real.low, high: real.high ?? real.low, source: real.source } : { ...row, source: 'ai' };
+      const real = !row.warning ? await realPrice(row.name, sold, now) : null;
+      return real
+        ? { ...row, low: real.low, high: real.high ?? real.low, source: real.source }
+        : { ...row, source: 'ai' };
     }),
   );
   return { ok: true, items: items.sort((a, b) => b.low - a.low), model: answer.model };

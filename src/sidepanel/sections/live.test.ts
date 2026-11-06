@@ -17,6 +17,7 @@ const markup = `
   <div id="runner-card" hidden><div id="runner-ladder"></div><div id="runner-quote"></div><div id="runner-ship"></div></div>
   <div id="casepack-card" hidden><div id="casepack-line"></div><div id="casepack-conflict"></div><div id="casepack-sizerun"></div><div id="casepack-claims"></div><div id="casepack-breakeven"></div><div id="casepack-rules"></div><div id="casepack-currency"></div><div id="casepack-runs"></div></div>
   <button id="live-appraise" type="button"></button>
+  <button id="live-table-scan" type="button"></button>
   <input id="overlay-show" type="checkbox" />
   <button id="overlay-reset" type="button"></button>
   <input id="overlay-auto" type="checkbox" />
@@ -189,6 +190,26 @@ describe('live shop rendering and filter cycling', () => {
     expect(sentMessages[2]?.message).toEqual({
       type: 'SHOP_FILTER',
       payload: { mode: 'all' },
+    });
+
+    // Test clicking Appraise button on shop item
+    const appraiseShopBtn = hitsList.querySelector<HTMLButtonElement>('button')!;
+    expect(appraiseShopBtn).not.toBeNull();
+    expect(appraiseShopBtn.textContent).toBe('Appraise');
+    appraiseShopBtn.click();
+    expect(sentMessages).toHaveLength(4);
+    expect(sentMessages[3]?.message).toEqual({
+      type: 'SHOP_APPRAISE',
+      payload: { id: 'h1' },
+    });
+
+    // Test clicking live-table-scan button
+    const tableScanBtn = document.querySelector<HTMLButtonElement>('#live-table-scan')!;
+    tableScanBtn.click();
+    expect(sentMessages).toHaveLength(5);
+    expect(sentMessages[4]?.message).toEqual({
+      type: 'TABLE_SCAN_NOW',
+      payload: {},
     });
   });
 });

@@ -34,11 +34,21 @@ export const buildEbayQuery = (item: Partial<AppraisalItem>): string => {
     .replace(/\b(lot\s*#?\d+|ltd|rare|must\s*see|look|wow)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const yearStr = typeof item.year === 'number' && item.year > 0 ? String(item.year) : '';
+  const hasYear = Boolean(yearStr && new RegExp(`\\b${yearStr}\\b`).test(cleanName));
+
+  const mint = item.mint_mark ? String(item.mint_mark).trim() : '';
+  const hasMint = Boolean(mint && new RegExp(`(?:\\b|[-_/])${mint}\\b`, 'i').test(cleanName));
+
+  const grade = item.grade ? String(item.grade).trim() : '';
+  const hasGrade = Boolean(grade && new RegExp(`\\b${grade.replace(/\s+/g, '\\s*')}\\b`, 'i').test(cleanName));
+
   const parts = [
-    typeof item.year === 'number' ? item.year : '',
-    item.mint_mark ? item.mint_mark : '',
+    !hasYear ? yearStr : '',
+    !hasMint ? mint : '',
     cleanName,
-    item.grade ? item.grade : '',
+    !hasGrade ? grade : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -63,13 +73,14 @@ export const parseEbaySoldHtml = (html: string): SoldComp[] => {
     // Ignore headers like "Shop on eBay"
     if (/s-item__title--tag/i.test(block) && /Shop on eBay/i.test(block)) continue;
 
-    // Extract title
-    const titleMatch = block.match(/<(?:span|h3)[^>]*class="[^"]*s-item__title[^"]*"[^>]*>(?:<span[^>]*role="heading"[^>]*>)?([^<]+)/i);
-    const title = titleMatch ? titleMatch[1]!.trim() : '';
+    // Extract title (supports span, h3, or div with s-item__title, stripping child tags)
+    const titleBlockMatch = block.match(/<(?:span|h3|div)[^>]*class="[^"]*s-item__title[^"]*"[^>]*>([\s\S]*?)<\/(?:span|h3|div)>/i);
+    const rawTitle = titleBlockMatch ? titleBlockMatch[1]!.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    const title = rawTitle.replace(/^(?:new listing\s*|shop on ebay\s*)/i, '').trim();
     if (!title || SKIP_WORDS.test(title)) continue;
 
-    // Extract sold price
-    const priceMatch = block.match(/<span[^>]*class="[^"]*s-item__price[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+    // Extract sold price (supports span or div with s-item__price)
+    const priceMatch = block.match(/<(?:span|div)[^>]*class="[^"]*s-item__price[^"]*"[^>]*>([\s\S]*?)<\/(?:span|div)>/i);
     const rawPrice = priceMatch ? priceMatch[1]!.replace(/<[^>]+>/g, '').trim() : '';
     const cleanPrice = rawPrice.split('to')[0]!.trim(); // Handle range "$10.00 to $15.00"
     const price = money(cleanPrice);
@@ -92,38 +103,23 @@ export const ebaySoldLookup = async (item: Partial<AppraisalItem>): Promise<RefP
     const res = await fetchWithTimeout(
       url,
       {
+        credentials: 'include',
         headers: {
-          Accept: 'text/html,application/xhtml+xml',
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
       },
       TIMEOUT_MS,
     );
 
     if (!res.ok) {
-      return {
-        source: 'ebay',
-        kind: 'listed',
-        value: null,
-        name: `eBay sold: ${query}`,
-        detail: 'Completed sales search',
-        link: url,
-      };
+      return null;
     }
 
     const html = await res.text();
     const comps = parseEbaySoldHtml(html);
 
     if (!comps.length) {
-      return {
-        source: 'ebay',
-        kind: 'listed',
-        value: null,
-        name: `eBay sold: ${query}`,
-        detail: 'Search recent sold comps',
-        link: url,
-      };
+      return null;
     }
 
     const prices = comps.map((c) => c.price);
@@ -141,13 +137,6 @@ export const ebaySoldLookup = async (item: Partial<AppraisalItem>): Promise<RefP
       link: url,
     };
   } catch {
-    return {
-      source: 'ebay',
-      kind: 'listed',
-      value: null,
-      name: `eBay sold: ${query}`,
-      detail: 'Search recent sold comps',
-      link: url,
-    };
+    return null;
   }
 };

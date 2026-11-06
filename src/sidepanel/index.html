@@ -29,7 +29,10 @@
     <section class="card">
       <div class="row between">
         <h2 id="live-title">No live show</h2>
-        <button id="live-appraise" class="primary small" type="button">Appraise</button>
+        <div class="tool-row">
+          <button id="live-appraise" class="primary small" type="button">Appraise</button>
+          <button id="live-table-scan" class="secondary small" type="button" title="Scan table for top valuable items (Alt+Shift+T)">Scan Table</button>
+        </div>
       </div>
       <div id="live-meta" class="muted small">Open a Whatnot live show in the active tab.</div>
       <div id="live-lot" class="lot" hidden></div>
@@ -559,7 +562,7 @@
         <button id="gemini-usage-reset" class="secondary" type="button" hidden>Reset count</button>
       </div>
       <p id="sold-count" class="muted small"></p>
-      <p class="muted small">Shortcut: Alt+Shift+V appraises the item on the active show.</p>
+      <p class="muted small">Shortcuts: Alt+Shift+V appraises the active lot; Alt+Shift+T scans the whole table.</p>
     </section>
 
     <section class="card">

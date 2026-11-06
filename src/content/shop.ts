@@ -24,6 +24,7 @@ import {
   shopMelt,
   shopSummary,
   shopWorthLine,
+  type ListingAppraisal,
   type ShopAiEstimate,
   type ShopFilterMode,
   type ShopHit,
@@ -63,6 +64,7 @@ let dismissedIds = new Set<string>();
 let filterMode: ShopFilterMode = 'all';
 let worthCache = new Map<string, string>();
 let refCache = new Map<string, RefPrice[]>();
+let sessionAppraisals = new Map<string, ListingAppraisal>();
 let aiCache: ShopAiEstimate[] = [];
 let seenCursor = new Set<string>();
 let pages = 0;
@@ -169,6 +171,7 @@ const viewOf = (scan: ShopScan): ShopView => ({
     label: hitLabel(h),
     text: `${h.title} — ${formatMoney(h.price)}. ${h.reason}`,
     onWishlist: h.onWishlist,
+    appraisal: sessionAppraisals.get(h.id) ?? h.appraisal,
   })),
   ...(scan.perPieceRows?.length ? { perPieceRows: scan.perPieceRows.map((r) => `${r.title} — ${r.label}`) } : {}),
   filter: scan.filter ?? 'all',
@@ -195,10 +198,14 @@ const publishCurrent = (isScanning = false) => {
     status: isScanning ? 'scanning' : 'ready',
     binCount: listings.length,
     auctionCount,
-    hits: visible,
+    hits: visible.map((h) => ({
+      ...h,
+      appraisal: sessionAppraisals.get(h.id) ?? h.appraisal,
+    })),
     ...(currentPerPieceRows.length ? { perPieceRows: currentPerPieceRows } : {}),
     filter: filterMode,
     ...(coupons?.length ? { coupons } : {}),
+    appraisals: Object.fromEntries(sessionAppraisals.entries()),
   };
   publishShop(scan);
   overlay.setShop(viewOf(scan));
@@ -683,9 +690,28 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
     filterMode = 'all';
     worthCache = new Map();
     refCache = new Map();
+    sessionAppraisals = new Map();
     aiCache = [];
     pending = [];
     gen += 1;
     clearTimeout(timer);
     overlay.setShop(null);
+  };
+
+  export const appraiseShopListing = async (id: string): Promise<ListingAppraisal | null> => {
+    if (sessionAppraisals.has(id)) return sessionAppraisals.get(id)!;
+    const listing = listings.find((l) => l.id === id);
+    if (!listing) return null;
+    const res = await send('APPRAISE_SHOP_LISTING', {
+      id: listing.id,
+      title: listing.title,
+      subtitle: listing.subtitle,
+      price: listing.price,
+    }).catch(() => null);
+    if (res?.ok && res.appraisal) {
+      sessionAppraisals.set(id, res.appraisal);
+      publishCurrent();
+      return res.appraisal;
+    }
+    return null;
   };

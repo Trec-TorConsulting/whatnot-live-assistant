@@ -5,10 +5,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Whatnot Assistant</title>
-  <script type="module" crossorigin src="/assets/index.html-CkV8hXQH.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/shop-uSCyEsNw.js">
-  <link rel="modulepreload" crossorigin href="/assets/types-BA0-yXCA.js">
-  <link rel="modulepreload" crossorigin href="/assets/wheel-CKjcn1cW.js">
+  <script type="module" crossorigin src="/assets/index.html-BZ7D6-Df.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/shop-Dzq1fFky.js">
+  <link rel="modulepreload" crossorigin href="/assets/types-B0YWook9.js">
+  <link rel="modulepreload" crossorigin href="/assets/sellerInfo-D6Z9YqHV.js">
   <link rel="stylesheet" crossorigin href="/assets/index-DMe-nGJk.css">
 </head>
 
@@ -33,7 +33,10 @@
     <section class="card">
       <div class="row between">
         <h2 id="live-title">No live show</h2>
-        <button id="live-appraise" class="primary small" type="button">Appraise</button>
+        <div class="tool-row">
+          <button id="live-appraise" class="primary small" type="button">Appraise</button>
+          <button id="live-table-scan" class="secondary small" type="button" title="Scan table for top valuable items (Alt+Shift+T)">Scan Table</button>
+        </div>
       </div>
       <div id="live-meta" class="muted small">Open a Whatnot live show in the active tab.</div>
       <div id="live-lot" class="lot" hidden></div>
@@ -563,7 +566,7 @@
         <button id="gemini-usage-reset" class="secondary" type="button" hidden>Reset count</button>
       </div>
       <p id="sold-count" class="muted small"></p>
-      <p class="muted small">Shortcut: Alt+Shift+V appraises the item on the active show.</p>
+      <p class="muted small">Shortcuts: Alt+Shift+V appraises the active lot; Alt+Shift+T scans the whole table.</p>
     </section>
 
     <section class="card">

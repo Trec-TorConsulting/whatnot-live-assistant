@@ -54,4 +54,38 @@ describe('parseTableAnswer', () => {
     expect(parseTableAnswer('not json', '')).toEqual([]);
     expect(parseTableAnswer('{"items": 3}', '')).toEqual([]);
   });
+
+  it('detects and preserves replica or trap warnings', () => {
+    const text = JSON.stringify({
+      items: [
+        {
+          name: '1896 $5 Educational Series Print',
+          quantity: 1,
+          where: 'background center',
+          low: 25,
+          high: 40,
+          warning: 'BEP souvenir card replica, not genuine currency',
+        },
+        {
+          name: '100 Mills Gold Clad Bar',
+          quantity: 1,
+          where: 'front tray',
+          low: 10,
+          high: 20,
+        },
+        {
+          name: '1 Kilo Poured Silver Skull',
+          quantity: 1,
+          where: 'bottom right',
+          low: 950,
+          high: 1100,
+        },
+      ],
+    });
+    const parsed = parseTableAnswer(text, '');
+    expect(parsed).toHaveLength(3);
+    expect(parsed[0]?.warning).toBe('BEP souvenir card replica, not genuine currency');
+    expect(parsed[1]?.warning).toBe('Clad/plated novelty, not solid bullion');
+    expect(parsed[2]?.warning).toBeUndefined();
+  });
 });

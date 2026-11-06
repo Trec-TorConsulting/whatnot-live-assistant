@@ -21,7 +21,7 @@ import { collectionLine, compareToCollection, type CollectionSettings } from '..
 import { getAppraisalSettings, getCollection, getGuardSettings, getItem } from '../shared/storage';
 import { MINUTE } from '../shared/time';
 import { emptyIdleScanGate, isIdleScanResultCurrent, runnerPassOn, stepIdleScanGate } from '../shared/runner';
-import { appraisalView, idleTableView, listingView, messageView } from './appraisalView';
+import { appraisalView, idleTableView, listingView, messageView, tableScanView } from './appraisalView';
 import { refreshEstate } from './estate';
 import { isShareWorker, liveSession, rememberElectronicsName, rememberEstateName } from './live';
 import { overlay, type AppraisalView } from './overlay';
@@ -577,4 +577,40 @@ export const appraiseNow = async ({ auto = false } = {}) => {
   } finally {
     if (busyGen === gen) busyGen = null;
   }
+};
+
+export const appraiseTableNow = async () => {
+  if (!contextAlive()) {
+    overlay.setAppraisal(messageView('error', 'Extension updated', [STALE_CONTEXT]), true);
+    return;
+  }
+  const video = findStreamVideo();
+  if (!video) {
+    overlay.setAppraisal(messageView('error', 'No video found', ['Open an active livestream to scan the table.']), true);
+    return;
+  }
+  const settings = await getAppraisalSettings();
+  const image = captureFrame(video, settings.ollamaOnly ? OLLAMA_FRAME_PX : FRAME_PX);
+  if (!image) {
+    overlay.setAppraisal(messageView('error', 'Frame capture failed', ["Couldn't capture the stream video frame."]), true);
+    return;
+  }
+  overlay.setAppraisal(messageView('pending', 'Scanning Table…', [], 'Scanning visible table and shelves for top items…'), true);
+  const session = liveSession();
+  const notes = session?.show.note?.text ?? null;
+  const res = await send('TABLE_SCAN', {
+    pageText: '',
+    showTitle: session?.show.title ?? (document.title.split(' · ')[0] || ''),
+    lotTitle: null,
+    categories: session?.show.categories ?? [],
+    showType: currentShowType(),
+    showNotes: notes,
+    image,
+    mainItem: '',
+  }).catch((err: Error) => ({ ok: false as const, error: err.message }));
+  if (!res.ok) {
+    overlay.setAppraisal(messageView('error', 'Table scan failed', [res.error || 'Could not scan table.']), true);
+    return;
+  }
+  overlay.setAppraisal(tableScanView(res.items, true), true);
 };

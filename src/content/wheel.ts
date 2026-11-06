@@ -77,7 +77,15 @@ export const wheelView = (
         ]
       : [];
   const age = now - b.fetchedAt;
-  const endValue = (e: WheelEnd) => `${e.value !== null ? formatMoney(e.value) : 'no value yet'} · ${pct(e.chance)} chance`;
+  const endValue = (e: WheelEnd) => {
+    const val =
+      e.value !== null
+        ? e.valueHigh && e.valueHigh !== e.value
+          ? `${formatMoney(e.value)}–${formatMoney(e.valueHigh)}`
+          : formatMoney(e.value)
+        : 'no value yet';
+    return `${val} · ${pct(e.chance)} chance`;
+  };
   const endDetail = (e: WheelEnd) => [e.label, `${e.left} left`, hitOutcome(e.loss)].filter(Boolean).join(' · ');
 
   return {

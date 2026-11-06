@@ -305,18 +305,37 @@ describe('overlay', () => {
           kind: 'deal',
           label: 'Deal',
           text: '1921 Morgan Dollar — $25. Watchlist',
+          onWishlist: true,
         },
       ],
     });
     const text = shadow().textContent ?? '';
     expect(text).toContain('[1 left]');
     expect(text).toContain('[4 in stock]');
+    expect(text).toContain('[Wishlist]');
     shadow().querySelector<HTMLElement>('[data-action="shop-focus"]')!.click();
     expect(focused).toEqual(['1 oz silver round']);
     shadow().querySelector<HTMLElement>('[data-action="shop-dismiss"]')!.click();
     expect(dismissed).toEqual(['r1']);
-    shadow().querySelector<HTMLElement>('[data-action="shop-filter"]')!.click();
+    const filterBtn = shadow().querySelector<HTMLElement>('[data-action="shop-filter"]')!;
+    filterBtn.click();
     expect(filters).toEqual(['bin']);
+    overlay.setShop({
+      summary: 'Checked 6 shop items.',
+      hasAuctions: true,
+      filter: 'bin',
+      hits: [],
+    });
+    shadow().querySelector<HTMLElement>('[data-action="shop-filter"]')!.click();
+    expect(filters).toEqual(['bin', 'wishlist']);
+    overlay.setShop({
+      summary: 'Checked 6 shop items.',
+      hasAuctions: true,
+      filter: 'wishlist',
+      hits: [],
+    });
+    shadow().querySelector<HTMLElement>('[data-action="shop-filter"]')!.click();
+    expect(filters).toEqual(['bin', 'wishlist', 'all']);
     shadow().querySelector<HTMLElement>('[data-action="shop-rescan"]')!.click();
     expect(rescanned).toBe(1);
     overlay.setShop(null);

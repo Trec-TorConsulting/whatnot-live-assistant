@@ -11,8 +11,15 @@ export interface WatchItem {
   text: string;
 }
 
+export interface WishlistItem {
+  keywords: string[];
+  max: number | null;
+  text: string;
+}
+
 export interface BuyerSettings {
   watchlist: WatchItem[];
+  wishlist: WishlistItem[];
   outbid: boolean;
   lastSeconds: number;
   mentions: boolean;
@@ -36,6 +43,7 @@ export const DEFAULT_CHAT_TEMPLATES = [
 
 export const DEFAULT_BUYER_SETTINGS: BuyerSettings = {
   watchlist: [],
+  wishlist: [],
   outbid: true,
   lastSeconds: 5,
   mentions: true,
@@ -90,6 +98,34 @@ export const matchWatch = (title: string | null, list: WatchItem[]): WatchItem |
   return best;
 };
 
+// Wishlist: Buy-It-Now and shop inventory tracking with optional price ceiling.
+export const parseWishLine = (line: string): WishlistItem | null => {
+  const item = parseWatchLine(line);
+  if (!item) return null;
+  return { keywords: item.words, max: item.max, text: item.text };
+};
+
+export const parseWishlist = (text: string): WishlistItem[] =>
+  text
+    .split('\n')
+    .map(parseWishLine)
+    .filter((x): x is WishlistItem => Boolean(x))
+    .slice(0, MAX_WATCH);
+
+export const wishLine = (w: WishlistItem) => w.text;
+
+export const matchWishlist = (text: string | null, list: WishlistItem[]): WishlistItem | null => {
+  if (!text) return null;
+  const have = tokenSet(text);
+  let best: WishlistItem | null = null;
+  for (const w of list) {
+    if (w.keywords.every((x) => have.has(x)) && (!best || w.keywords.length > best.keywords.length)) {
+      best = w;
+    }
+  }
+  return best;
+};
+
 const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
 
@@ -100,11 +136,15 @@ export const sanitizeBuyerSettings = (input: unknown): BuyerSettings => {
   const watchlist = Array.isArray(s.watchlist)
     ? s.watchlist.map((w) => parseWatchLine(String((w as WatchItem)?.text ?? ''))).filter((w): w is WatchItem => Boolean(w)).slice(0, MAX_WATCH)
     : d.watchlist;
+  const wishlist = Array.isArray(s.wishlist)
+    ? s.wishlist.map((w) => parseWishLine(String((w as WishlistItem)?.text ?? ''))).filter((w): w is WishlistItem => Boolean(w)).slice(0, MAX_WATCH)
+    : d.wishlist;
   const templates = Array.isArray(s.chatTemplates)
     ? s.chatTemplates.map((t) => String(t).replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX)).filter(Boolean).slice(0, MAX_TEMPLATES)
     : d.chatTemplates;
   return {
     watchlist,
+    wishlist,
     outbid: bool(s.outbid, d.outbid),
     lastSeconds: clampInt(s.lastSeconds, 0, 30, d.lastSeconds),
     mentions: bool(s.mentions, d.mentions),

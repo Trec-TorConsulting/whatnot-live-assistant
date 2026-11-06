@@ -58,13 +58,14 @@ export interface ShopHitView {
   kind: 'steal' | 'deal' | 'must';
   label: string;
   text: string;
+  onWishlist?: boolean;
 }
 
 export interface ShopView {
   summary: string;
   hits: ShopHitView[];
   perPieceRows?: string[];
-  filter?: 'all' | 'bin';
+  filter?: 'all' | 'bin' | 'wishlist';
   hasAuctions?: boolean;
   coupons?: string[];
 }
@@ -170,7 +171,7 @@ let handlers: {
   shopRescan?: () => void;
   shopFocus?: (title: string) => void;
   shopDismiss?: (id: string) => void;
-  shopFilter?: (mode: 'all' | 'bin') => void;
+  shopFilter?: (mode: 'all' | 'bin' | 'wishlist') => void;
 } = {};
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let prefs: OverlayPrefs = DEFAULT_OVERLAY_PREFS;
@@ -311,7 +312,7 @@ const ensure = () => {
       const id = (e.target as HTMLElement).closest<HTMLElement>('[data-id]')?.dataset.id;
       if (id) handlers.shopDismiss?.(id);
     } else if (action === 'shop-filter') {
-      const mode = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]')?.dataset.mode as 'all' | 'bin' | undefined;
+      const mode = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]')?.dataset.mode as 'all' | 'bin' | 'wishlist' | undefined;
       if (mode) handlers.shopFilter?.(mode);
     }
   });
@@ -510,17 +511,21 @@ const shopRow = (s: ShopView | null) => {
   if (!s) return '';
   const worth = s.hits.some((h) => h.kind === 'steal');
   const filterMode = s.filter ?? 'all';
-  const filterBtn = s.hasAuctions
-    ? `<button class="icon" data-action="shop-filter" data-mode="${filterMode === 'bin' ? 'all' : 'bin'}" title="Toggle between Buy-It-Now only and all shop items">${filterMode === 'bin' ? 'BIN only' : 'All'}</button>`
+  const nextMode = filterMode === 'all' ? 'bin' : filterMode === 'bin' ? 'wishlist' : 'all';
+  const filterLabel = filterMode === 'wishlist' ? 'Wishlist' : filterMode === 'bin' ? 'BIN only' : 'All';
+  const hasOptions = Boolean(s.hasAuctions || s.hits.some((h) => h.onWishlist) || filterMode !== 'all');
+  const filterBtn = hasOptions
+    ? `<button class="icon" data-action="shop-filter" data-mode="${nextMode}" title="Filter shop: All, BIN only, or Wishlist">${filterLabel}</button>`
     : '';
   const rescanBtn = `<button class="icon" data-action="shop-rescan" title="Rescan the live shop">↻</button>`;
   const items = [
     ...s.hits.map((h) => {
       const cls = h.kind === 'steal' ? 'good' : h.kind === 'deal' ? 'notice' : '';
       const stock = stockBadge(h.quantity, h.mode);
+      const wishBadge = h.onWishlist ? ' <span class="badge wishlist-badge">[Wishlist]</span>' : '';
       const body = h.title
-        ? `<span class="shop-hit" data-action="shop-focus" data-title="${esc(h.title)}" title="Click to find in Whatnot's shop"><span class="${cls}">${esc(h.label)}</span>${stock} ${esc(h.text)}</span>`
-        : `<span class="${cls}">${esc(h.label)}</span>${stock} ${esc(h.text)}`;
+        ? `<span class="shop-hit" data-action="shop-focus" data-title="${esc(h.title)}" title="Click to find in Whatnot's shop"><span class="${cls}">${esc(h.label)}</span>${wishBadge}${stock} ${esc(h.text)}</span>`
+        : `<span class="${cls}">${esc(h.label)}</span>${wishBadge}${stock} ${esc(h.text)}`;
       const dismiss = h.id
         ? ` <button class="icon shop-dismiss" data-action="shop-dismiss" data-id="${esc(h.id)}" title="Dismiss this item">×</button>`
         : '';

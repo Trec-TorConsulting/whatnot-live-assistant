@@ -17,7 +17,7 @@ import {
   missingAccessory,
 } from './electronics';
 import { isTemplate } from './estate';
-import { matchWatch, type WatchItem } from './buyer';
+import { matchWatch, matchWishlist, type WatchItem, type WishlistItem } from './buyer';
 import { keyDateCallouts, keyDatePrice } from './keyDates';
 import { formatMoney, moneyCurrency } from './money';
 import { prizeMelt } from './prizeValue';
@@ -38,7 +38,7 @@ export interface ShopListing {
 }
 
 export type ShopHitKind = 'steal' | 'deal' | 'must';
-export type ShopFilterMode = 'all' | 'bin';
+export type ShopFilterMode = 'all' | 'bin' | 'wishlist';
 
 export interface ShopHit {
   id: string;
@@ -48,6 +48,8 @@ export interface ShopHit {
   kind: ShopHitKind;
   reason: string;
   mode?: 'bin' | 'auction';
+  onWishlist?: boolean;
+  wishlistCeiling?: number | null;
 }
 
 export interface ShopScan {
@@ -333,6 +335,7 @@ export const shopCursor = (body: unknown): string | null => {
     sold: SoldItem[];
     showType?: ShowType;
     watchlist: WatchItem[];
+    wishlist?: WishlistItem[];
     maxBidPercent: number;
     meltOf: (listing: ShopListing) => number | null;
     now: number;
@@ -374,6 +377,7 @@ export const shopCursor = (body: unknown): string | null => {
       sold,
       showType,
       watchlist,
+      wishlist,
       maxBidPercent,
       meltOf,
       now,
@@ -420,7 +424,11 @@ export const shopCursor = (body: unknown): string | null => {
         const comps = summarizeComps(findComps(compQueries, sold, now, 8, showType));
         const median = comps && comps.count >= 2 ? comps.median : null;
         const melt = meltOf(item);
+        const isBin = (item.mode ?? 'bin') === 'bin';
         const watch = matchWatch(item.title, watchlist) ?? (item.subtitle ? matchWatch(fullText, watchlist) : null);
+        const wish = isBin && wishlist?.length
+          ? (matchWishlist(item.title, wishlist) ?? (item.subtitle ? matchWishlist(fullText, wishlist) : null))
+          : null;
         const keys = keyDateCallouts({ text: fullText }).filter((c) => c.kind !== 'check');
 
         const owed = hasCostContext
@@ -439,6 +447,7 @@ export const shopCursor = (body: unknown): string | null => {
         const max = median !== null ? (median * maxBidPercent) / 100 : null;
         const dealComps = !parts && max !== null && landedPrice <= max && !stealComps;
         const watchDeal = !parts && watch?.max != null && landedPrice <= watch.max;
+        const wishDeal = !parts && wish?.max != null && landedPrice <= wish.max;
         const pricedFair = median !== null && landedPrice > median;
         const keyMust = keys.length > 0 && !pricedFair;
 
@@ -450,8 +459,8 @@ export const shopCursor = (body: unknown): string | null => {
 
         let kind: ShopHitKind | null = null;
         if (underMelt || stealComps) kind = 'steal';
-        else if (dealComps || watchDeal) kind = 'deal';
-        else if ((watch && watch.max == null) || keyMust || setNeeded) kind = 'must';
+        else if (dealComps || watchDeal || wishDeal) kind = 'deal';
+        else if ((watch && watch.max == null) || (wish && (wish.max == null || landedPrice > wish.max)) || keyMust || setNeeded) kind = 'must';
         if (!kind) continue;
 
         const notes: string[] = [];
@@ -466,9 +475,14 @@ export const shopCursor = (body: unknown): string | null => {
         if (kind === 'deal' && dealComps && max !== null && comps) {
           notes.push(`Under your max ${formatMoney(max)} (${comps.count} sales around ${formatMoney(median)})`);
         }
-        if (watch?.max != null && landedPrice <= watch.max && kind !== 'steal') {
+        if (wish?.max != null && landedPrice <= wish.max && kind !== 'steal') {
+          notes.push(`Under wishlist max ${formatMoney(wish.max)}`);
+        } else if (wish) {
+          notes.push('On your wishlist');
+        }
+        if (watch?.max != null && landedPrice <= watch.max && kind !== 'steal' && !wishDeal) {
           notes.push(`At your watchlist max ${formatMoney(watch.max)}`);
-        } else if (watch) {
+        } else if (watch && !wish) {
           notes.push('On your watchlist');
         }
         if (keys[0] && (kind === 'must' || kind === 'steal' || kind === 'deal')) notes.push(keys[0].text);
@@ -503,6 +517,7 @@ export const shopCursor = (body: unknown): string | null => {
           notes.push(`Coupon ${coupons[0]}`);
         }
 
+        const edgeRef = reference > 0 ? (reference - landedPrice) / reference : (wish?.max != null && landedPrice < wish.max ? (wish.max - landedPrice) / wish.max : 0);
         hits.push({
           id: item.id,
           title: item.title,
@@ -511,11 +526,19 @@ export const shopCursor = (body: unknown): string | null => {
           kind,
           mode: item.mode ?? 'bin',
           reason: notes.filter((n, i) => notes.indexOf(n) === i).join('. '),
-          edge: reference > 0 ? (reference - landedPrice) / reference : 0,
+          edge: edgeRef,
+          onWishlist: Boolean(wish),
+          wishlistCeiling: wish?.max ?? null,
         });
       }
       return hits
-        .sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || b.edge - a.edge || a.price - b.price)
+        .sort(
+          (a, b) =>
+            KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
+            (b.onWishlist ? 1 : 0) - (a.onWishlist ? 1 : 0) ||
+            b.edge - a.edge ||
+            a.price - b.price,
+        )
         .slice(0, Math.max(1, limit))
         .map(({ edge: _edge, ...hit }) => hit);
     };

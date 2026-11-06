@@ -4,15 +4,19 @@ import {
   BidTracker,
   askSeller,
   matchWatch,
+  matchWishlist,
   mentionsUser,
   parseWatchlist,
   parseWatchLine,
+  parseWishlist,
+  parseWishLine,
   periodStarts,
   sanitizeBuyerSettings,
   sanitizeSellerNotes,
   sellerHistory,
   sellerLine,
   spentByPeriod,
+  wishLine,
 } from './buyer';
 import type { Purchase } from './purchases';
 import { DAY } from './time';
@@ -52,12 +56,50 @@ describe('watchlist', () => {
   });
 
   it('survives a round trip through storage', () => {
-    const s = sanitizeBuyerSettings({ watchlist: parseWatchlist('1921 morgan $45'), lastSeconds: 99, tiltLosses: -3, chatTemplates: ['  hi  ', ''] });
+    const s = sanitizeBuyerSettings({ watchlist: parseWatchlist('1921 morgan $45'), wishlist: parseWishlist('charizard base $120\n1881-s morgan $45'), lastSeconds: 99, tiltLosses: -3, chatTemplates: ['  hi  ', ''] });
     expect(s.watchlist[0]!.max).toBe(45);
+    expect(s.wishlist).toHaveLength(2);
+    expect(s.wishlist[0]).toEqual({ keywords: ['charizard', 'base'], max: 120, text: 'charizard base $120' });
+    expect(s.wishlist[1]!.max).toBe(45);
     expect(s.lastSeconds).toBe(30);
     expect(s.tiltLosses).toBe(0);
     expect(s.chatTemplates).toEqual(['hi']);
     expect(sanitizeBuyerSettings(undefined).outbid).toBe(true);
+    expect(sanitizeBuyerSettings(undefined).wishlist).toEqual([]);
+  });
+});
+
+describe('wishlist', () => {
+  it('reads keywords and an optional price ceiling from each line', () => {
+    expect(parseWishLine('charizard base holo')).toEqual({
+      keywords: ['charizard', 'base', 'holo'],
+      max: null,
+      text: 'charizard base holo',
+    });
+    expect(parseWishLine('milwaukee m18 fuel $120')).toEqual({
+      keywords: ['milwaukee', 'm18', 'fuel'],
+      max: 120,
+      text: 'milwaukee m18 fuel $120',
+    });
+    expect(parseWishLine('   $50   ')).toBeNull();
+    expect(parseWishLine('')).toBeNull();
+
+    const list = parseWishlist('1881-s morgan $45\n\ncharizard base holo\nsilver eagle 2021 $35');
+    expect(list).toHaveLength(3);
+    expect(list.map(wishLine)).toEqual([
+      '1881-s morgan $45',
+      'charizard base holo',
+      'silver eagle 2021 $35',
+    ]);
+  });
+
+  it('matches title and subtitle, preferring the most specific keyword entry', () => {
+    const list = parseWishlist('morgan\n1881-s morgan $45\ncharizard base');
+    expect(matchWishlist('1999 Pokémon Charizard Base Set Holo', list)?.text).toBe('charizard base');
+    expect(matchWishlist('1881-S Morgan Dollar', list)?.text).toBe('1881-s morgan $45');
+    expect(matchWishlist('1921 Morgan Silver Dollar', list)?.text).toBe('morgan');
+    expect(matchWishlist('Peace Dollar BU', list)).toBeNull();
+    expect(matchWishlist(null, list)).toBeNull();
   });
 });
 

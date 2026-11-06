@@ -299,7 +299,8 @@ const renderLot = () => {
 
 const shopLabel = (h: ShopHit) => {
   const kind = h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have';
-  return h.mode === 'auction' ? `Auction ${kind}` : kind;
+  const base = h.mode === 'auction' ? `Auction ${kind}` : kind;
+  return h.onWishlist ? `[Wishlist] ${base}` : base;
 };
 
 const renderEstate = () => {
@@ -387,10 +388,11 @@ const renderShop = () => {
   el.shopCard.hidden = !shop;
   if (!shop) return;
   el.shopSummary.textContent = shopSummary(shop);
-  const hasAuctions = Boolean(shop.auctionCount && shop.auctionCount > 0);
-  el.shopFilter.hidden = !hasAuctions;
-  if (hasAuctions) {
-    el.shopFilter.textContent = (shop.filter ?? 'all') === 'bin' ? 'BIN only' : 'All';
+  const filterMode = shop.filter ?? 'all';
+  const hasOptions = Boolean(shop.auctionCount && shop.auctionCount > 0) || shop.hits.some((h) => h.onWishlist) || filterMode !== 'all';
+  el.shopFilter.hidden = !hasOptions;
+  if (hasOptions) {
+    el.shopFilter.textContent = filterMode === 'wishlist' ? 'Wishlist' : filterMode === 'bin' ? 'BIN only' : 'All';
   }
   const rows = [
     ...shop.hits.map((h) => {
@@ -651,7 +653,8 @@ export const initLive = async () => {
   el.shopFilter.addEventListener('click', () => {
     if (tabId === null) return;
     const current = session?.shop?.filter ?? 'all';
-    void sendToTab(tabId, 'SHOP_FILTER', { mode: current === 'bin' ? 'all' : 'bin' }).catch(() => undefined);
+    const next = current === 'all' ? 'bin' : current === 'bin' ? 'wishlist' : 'all';
+    void sendToTab(tabId, 'SHOP_FILTER', { mode: next }).catch(() => undefined);
   });
   const showOverlayPrefs = (p: OverlayPrefs) => {
     el.overlayShow.checked = !p.hidden;

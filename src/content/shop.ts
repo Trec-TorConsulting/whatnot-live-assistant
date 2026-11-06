@@ -1,5 +1,5 @@
 // On entering a show, read its shop and surface buy-it-now steals, deals, and must-haves.
-import type { WatchItem } from '../shared/buyer';
+import { matchWishlist, type WatchItem, type WishlistItem } from '../shared/buyer';
 import { perPieceShopRows } from '../shared/casePack';
 import { parseShippingInfo, shippingRules } from '../shared/costs';
 import { toUsd } from '../shared/currency';
@@ -71,6 +71,87 @@ let noted = '';
 let gen = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending: { operation: string; body: string; at: number }[] = [];
+let sessionInventory = new Map<string, number>();
+let initialScanComplete = false;
+let audioContext: AudioContext | undefined;
+
+const beepWishlist = () => {
+  try {
+    audioContext ??= new AudioContext();
+    void audioContext.resume();
+    let t = audioContext.currentTime;
+    for (const f of [880, 1175]) {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.connect(gain).connect(audioContext.destination);
+      osc.start(t);
+      osc.stop(t + 0.15);
+      t += 0.17;
+    }
+  } catch {
+    // Autoplay blocked or unsupported
+  }
+};
+
+export interface WishlistDetectionResult {
+  kind: 'drop' | 'restock';
+  item: ShopListing;
+}
+
+export const detectWishlistDrops = (
+  incoming: ShopListing[],
+  knownInventory: Map<string, number>,
+  wishlist: WishlistItem[],
+  initialDone: boolean,
+): WishlistDetectionResult[] => {
+  if (!initialDone || !wishlist.length) return [];
+  const results: WishlistDetectionResult[] = [];
+  for (const item of incoming) {
+    if ((item.mode ?? 'bin') !== 'bin' || item.quantity <= 0) continue;
+    const fullText = item.subtitle ? `${item.title} ${item.subtitle}` : item.title;
+    const matches = matchWishlist(item.title, wishlist) ?? (item.subtitle ? matchWishlist(fullText, wishlist) : null);
+    if (!matches) continue;
+
+    const prevQty = knownInventory.get(item.id);
+    if (prevQty === undefined) {
+      results.push({ kind: 'drop', item });
+    } else if (prevQty === 0 && item.quantity > 0) {
+      results.push({ kind: 'restock', item });
+    } else if (item.quantity > prevQty) {
+      results.push({ kind: 'restock', item });
+    }
+  }
+  return results;
+};
+
+export const alertWishlistHit = (
+  item: ShopListing,
+  kind: 'drop' | 'restock',
+  sound = true,
+) => {
+  const notice =
+    kind === 'drop'
+      ? `Wishlist drop: ${item.title} at ${formatMoney(item.price)}`
+      : `Wishlist restock: ${item.title} (${item.quantity} in stock)`;
+  const detail =
+    kind === 'drop'
+      ? `Newly listed in shop at ${formatMoney(item.price)}`
+      : `Restocked in shop at ${formatMoney(item.price)}`;
+  if (sound) beepWishlist();
+  overlay.notice(notice, 8000);
+  overlay.flash();
+  if (document.hidden) {
+    void send('BUYER_ALERT', {
+      id: `wishlist:${item.id}:${Date.now()}`,
+      title: notice,
+      message: detail,
+    }).catch(() => undefined);
+  }
+};
 
 const hitLabel = (h: ShopHit) => {
   const kind = h.kind === 'steal' ? 'Steal' : h.kind === 'deal' ? 'Deal' : 'Must-have';
@@ -87,6 +168,7 @@ const viewOf = (scan: ShopScan): ShopView => ({
     kind: h.kind,
     label: hitLabel(h),
     text: `${h.title} — ${formatMoney(h.price)}. ${h.reason}`,
+    onWishlist: h.onWishlist,
   })),
   ...(scan.perPieceRows?.length ? { perPieceRows: scan.perPieceRows.map((r) => `${r.title} — ${r.label}`) } : {}),
   filter: scan.filter ?? 'all',
@@ -96,7 +178,12 @@ const viewOf = (scan: ShopScan): ShopView => ({
 
 const visibleFromPool = (pool: ShopHit[], limit = MAX_PANEL_HITS): ShopHit[] =>
   pool
-    .filter((h) => !dismissedIds.has(h.id) && (filterMode === 'bin' ? (h.mode ?? 'bin') === 'bin' : true))
+    .filter((h) => {
+      if (dismissedIds.has(h.id)) return false;
+      if (filterMode === 'bin') return (h.mode ?? 'bin') === 'bin';
+      if (filterMode === 'wishlist') return Boolean(h.onWishlist);
+      return true;
+    })
     .slice(0, limit);
 
 const publishCurrent = (isScanning = false) => {
@@ -139,6 +226,7 @@ const runFastScorePass = async (id: string, g: number) => {
   const currencyRate = session?.currency?.rate ?? null;
   const maxBidPercent = guard?.maxBidPercent ?? 80;
   const watchlist = buyer?.watchlist ?? [];
+  const wishlist = buyer?.wishlist ?? [];
   const shipInfo = parseShippingInfo(findShippingText());
   const shipping = shipInfo.shipping ?? session?.shippingQuote ?? null;
   const rules = shippingRules({
@@ -158,6 +246,7 @@ const runFastScorePass = async (id: string, g: number) => {
     sold: sold ?? [],
     showType,
     watchlist,
+    wishlist,
     maxBidPercent,
     meltOf: (item) => shopMelt(item, spot),
     now: Date.now(),
@@ -185,6 +274,18 @@ const runFastScorePass = async (id: string, g: number) => {
   publishCurrent(true);
 };
 
+const checkWishlistDrops = async (incoming: ShopListing[]) => {
+  const buyer = await getBuyerSettings().catch(() => null);
+  const wishlist = buyer?.wishlist ?? [];
+  const drops = detectWishlistDrops(incoming, sessionInventory, wishlist, initialScanComplete);
+  for (const d of drops) {
+    alertWishlistHit(d.item, d.kind, buyer?.sound ?? true);
+  }
+  for (const item of incoming) {
+    sessionInventory.set(item.id, item.quantity);
+  }
+};
+
 const ingest = (operation: string, raw: string) => {
   if (!liveId || isShareWorker()) return;
   let body: unknown;
@@ -201,6 +302,13 @@ const ingest = (operation: string, raw: string) => {
   for (const item of read.listings) {
     if (item.currency && item.currency !== 'USD' && item.usdPrice != null) {
       rememberCurrencyPair({ amount: item.price, code: item.currency, usd: item.usdPrice });
+    }
+  }
+  if (initialScanComplete) {
+    void checkWishlistDrops(read.listings);
+  } else {
+    for (const item of read.listings) {
+      sessionInventory.set(item.id, item.quantity);
     }
   }
   listings = mergeShopListings(listings, read.listings, read.removedIds);
@@ -248,6 +356,7 @@ const finish = async (g: number) => {
     const currencyRate = session?.currency?.rate ?? null;
     const maxBidPercent = guard?.maxBidPercent ?? 80;
     const watchlist = buyer?.watchlist ?? [];
+    const wishlist = buyer?.wishlist ?? [];
     const shipInfo = parseShippingInfo(findShippingText());
     const shipping = shipInfo.shipping ?? session?.shippingQuote ?? null;
     const rules = shippingRules({
@@ -267,6 +376,7 @@ const finish = async (g: number) => {
       sold: sold ?? [],
       showType,
       watchlist,
+      wishlist,
       maxBidPercent,
       meltOf: (item) => shopMelt(item, spot),
       now: Date.now(),
@@ -307,6 +417,10 @@ currentPerPieceRows =
 scoredHits = pool;
 publishCurrent();
 announce(id, visibleFromPool(scoredHits));
+initialScanComplete = true;
+for (const item of listings) {
+  sessionInventory.set(item.id, item.quantity);
+}
 
 const priced = await priceMustHaves(scoredHits, maxBidPercent, watchlist);
 if (g !== gen || liveId !== id || isShareWorker()) return;
@@ -468,6 +582,9 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
       }
       if (next !== listings) {
         listings = next;
+        for (const item of listings) {
+          sessionInventory.set(item.id, item.quantity);
+        }
         arm(200);
       }
     });
@@ -499,7 +616,7 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
   };
 
   export const setShopFilter = (mode: ShopFilterMode) => {
-    filterMode = mode === 'bin' ? 'bin' : 'all';
+    filterMode = mode === 'bin' || mode === 'wishlist' ? mode : 'all';
     publishCurrent();
   };
 
@@ -539,6 +656,8 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
     scoredHits = [];
     currentPerPieceRows = [];
     dismissedIds = new Set();
+    sessionInventory.clear();
+    initialScanComplete = false;
     filterMode = 'all';
     worthCache = new Map();
     refCache = new Map();
@@ -559,6 +678,8 @@ if (g !== gen || liveId !== id || isShareWorker()) return;
     scoredHits = [];
     currentPerPieceRows = [];
     dismissedIds = new Set();
+    sessionInventory.clear();
+    initialScanComplete = false;
     filterMode = 'all';
     worthCache = new Map();
     refCache = new Map();

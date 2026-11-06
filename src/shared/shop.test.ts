@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWatchLine } from './buyer';
+import { parseWatchLine, parseWishLine, parseWishlist } from './buyer';
 import { parseSetLine } from './collection';
 import type { RefPrice } from './refPrice';
 import { giveawayMatchesStem, giveawayShippingStems } from './runner';
@@ -281,6 +281,69 @@ describe('scoreShop', () => {
       meltOf: () => null,
     });
     expect(overMax).toEqual([]);
+  });
+
+  it('matches wishlist keywords, selecting the longest match, badging hits, and evaluating price ceilings', () => {
+    const wishlist = parseWishlist([
+      'charizard base',
+      'morgan',
+      '1881-s morgan $45',
+      'milwaukee m18 fuel $120',
+      'silver eagle 2021 $35',
+    ].join('\n'));
+
+    const items = [
+      list('1999 Pokémon Charizard Base Set Holo', 150),
+      list('1881-S Morgan Dollar BU', 40),
+      list('Milwaukee M18 FUEL Impact Driver', 99),
+      list('2021 American Silver Eagle BU', 45),
+      list('Unrelated Random Item', 20),
+    ];
+
+    const hits = score(items, { wishlist, meltOf: () => null });
+    expect(hits.map((h) => h.title)).toEqual([
+      'Milwaukee M18 FUEL Impact Driver',
+      '1881-S Morgan Dollar BU',
+      '2021 American Silver Eagle BU',
+      '1999 Pokémon Charizard Base Set Holo',
+    ]);
+
+    // 1881-s morgan under $45 ceiling -> deal
+    const morgan = hits.find((h) => h.title === '1881-S Morgan Dollar BU')!;
+    expect(morgan).toMatchObject({
+      kind: 'deal',
+      onWishlist: true,
+      wishlistCeiling: 45,
+    });
+    expect(morgan.reason).toContain('Under wishlist max $45');
+
+    // Milwaukee under $120 ceiling -> deal
+    const tool = hits.find((h) => h.title === 'Milwaukee M18 FUEL Impact Driver')!;
+    expect(tool).toMatchObject({
+      kind: 'deal',
+      onWishlist: true,
+      wishlistCeiling: 120,
+    });
+    expect(tool.reason).toContain('Under wishlist max $120');
+
+    // Charizard with no ceiling -> must, badged onWishlist
+    const zard = hits.find((h) => h.title === '1999 Pokémon Charizard Base Set Holo')!;
+    expect(zard).toMatchObject({
+      kind: 'must',
+      onWishlist: true,
+      wishlistCeiling: null,
+    });
+    expect(zard.reason).toContain('On your wishlist');
+
+    // Silver eagle above $35 ceiling -> retained on wishlist as must, NOT promoted to deal
+    const ase = hits.find((h) => h.title === '2021 American Silver Eagle BU')!;
+    expect(ase).toMatchObject({
+      kind: 'must',
+      onWishlist: true,
+      wishlistCeiling: 35,
+    });
+    expect(ase.reason).toContain('On your wishlist');
+    expect(ase.reason).not.toContain('Under wishlist max');
   });
 
   it('enriches must-have key dates with local AI estimates and info, and surfaces underpriced shop items', () => {

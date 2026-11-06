@@ -1,5 +1,5 @@
 import { parseKeywords, sanitizeAlertSettings, type AlertSettings, type WatchedShow } from '../../shared/alerts';
-import { parseWatchlist, sanitizeBuyerSettings, watchLine, type BuyerSettings } from '../../shared/buyer';
+import { parseWatchlist, parseWishlist, sanitizeBuyerSettings, watchLine, wishLine, type BuyerSettings } from '../../shared/buyer';
 import { getAlertSettings, getBuyerSettings, getItem, onItemChanged, setItem } from '../../shared/storage';
 import type { ShowMatch } from '../../shared/discover';
 import { send } from '../../shared/messages';
@@ -20,6 +20,7 @@ const el = {
   seconds: $<HTMLInputElement>('#buyer-seconds'),
   tilt: $<HTMLInputElement>('#buyer-tilt'),
   watch: $<HTMLTextAreaElement>('#buyer-watch'),
+  wishlist: $<HTMLTextAreaElement>('#buyer-wishlist'),
   templates: $<HTMLTextAreaElement>('#buyer-templates'),
   buyerSave: $<HTMLButtonElement>('#buyer-save'),
   buyerNote: $('#buyer-note'),
@@ -54,6 +55,7 @@ const fillBuyer = (s: BuyerSettings) => {
   el.seconds.value = String(s.lastSeconds);
   el.tilt.value = String(s.tiltLosses);
   el.watch.value = s.watchlist.map(watchLine).join('\n');
+  el.wishlist.value = (s.wishlist ?? []).map(wishLine).join('\n');
   el.templates.value = s.chatTemplates.join('\n');
   el.tax.value = String(s.taxPercent);
   el.fee.value = String(s.feePercent);
@@ -104,8 +106,10 @@ export const initAlerts = async () => {
   renderMatches((await getItem('showMatches')) ?? []);
   onItemChanged('showMatches', (v) => renderMatches(v ?? []));
   el.buyerSave.addEventListener('click', async () => {
-    const lines = el.watch.value.split('\n').filter((l) => l.trim());
+    const watchLines = el.watch.value.split('\n').filter((l) => l.trim());
     const watchlist = parseWatchlist(el.watch.value);
+    const wishLines = el.wishlist.value.split('\n').filter((l) => l.trim());
+    const wishlist = parseWishlist(el.wishlist.value);
     const clean = sanitizeBuyerSettings({
       outbid: el.outbid.checked,
       mentions: el.mentions.checked,
@@ -113,6 +117,7 @@ export const initAlerts = async () => {
       lastSeconds: Number(el.seconds.value),
       tiltLosses: Number(el.tilt.value),
       watchlist,
+      wishlist,
       chatTemplates: el.templates.value.split('\n'),
       taxPercent: Number(el.tax.value || 0),
       feePercent: el.fee.value === '' ? undefined : Number(el.fee.value),
@@ -120,7 +125,7 @@ export const initAlerts = async () => {
     });
     await setItem('buyerSettings', clean);
     fillBuyer(clean);
-    const skipped = lines.length - watchlist.length;
-    el.buyerNote.textContent = `Saved. ${clean.watchlist.length} on the watchlist${skipped > 0 ? `, ${skipped} line${skipped === 1 ? '' : 's'} skipped (no words)` : ''}.`;
+    const skipped = (watchLines.length - watchlist.length) + (wishLines.length - wishlist.length);
+    el.buyerNote.textContent = `Saved. ${clean.watchlist.length} on watchlist, ${clean.wishlist.length} on wishlist${skipped > 0 ? `, ${skipped} line${skipped === 1 ? '' : 's'} skipped (no words)` : ''}.`;
   });
 };

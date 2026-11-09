@@ -1205,7 +1205,7 @@ const ollamaJson = async (
     model,
     stream: false,
     keep_alive: '30m',
-    options: { temperature: 0.2, num_predict: 384 },
+    options: { temperature: 0.2, num_predict: 1024 },
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: prompt, ...(image ? { images: [image] } : {}) },

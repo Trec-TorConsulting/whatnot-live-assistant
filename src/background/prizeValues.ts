@@ -27,8 +27,8 @@ import {
 import { getItem, setItem, setSession } from '../shared/storage';
 import { askAi, cents, realPrice } from './aiPricing';
 
-// Valuing runs when the wheel loads, ahead of any bid; one batch covers a whole wheel.
-const AI_BATCH = 40;
+// Valuing runs when the wheel loads, ahead of any bid; small batches prevent context degradation.
+const AI_BATCH = 20;
 const MAX_CACHED = 1000;
 // Several show tabs can load wheels at once; a later call finds the earlier one's answers cached.
 const lock = createLock();

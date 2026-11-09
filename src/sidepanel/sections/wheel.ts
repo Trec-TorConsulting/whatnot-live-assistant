@@ -1,5 +1,5 @@
 import { isNumberedPrize, MAX_HITS, pendingSpins, prizeKey, scopedKey, spotsLeft, wheelTitleKey, type BreakSnapshot } from '../../shared/breaks';
-import { manifestFrom } from '../../shared/prizeValue';
+import { manifestFrom, type AiManifestResult } from '../../shared/prizeValue';
 import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
 import { UNUSUAL, bigHitCheck, chanceWorthWithin, nextSpinTurnsWorth, spinPrices, type StatPrize } from '../../shared/wheelStats';
 import type { LiveSession } from '../../shared/live';
@@ -247,7 +247,8 @@ const renderAuto = (b: BreakSnapshot) => {
   const { price, label } = spinPrice(b);
   const notes = session?.show.note?.text ?? null;
   const board = boards[b.id] ?? null;
-  const rows = wheelRows(b, values, autoValues, board, notes);
+  const aiManifest = aiManifests[b.id] ?? null;
+  const rows = wheelRows(b, values, autoValues, board, notes, aiManifest);
   const state: WheelState = {
     ...emptyWheel(b.id, b.fetchedAt),
     price,
@@ -473,14 +474,21 @@ const setValue = (key: string, titleKey: string | undefined, value: number | nul
   void setItem('wheelValues', next);
 };
 
+let aiManifests: Record<string, AiManifestResult> = {};
+
 export const initWheel = async () => {
-  [values, autoValues, prizeStatus, envelopeStatus, boards] = await Promise.all([
+  [values, autoValues, prizeStatus, envelopeStatus, boards, aiManifests] = await Promise.all([
     getItem('wheelValues').then((v) => v ?? {}),
     getItem('prizeValues').then((v) => v ?? {}),
     getSession('prizeStatus').then((v) => v ?? null),
     getSession('envelopeStatus').then((v) => v ?? null),
     getItem('envelopeBoards').then((v) => v ?? {}),
+    getItem('aiManifests').then((v) => v ?? {}),
   ]);
+  onItemChanged('aiManifests', (v) => {
+    aiManifests = v ?? {};
+    renderWheel();
+  });
   onItemChanged('envelopeBoards', (v) => {
     boards = v ?? {};
     renderWheel();

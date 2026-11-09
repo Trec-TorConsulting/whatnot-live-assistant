@@ -253,13 +253,18 @@ describe('Ollama backup', () => {
     expect(calls).toEqual([]);
   });
 
-  it('sends text questions to Ollama when Ollama-only is on', async () => {
+  it('sends text questions to Ollama when Ollama-only is on with num_predict 1024', async () => {
     useSettings({ ...ollamaSettings, ollamaOnly: true });
-    const calls = scriptBoth(ok, () => json(200, { message: { content: '{"low":1}' } }));
+    let sentBody: { options?: { num_predict?: number } } = {};
+    const calls = scriptBoth(ok, (init) => {
+      sentBody = JSON.parse(String(init?.body ?? '{}')) as { options?: { num_predict?: number } };
+      return json(200, { message: { content: '{"low":1}' } });
+    });
     const pending = geminiJson('sys', 'prompt', { type: 'OBJECT', properties: { low: { type: 'NUMBER' } } });
     await vi.advanceTimersByTimeAsync(31_000);
     await expect(pending).resolves.toMatchObject({ ok: true, model: 'ollama:qwen2.5vl', text: '{"low":1}' });
     expect(calls.every((url) => url.includes('/api/chat'))).toBe(true);
+    expect(sentBody.options?.num_predict).toBe(1024);
   });
 
   it('answers the same frame from cache instead of calling Ollama again', async () => {

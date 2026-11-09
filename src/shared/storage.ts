@@ -17,7 +17,7 @@ import { sanitizeShareSettings, type ShareSettings } from './shareSettings';
 import type { RefPrice } from './refPrice';
 import type { SoldItem } from './soldHistory';
 import type { Job, ShareTarget } from './types';
-import type { PrizeValue } from './prizeValue';
+import type { AiManifestResult, PrizeValue } from './prizeValue';
 import type { WheelState } from './wheel';
 
 export const CLOUD_PROVIDERS = ['gemini', 'openai', 'anthropic', 'openrouter'] as const;
@@ -160,7 +160,10 @@ interface LocalSchema {
   // Automatic prize values (melt, sold comps, AI), same keys; yours in wheelValues win.
   prizeValues: Record<string, PrizeValue>;
   // Items an envelope wheel shows on camera, by break id.
-  envelopeBoards: Record<string, EnvelopeBoard>;}
+  envelopeBoards: Record<string, EnvelopeBoard>;
+  // Manifest and floor rules extracted by background AI from notes/description, by break id.
+  aiManifests: Record<string, AiManifestResult>;
+}
 
 type Key = keyof LocalSchema;
 

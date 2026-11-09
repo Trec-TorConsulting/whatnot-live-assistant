@@ -239,6 +239,7 @@ const refreshBreak = () => {
 // Prize values are worked out once per prize list, as soon as it loads, so they're ready before
 // anyone bids; the background caches them by prize name and condition.
 let valuedPrizes = '';
+let extractedManifests = new Set<string>();
 const valueWheel = (s: LiveSession) => {
   const wheel = s.wheel?.id === s.breakId ? s.wheel : null;
   if (!wheel?.prizes.length || shareWorker) return;
@@ -251,6 +252,24 @@ const valueWheel = (s: LiveSession) => {
   valuedPrizes = key;
   const context = { showTitle: s.show.title, wheelTitle: wheel.title, categories: s.show.categories, notes };
   void send('WHEEL_VALUE', { prizes, context }).catch(() => undefined);
+
+  if (!extractedManifests.has(wheel.id) && (wheel.description || notes)) {
+    extractedManifests.add(wheel.id);
+    void send('EXTRACT_MANIFEST_AI', {
+      breakId: wheel.id,
+      description: wheel.description,
+      notes,
+      categories: s.show.categories,
+    })
+      .then((res) => {
+        if (res.ok && res.manifest) {
+          const extraPrizes = res.manifest.items.map((it) => ({ title: it.name, detail: '' }));
+          if (res.manifest.floorName) extraPrizes.push({ title: res.manifest.floorName, detail: '' });
+          if (extraPrizes.length) void send('WHEEL_VALUE', { prizes: extraPrizes, context }).catch(() => undefined);
+        }
+      })
+      .catch(() => undefined);
+  }
 };
 
 const wheelMoved = (prev: LiveSession, next: LiveSession) =>

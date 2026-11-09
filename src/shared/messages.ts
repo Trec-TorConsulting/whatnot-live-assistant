@@ -5,7 +5,7 @@ import type { SellerProfile } from './sellerInfo';
 import type { AppraisalContext, AppraisalItem, AppraisalRecord, Melt, OtherItem, PriceInfo, QuickResult } from './appraisal';
 import type { LiveSession, LiveSignal } from './live';
 import type { OnDeviceStatus } from './onDevice';
-import type { PrizeContext, PrizeItem } from './prizeValue';
+import type { AiManifestResult, PrizeContext, PrizeItem } from './prizeValue';
 import type { Purchase } from './purchases';
 import type { SoldItem } from './soldHistory';
 import type { RefLookupResult } from './refPrice';
@@ -120,6 +120,10 @@ export interface MessageMap {
   REF_LOOKUP: { req: { item: Partial<AppraisalItem> }; res: RefLookupResult };
   APPRAISAL_SAVE: { req: { record: AppraisalRecord }; res: Result };
   WHEEL_VALUE: { req: { prizes: PrizeItem[]; context: PrizeContext }; res: Result };
+  EXTRACT_MANIFEST_AI: {
+    req: { breakId: string; description?: string | null; notes?: string | null; categories?: string[] };
+    res: { ok: true; manifest: AiManifestResult } | { ok: false; error: string };
+  };
   SHOP_AI: { req: { items: ShopAiInputItem[]; showTitle?: string | null; showType?: ShowType }; res: ShopAiResult };
   APPRAISE_SHOP_LISTING: {
     req: { id: string; title: string; subtitle?: string | null; price: number };

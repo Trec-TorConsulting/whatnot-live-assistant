@@ -132,6 +132,37 @@ describe('valuePrizes', () => {
     expect(urls.some((u) => u.includes('generativelanguage.googleapis.com'))).toBe(false);
     expect(values()['vaultbox select box rip/ship']).toMatchObject({ source: 'ai', low: 45, high: 75, note: 'ollama:qwen2.5vl' });
   });
+
+  it('processes large wheel breaks with 250+ prizes across 20-item batches without truncation', async () => {
+    // Generate 25 distinct prizes repeated to total 250 spots
+    const distinctPrizes = Array.from({ length: 25 }, (_, i) => p(`COIN TIER #${i + 1}`));
+    const largeList = Array.from({ length: 250 }, (_, i) => distinctPrizes[i % 25]!);
+    
+    let batchCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('gold-api')) return json(200, { price: SILVER_SPOT });
+        batchCount++;
+        const parsed = JSON.parse(String(init?.body ?? '{}')) as { contents?: { parts?: { text?: string }[] }[] };
+        const promptText = parsed.contents?.[0]?.parts?.[0]?.text ?? '';
+        // Count how many items were requested in this batch prompt
+        const match = promptText.match(/\n\d+\.\s/g) ?? [];
+        const count = match.length || 1;
+        const result = Array.from({ length: count }, (_, j) => ({ i: j + 1, low: 15, high: 25 }));
+        return json(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ prizes: result }) }] } }] });
+      }),
+    );
+
+    const r = await valuePrizes(largeList, ctx);
+    expect(r.ok).toBe(true);
+    // 25 distinct items batched at 20 items per batch -> exactly 2 batches (20 + 5)
+    expect(batchCount).toBe(2);
+    const v = values();
+    for (let i = 1; i <= 25; i++) {
+      expect(v[`coin tier ${i}`]).toMatchObject({ source: 'ai', low: 15, high: 25 });
+    }
+  });
 });
 
 describe('readEnvelopes', () => {

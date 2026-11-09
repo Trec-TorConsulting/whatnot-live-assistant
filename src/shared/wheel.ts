@@ -91,27 +91,36 @@ const FLOOR_RULE_PATTERNS = [
 
 // Parses floor items from show notes describing games, e.g.
 // "You either get a wheat cent, buffalo nickel or the hit" -> ['wheat cent', 'buffalo nickel']
-export const extractFloorsFromNotes = (notes: string | null | undefined): string[] => {
-  if (!notes) return [];
+export const extractFloorsFromNotes = (notes: string | null | undefined, aiFloor?: string | null): string[] => {
   const floors: string[] = [];
   const seen = new Set<string>();
 
-  for (const re of FLOOR_RULE_PATTERNS) {
-    const match = notes.match(re);
-    if (!match?.[1]) continue;
-    const parts = match[1]
-      .split(/,|\/|\s+or\s+/i)
-      .map((s) => s.replace(/\b(?:either|a|an|the)\b/gi, ' ').replace(/\s+/g, ' ').trim())
-      .filter((s) => s.length >= 2 && !/^(?:hit|winner|chase|top|grand\s+prize|board\s+pick)$/i.test(s));
-
-    for (const part of parts) {
-      const key = part.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        floors.push(key);
-      }
+  if (aiFloor) {
+    const key = aiFloor.toLowerCase().trim();
+    if (key.length >= 2) {
+      seen.add(key);
+      floors.push(key);
     }
-    if (floors.length) break;
+  }
+
+  if (notes) {
+    for (const re of FLOOR_RULE_PATTERNS) {
+      const match = notes.match(re);
+      if (!match?.[1]) continue;
+      const parts = match[1]
+        .split(/,|\/|\s+or\s+/i)
+        .map((s) => s.replace(/\b(?:either|a|an|the)\b/gi, ' ').replace(/\s+/g, ' ').trim())
+        .filter((s) => s.length >= 2 && !/^(?:hit|winner|chase|top|grand\s+prize|board\s+pick)$/i.test(s));
+
+      for (const part of parts) {
+        const key = part.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          floors.push(key);
+        }
+      }
+      if (floors.length) break;
+    }
   }
 
   return floors;

@@ -140,21 +140,40 @@ export const parseManifest = (description: string | null | undefined, opts?: { c
 
 // The break description is the prize list. Show notes supply the same lines when that list is
 // missing or cut off. A coin already named in the description is not added again.
-export const manifestFrom = (description: string | null | undefined, notes?: string | null): PrizeManifest => {
+// When provided, background AI-extracted items supplement what regex missed.
+export const manifestFrom = (
+  description: string | null | undefined,
+  notes?: string | null,
+  ai?: AiManifestResult | null,
+): PrizeManifest => {
   const listed = parseManifest(description);
-  if (listed.items.length && !listed.truncated) return listed;
-  const extra = parseManifest(notes, { capped: false });
-  if (!extra.items.length) return listed;
-  const seen = new Set(listed.items.map((item) => prizeIdentity(item.name)));
-  const items = [...listed.items];
-  for (const item of extra.items) {
+  let base: PrizeManifest;
+  if (listed.items.length && !listed.truncated) base = listed;
+  else {
+    const extra = parseManifest(notes, { capped: false });
+    if (!extra.items.length) base = listed;
+    else {
+      const seen = new Set(listed.items.map((item) => prizeIdentity(item.name)));
+      const items = [...listed.items];
+      for (const item of extra.items) {
+        const key = prizeIdentity(item.name);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        items.push(item);
+      }
+      base = !listed.items.length ? { items, truncated: false } : { items, truncated: true };
+    }
+  }
+  if (!ai?.items?.length) return base;
+  const seen = new Set(base.items.map((item) => prizeIdentity(item.name)));
+  const items = [...base.items];
+  for (const item of ai.items) {
     const key = prizeIdentity(item.name);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     items.push(item);
   }
-  if (!listed.items.length) return { items, truncated: false };
-  return { items, truncated: true };
+  return { items, truncated: base.truncated };
 };
 
 const showNotesLine = (notes?: string | null) => {
@@ -426,4 +445,92 @@ export const parseEnvelopeAnswer = (
     keep(item);
   }
   return { matched: [...matched.values()], board };
+};
+
+export const MANIFEST_INSTRUCTIONS = [
+  'You extract wheel prize distributions, tier breakdowns, and guaranteed floor rules from Whatnot seller show notes, pinned comments, or break descriptions.',
+  'Extract:',
+  '1. items: An array of specific prizes and their quantities, e.g. [{"name": "1881-S Morgan Dollar MS 64", "qty": 1}, {"name": "American Silver Eagle", "qty": 40}].',
+  '2. floor_name: The item guaranteed as the minimum or floor prize for unlisted / base spots (e.g. "1 oz silver round", "90% silver half dollar"), or null if none mentioned.',
+  '3. floor_value: Any explicit minimum dollar value guaranteed for every spot (e.g. 15 for "$15 minimum value"), or null if not explicitly stated in dollars.',
+  'Return valid JSON only.',
+].join('\n');
+
+export const MANIFEST_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          qty: { type: 'integer' },
+        },
+        required: ['name', 'qty'],
+        additionalProperties: false,
+      },
+    },
+    floor_name: { type: ['string', 'null'] },
+    floor_value: { type: ['number', 'null'] },
+  },
+  required: ['items', 'floor_name', 'floor_value'],
+  additionalProperties: false,
+};
+
+export const MANIFEST_SCHEMA_GEMINI = {
+  type: 'OBJECT',
+  properties: {
+    items: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          qty: { type: 'INTEGER' },
+        },
+        required: ['name', 'qty'],
+      },
+    },
+    floor_name: { type: 'STRING', nullable: true },
+    floor_value: { type: 'NUMBER', nullable: true },
+  },
+  required: ['items', 'floor_name', 'floor_value'],
+};
+
+export interface AiManifestResult {
+  items: ManifestItem[];
+  floorName: string | null;
+  floorValue: number | null;
+}
+
+export const manifestPrompt = (description: string | null, notes: string | null, categories: string[] = []) =>
+  [
+    categories.length ? `Category: ${categories.join(', ')}` : '',
+    description ? `Break description:\n${description}` : '',
+    notes ? `Show notes / pinned text:\n${notes}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+export const parseManifestAiAnswer = (text: string): AiManifestResult => {
+  const clean = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    const raw = JSON.parse(clean) as {
+      items?: { name?: string; qty?: number }[];
+      floor_name?: string | null;
+      floor_value?: number | null;
+    };
+    const items: ManifestItem[] = (raw.items ?? [])
+      .map((it) => ({
+        name: clarifyPrizeName(String(it.name ?? '')),
+        qty: Math.max(0, Math.floor(Number(it.qty) || 0)),
+      }))
+      .filter((it) => it.name.length > 0 && it.qty > 0);
+    const floorName = raw.floor_name ? clarifyPrizeName(String(raw.floor_name)) : null;
+    const floorValue = typeof raw.floor_value === 'number' && raw.floor_value > 0 ? raw.floor_value : null;
+    return { items, floorName: floorName || null, floorValue };
+  } catch {
+    return { items: [], floorName: null, floorValue: null };
+  }
 };

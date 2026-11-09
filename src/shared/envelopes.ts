@@ -3,7 +3,7 @@
 // hold any item on the board, so for the odds the unopened envelopes count as the board's items,
 // one spot each. That keeps the spin's worth and its odds exact when the counts agree.
 import { isHiddenSpot, isNumberedPrize, prizeKey, prizePriceKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
-import { manifestFrom, type PrizeValue } from './prizeValue';
+import { manifestFrom, type AiManifestResult, type PrizeValue } from './prizeValue';
 import { extractFloorsFromNotes, isFloorSlot, prizeSlotLabel } from './wheel';
 
 export interface EnvelopeBoard {
@@ -91,7 +91,7 @@ const prizeRows = (b: BreakSnapshot, yours: Record<string, number>, auto: Record
 
 const isUnmatched = (r: WheelRow, b: BreakSnapshot) => {
   const prize = b.prizes.find((p) => p.title === r.title && p.detail === r.detail);
-  return !r.fromBoard && r.value === null && r.left > 0 && !!prize && isHiddenSpot(prize);
+  return !r.fromBoard && (r.value === null || r.floor) && r.left > 0 && !!prize && isHiddenSpot(prize);
 };
 
 // Envelopes still on the wheel with no value of their own.
@@ -203,8 +203,13 @@ export const nextEnvelopeBoard = (prev: EnvelopeBoard | null, next: EnvelopeBoar
 // Each Item #N is an equal share of the coins named in the break description, or in the show notes
 // when that description is empty or cut off, until a sticker read prices that number. A cut-off
 // description counts the coins it never listed as zero.
-export const numberedShare = (b: BreakSnapshot, auto: Record<string, PrizeValue>, notes?: string | null): { value: number; floor: boolean } | null => {
-  const manifest = manifestFrom(b.description, notes);
+export const numberedShare = (
+  b: BreakSnapshot,
+  auto: Record<string, PrizeValue>,
+  notes?: string | null,
+  ai?: AiManifestResult | null,
+): { value: number; floor: boolean } | null => {
+  const manifest = manifestFrom(b.description, notes, ai);
   if (!manifest.items.length || b.hits === null || b.soldHasMore) return null;
   const left = b.prizes.filter((p) => isNumberedPrize(p.title)).reduce((n, p) => n + Math.max(0, p.left), 0);
   const sold = b.hits.filter((h) => !h.pending && isNumberedPrize(h.title)).length;
@@ -231,16 +236,17 @@ export const wheelRows = (
   auto: Record<string, PrizeValue>,
   board: EnvelopeBoard | null = null,
   notes?: string | null,
+  aiManifest?: AiManifestResult | null,
 ): WheelRow[] => {
   const summary = envelopeSummary(b, yours, auto, board);
   const { claimed } = splitBoard(b, yours, board?.items ?? []);
-  const floorPatterns = extractFloorsFromNotes(notes);
+  const floorPatterns = extractFloorsFromNotes(notes, aiManifest?.floorName);
   return prizeRows(b, yours, auto).map((row) => {
     const prize = b.prizes.find((p) => p.title === row.title && p.detail === row.detail);
     const isFloor = isFloorSlot(prizeSlotLabel(row), floorPatterns);
     if (prize && isNumberedPrize(prize.title)) {
       if (row.value !== null) return { ...row, ...(isFloor ? { floor: true } : {}) };
-      const share = numberedShare(b, auto, notes);
+      const share = numberedShare(b, auto, notes, aiManifest);
       if (!share) return { ...row, ...(isFloor ? { floor: true } : {}) };
       return { ...row, value: share.value, floor: share.floor || isFloor, auto: null, inside: null };
     }
@@ -251,7 +257,16 @@ export const wheelRows = (
     }
     const mine = yours[row.key] ?? (row.titleKey ? yours[row.titleKey] : undefined);
     if (mine !== undefined) return { ...row, value: mine, auto: null, ...(isFloor ? { floor: true } : {}) };
-    if (summary.average === null) return { ...row, value: null, auto: null, inside: null, ...(isFloor ? { floor: true } : {}) };
+    if (summary.average === null) {
+      const floorVal =
+        aiManifest?.floorValue ??
+        (aiManifest?.floorName ? auto[prizePriceKey({ title: aiManifest.floorName, detail: '' })]?.low : null) ??
+        (floorPatterns.length ? auto[prizePriceKey({ title: floorPatterns[0]!, detail: '' })]?.low : null);
+      if (floorVal !== null && floorVal !== undefined && floorVal > 0) {
+        return { ...row, value: floorVal, floor: true, auto: null, inside: aiManifest?.floorName ?? floorPatterns[0] ?? null };
+      }
+      return { ...row, value: null, auto: null, inside: null, ...(isFloor ? { floor: true } : {}) };
+    }
     return { ...row, value: summary.average, auto: null, inside: null, ...(isFloor ? { floor: true } : {}) };
   });
 };

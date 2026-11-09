@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clarifyPrizeName, envelopePrompt, isFresh, manifestFrom, parseEnvelopeAnswer, parseManifest, parsePrizeAnswer, prizeMelt, prizePrompt, prizeReadPrompt } from './prizeValue';
+import { clarifyPrizeName, envelopePrompt, isFresh, manifestFrom, parseEnvelopeAnswer, parseManifest, parseManifestAiAnswer, parsePrizeAnswer, prizeMelt, prizePrompt, prizeReadPrompt } from './prizeValue';
 import { DAY } from './time';
 
 describe('prizeMelt', () => {
@@ -169,5 +169,49 @@ describe('reading named prizes off the video', () => {
     const p = prizeReadPrompt([{ title: 'Silver Eagle', detail: 'BU' }, { title: 'Silver Eagle', detail: 'BU' }, { title: 'Graded Morgan', detail: '' }], { showTitle: 'S', wheelTitle: 'W', categories: [] });
     expect(p).toContain('- Silver Eagle (BU)\n- Graded Morgan');
     expect(p.match(/Silver Eagle/g)).toHaveLength(1);
+  });
+});
+
+describe('AI manifest extraction and fallback', () => {
+  it('parses structured items, floor name, and floor value from AI json', () => {
+    const text = JSON.stringify({
+      items: [
+        { name: '1881-S Morgan Dollar MS 64', qty: 1 },
+        { name: 'American Silver Eagle', qty: 40 },
+        { name: 'Invalid zero qty', qty: 0 },
+      ],
+      floor_name: '1 oz silver round',
+      floor_value: 15,
+    });
+    const parsed = parseManifestAiAnswer(text);
+    expect(parsed.items).toEqual([
+      { name: '1881-S Morgan Dollar MS 64', qty: 1 },
+      { name: 'American Silver Eagle', qty: 40 },
+    ]);
+    expect(parsed.floorName).toBe('1 oz silver round');
+    expect(parsed.floorValue).toBe(15);
+  });
+
+  it('handles markdown fences and null values safely', () => {
+    const text = '```json\n{"items": [{"name": "Morgan Dollar", "qty": 5}], "floor_name": null, "floor_value": null}\n```';
+    const parsed = parseManifestAiAnswer(text);
+    expect(parsed.items).toEqual([{ name: 'Morgan Dollar', qty: 5 }]);
+    expect(parsed.floorName).toBeNull();
+    expect(parsed.floorValue).toBeNull();
+  });
+
+  it('manifestFrom combines regex manifest with AI-extracted items without duplicating', () => {
+    const description = '1x 2024 Silver Eagle\n2x Morgan Dollar';
+    const aiManifest = {
+      items: [
+        { name: 'Morgan Dollar', qty: 2 }, // duplicate
+        { name: '1/10 oz Gold Eagle', qty: 5 }, // new item
+      ],
+      floorName: '1 oz silver round',
+      floorValue: 31,
+    };
+    const res = manifestFrom(description, null, aiManifest);
+    expect(res.items).toHaveLength(3);
+    expect(res.items.map((i) => i.name)).toEqual(['2024 Silver Eagle', 'Morgan Dollar', '1/10 oz Gold Eagle']);
   });
 });

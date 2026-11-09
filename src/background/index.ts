@@ -25,6 +25,7 @@ import {
 import { testGreysheet } from './greysheet';
 import { checkOnDevice, onDeviceState, warmOnDevice } from './onDevice';
 import { ALARM_OVERRIDES, refreshOverrides } from './overrides';
+import { extractManifestAi } from './manifestAi';
 import { clearPickedShare, savePickedShare } from './picks';
 import { readEnvelopes, readNamedPrizes, valuePrizes } from './prizeValues';
 import { refLookup } from './refPrices';
@@ -104,7 +105,8 @@ handleMessages({
   TABLE_SCAN: (payload) => scanTable(payload),
   REF_LOOKUP: ({ item }) => refLookup(item),
   QUICK_APPRAISE: ({ pageText }) => quickAppraise(pageText),
-  WHEEL_VALUE: ({ prizes, context }) => valuePrizes(prizes.slice(0, 200), context),
+  WHEEL_VALUE: ({ prizes, context }) => valuePrizes(prizes, context),
+  EXTRACT_MANIFEST_AI: ({ breakId, description, notes, categories }) => extractManifestAi(breakId, description, notes, categories),
   SHOP_AI: ({ items, showTitle, showType }) => evaluateShopItems(items.slice(0, 20), showTitle, showType),
   APPRAISE_SHOP_LISTING: async (payload) => ({ ok: true, appraisal: await appraiseListingText(payload) }),
   ENVELOPE_READ: ({ breakId, image, prizes, others, context, soldHidden }) =>

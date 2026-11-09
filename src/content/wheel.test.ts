@@ -178,4 +178,22 @@ describe('wheelView', () => {
       'Prize counts last updated 3m ago.',
     ]);
   });
+
+  it('uses guaranteed floor estimate for unassigned envelopes and avoids $0 warnings', () => {
+    const prizes = [
+      prize('1', 'ENVELOPE #1', 1),
+      prize('2', 'ENVELOPE #2', 1),
+      prize('3', 'Wheat Penny', 8),
+    ];
+    const aiManifest = {
+      items: [{ name: 'Morgan Dollar', qty: 2 }],
+      floorName: '1 oz silver round',
+      floorValue: 30,
+    };
+    const v = wheelView(wheel({ prizes }), lot(), { 'wheat penny': 10 }, {}, NOW, null, null, aiManifest);
+    // 2 envelopes at $30 + 8 pennies at $10 = $140 / 10 = $14
+    expect(v.value).toBe('Worth ≥ $14 a spin');
+    expect(v.warnings).toContain('Unassigned envelopes use the guaranteed floor estimate.');
+    expect(v.warnings.some((w) => w.includes('have no value yet'))).toBe(false);
+  });
 });

@@ -3,10 +3,9 @@
 // at the low end of their range.
 import { isNumberedPrize, spotsLeft, type BreakSnapshot } from '../shared/breaks';
 import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
-import { manifestFrom } from '../shared/prizeValue';
+import { manifestFrom, type AiManifestResult, type PrizeValue } from '../shared/prizeValue';
 import type { LiveSession, Lot } from '../shared/live';
 import { formatMoney } from '../shared/money';
-import type { PrizeValue } from '../shared/prizeValue';
 import { getItem, onItemChanged } from '../shared/storage';
 import { MINUTE, SECOND } from '../shared/time';
 import { emptyWheel, hitOutcome, prizeSlotLabel, wheelOdds, type WheelEnd } from '../shared/wheel';
@@ -29,8 +28,9 @@ export const wheelView = (
   now = Date.now(),
   board: EnvelopeBoard | null = null,
   notes: string | null = null,
+  aiManifest: AiManifestResult | null = null,
 ): WheelView => {
-  const rows = wheelRows(b, values, autoValues, board, notes);
+  const rows = wheelRows(b, values, autoValues, board, notes, aiManifest);
   // A spin's price is its auction: the current bid, or the opening bid before anyone bids.
   const spin = lot?.breakId === b.id ? lot : null;
   const price = spin ? (spin.currentBid ?? spin.nextBid) : null;
@@ -61,8 +61,8 @@ export const wheelView = (
   const unpriced = rows.filter((r) => r.value === null).length;
   const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
   const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
-  const numberedUnread = numberedShare(b, autoValues, notes) ? 0 : unreadRows.length - envelopeUnread;
-  const cutOff = manifestFrom(b.description, notes).truncated && rows.some((r) => isNumberedPrize(r.title));
+  const numberedUnread = numberedShare(b, autoValues, notes, aiManifest) ? 0 : unreadRows.length - envelopeUnread;
+  const cutOff = manifestFrom(b.description, notes, aiManifest).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeFacts: WheelFact[] =
     pool.sealed > 0
@@ -118,6 +118,7 @@ export const wheelView = (
       envelopeUnread ? `${envelopeUnread} ${envelopeUnread === 1 ? 'envelope' : 'envelopes'} not read off the video yet; retrying while the board is on camera.` : null,
       numberedUnread ? `${numberedUnread} numbered ${numberedUnread === 1 ? 'hit is' : 'hits are'} not matched to the board yet.` : null,
       rows.some((r) => r.inside && r.auto) ? 'Some prizes were AI-read from the video; check them against the board.' : null,
+      rows.some((r) => r.floor && !r.fromBoard) ? 'Unassigned envelopes use the guaranteed floor estimate.' : null,
       !b.complete ? 'Whatnot sent only part of the prize list, so these odds are incomplete.' : null,
       age >= STALE_MS ? `Prize counts last updated ${Math.round(age / MINUTE)}m ago.` : null,
     ].filter((w): w is string => Boolean(w)),
@@ -127,6 +128,7 @@ export const wheelView = (
 let values: Record<string, number> = {};
 let autoValues: Record<string, PrizeValue> = {};
 let boards: Record<string, EnvelopeBoard> = {};
+let aiManifests: Record<string, AiManifestResult> = {};
 let shown = '';
 
 // Live updates arrive with every chat message; the panel only redraws when the status changes.
@@ -139,7 +141,8 @@ export const refreshWheel = () => {
     checkNamedPrizes(b, s, values, autoValues);
   }
   const notes = s?.show.note?.text ?? null;
-  const view = b ? wheelView(b, s?.lot ?? null, values, autoValues, Date.now(), board, notes) : null;
+  const aiManifest = b ? (aiManifests[b.id] ?? null) : null;
+  const view = b ? wheelView(b, s?.lot ?? null, values, autoValues, Date.now(), board, notes, aiManifest) : null;
   const key = JSON.stringify(view);
   if (key === shown) return;
   shown = key;
@@ -147,10 +150,11 @@ export const refreshWheel = () => {
 };
 
 export const startWheelStatus = async () => {
-  [values, autoValues, boards] = await Promise.all([
+  [values, autoValues, boards, aiManifests] = await Promise.all([
     getItem('wheelValues').then((v) => v ?? {}),
     getItem('prizeValues').then((v) => v ?? {}),
     getItem('envelopeBoards').then((v) => v ?? {}),
+    getItem('aiManifests').then((v) => v ?? {}),
   ]);
   onItemChanged('wheelValues', (v) => {
     values = v ?? {};
@@ -162,6 +166,10 @@ export const startWheelStatus = async () => {
   });
   onItemChanged('envelopeBoards', (v) => {
     boards = v ?? {};
+    refreshWheel();
+  });
+  onItemChanged('aiManifests', (v) => {
+    aiManifests = v ?? {};
     refreshWheel();
   });
   onLive(() => refreshWheel());

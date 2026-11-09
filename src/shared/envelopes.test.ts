@@ -222,4 +222,33 @@ describe('named prizes read off the video', () => {
     expect(buffalo?.floor).toBe(true);
     expect(hit?.floor).toBeFalsy();
   });
+
+  it('assigns guaranteed floor to unassigned mystery envelopes when board average is null', () => {
+    // 250 envelopes, only 2 read on camera, leaving pool average incomplete
+    const largeWheel: BreakSnapshot = {
+      ...wheel(0),
+      total: 250,
+      prizes: [
+        prize('ENVELOPE #1', 1),
+        prize('ENVELOPE #2', 1),
+        ...Array.from({ length: 248 }, (_, i) => prize(`ENVELOPE #${i + 3}`, 1)),
+      ],
+    };
+    const auto = {
+      '1 oz silver round': item('1 oz silver round', 31, 'melt'),
+    };
+    const aiManifest = {
+      items: [{ name: 'Morgan Dollar', qty: 2 }],
+      floorName: '1 oz silver round',
+      floorValue: 31,
+    };
+    // No board items read yet
+    const rows = wheelRows(largeWheel, {}, auto, null, null, aiManifest);
+    const envelope1 = rows.find((r) => r.title === 'ENVELOPE #1');
+    const envelope248 = rows.find((r) => r.title === 'ENVELOPE #250');
+
+    expect(envelope1).toMatchObject({ value: 31, floor: true });
+    expect(envelope248).toMatchObject({ value: 31, floor: true });
+    expect(rows.every((r) => r.value === 31 && r.floor)).toBe(true);
+  });
 });

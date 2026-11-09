@@ -34,11 +34,20 @@ export type RefLookupResult = { ok: true; refs: RefPrice[]; notes: string[] };
 
 // A raw card's own market price can set its value; a slabbed card's grade changes the price too
 // much for a raw card price to stand in. Graded numismatic sources (Greysheet, FMV, eBay sold)
-// can value a slabbed coin when they reflect the slab's grade.
-export const marketOf = (refs: RefPrice[] | undefined, slabbed: boolean) => {
+// can value a slabbed coin when they reflect the slab's grade. For slabs with premium attributes
+// (signatures, special finishes, pedigrees, CAC, EPQ), realized eBay comps or Greysheet take
+// precedence over common-date baseline FMV guides.
+export const marketOf = (refs: RefPrice[] | undefined, slabbed: boolean, isPremiumSlab = false) => {
   if (!refs?.length) return null;
   if (!slabbed) {
     return refs.find((r) => r.kind === 'market' && r.value && r.value > 0)?.value ?? null;
+  }
+  if (isPremiumSlab) {
+    const comp = refs.find(
+      (r) => (r.source === 'ebay' || r.source === 'greysheet') && r.kind === 'market' && r.value && r.value > 0,
+    );
+    if (comp?.value) return comp.value;
+    return null;
   }
   return (
     refs.find(

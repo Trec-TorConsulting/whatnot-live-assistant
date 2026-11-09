@@ -45,11 +45,74 @@ export const buildEbayQuery = (item: Partial<AppraisalItem>): string => {
   const grade = item.grade ? String(item.grade).trim() : '';
   const hasGrade = Boolean(grade && new RegExp(`\\b${grade.replace(/\s+/g, '\\s*')}\\b`, 'i').test(cleanName));
 
+  // Slab attributes
+  const slabService = item.is_slabbed && item.grading_service ? item.grading_service.trim() : '';
+  const hasSlabService = Boolean(slabService && new RegExp(`\\b${slabService}\\b`, 'i').test(cleanName));
+
+  // Signature
+  let sig = item.signature ? item.signature.trim() : '';
+  if (!sig && item.special) {
+    const sigMatch = item.special.match(/\b(elizabeth\s*jones|john\s*mercanti|mercanti|ed\s*moy|david\s*ryder|thomas\s*cleveland|michael\s*gaudioso|emily\s*damstra|anna\s*cabral)\b/i);
+    if (sigMatch) sig = sigMatch[1]!;
+  }
+  const hasSig = Boolean(sig && new RegExp(`\\b${sig.replace(/\s+/g, '\\s*')}\\b`, 'i').test(cleanName));
+
+  // Finish (burnished, reverse proof)
+  let finish = item.finish ? item.finish.trim() : '';
+  if (!finish && item.special) {
+    const finishMatch = item.special.match(/\b(burnished|reverse\s*proof|enhanced\s*rev\w*|matte\s*proof)\b/i);
+    if (finishMatch) finish = finishMatch[1]!;
+  }
+  const hasFinish = Boolean(finish && new RegExp(`\\b${finish.replace(/\s+/g, '\\s*')}\\b`, 'i').test(cleanName));
+
+  // Pedigree (First Day of Issue / FDI)
+  let pedigree = item.pedigree ? item.pedigree.trim() : '';
+  if (!pedigree && item.special) {
+    const pedMatch = item.special.match(/\b(first\s*day\s*of\s*issue|fdi|early\s*releases|first\s*strike)\b/i);
+    if (pedMatch) pedigree = pedMatch[1]!;
+  }
+  const hasPedigree = Boolean(pedigree && new RegExp(`\\b${pedigree.replace(/\s+/g, '\\s*')}\\b`, 'i').test(cleanName));
+
+  // Paper currency designations (EPQ, Star note, Fr. #)
+  let epq = item.paper_quality && item.paper_quality !== 'none' ? item.paper_quality.toUpperCase() : '';
+  if (!epq) {
+    const epqMatch = [item.grade, item.special].filter(Boolean).join(' ').match(/\b(epq|ppq)\b/i);
+    if (epqMatch) epq = epqMatch[1]!.toUpperCase();
+  }
+  const hasEpq = Boolean(epq && new RegExp(`\\b${epq}\\b`, 'i').test(cleanName + ' ' + grade));
+
+  let star = item.star_note ? 'Star' : '';
+  if (!star && /\b(star\s*note|★|\*)\b/i.test([item.special, item.grade].filter(Boolean).join(' '))) {
+    star = 'Star';
+  }
+  const hasStar = Boolean(star && new RegExp(`\\b${star}\\b`, 'i').test(cleanName + ' ' + grade));
+
+  let catalog = item.catalog_number ? item.catalog_number.trim() : '';
+  if (!catalog && item.special) {
+    const frMatch = item.special.match(/\bFr\.?\s*\d+[a-z]?\b/i);
+    if (frMatch) catalog = frMatch[0];
+  }
+  const hasCatalog = Boolean(catalog && new RegExp(`\\b${catalog.replace(/\./g, '\\.')}\\b`, 'i').test(cleanName));
+
+  let cac = item.cac && item.cac !== 'none' ? 'CAC' : '';
+  if (!cac && /\b(green\s*cac|gold\s*cac|cac\s*sticker)\b/i.test([item.special, item.grade].filter(Boolean).join(' '))) {
+    cac = 'CAC';
+  }
+  const hasCac = Boolean(cac && new RegExp(`\\b${cac}\\b`, 'i').test(cleanName));
+
   const parts = [
     !hasYear ? yearStr : '',
     !hasMint ? mint : '',
     cleanName,
+    !hasFinish && finish && finish.toLowerCase() !== 'regular' ? finish : '',
+    !hasSlabService ? slabService : '',
     !hasGrade ? grade : '',
+    !hasSig ? sig : '',
+    !hasPedigree ? pedigree : '',
+    !hasEpq ? epq : '',
+    !hasStar ? star : '',
+    !hasCatalog ? catalog : '',
+    !hasCac ? cac : '',
   ]
     .filter(Boolean)
     .join(' ')

@@ -1,7 +1,7 @@
 // NumisMedia Fair Market Value (FMV) guide calculations for US collector coins.
 // Free retail market pricing benchmark across Sheldon grades for US coin series.
 
-import type { AppraisalItem } from './appraisal';
+import { hasPremiumSlabAttributes, type AppraisalItem } from './appraisal';
 import { statedGrade } from './keyDates';
 import type { RefPrice } from './refPrice';
 
@@ -19,7 +19,11 @@ export type FmvSeries =
   | 'buffalo_nickel'
   | 'jefferson_nickel'
   | 'indian_cent'
-  | 'lincoln_cent';
+  | 'lincoln_cent'
+  | 'us_silver_cert_1'
+  | 'us_red_seal_2'
+  | 'us_silver_cert_5'
+  | 'us_red_seal_5';
 
 interface SeriesMatcher {
   series: FmvSeries;
@@ -48,6 +52,26 @@ const MATCHERS: SeriesMatcher[] = [
   { series: 'jefferson_nickel', label: 'Jefferson Nickel', test: (t) => /\bjefferson\b/i.test(t) && NICKEL.test(t) },
   { series: 'indian_cent', label: 'Indian Head Cent', test: (t) => /\bindian\b/i.test(t) && CENT.test(t) },
   { series: 'lincoln_cent', label: 'Lincoln Cent', test: (t) => (/\blincoln\b/i.test(t) || /\bwheat\b/i.test(t)) && CENT.test(t) },
+  {
+    series: 'us_silver_cert_1',
+    label: '$1 Silver Certificate',
+    test: (t) => (/\$1\b|\bone\s*dollar\b/i.test(t) || /\bFr\.?\s*(?:16\d\d|230\d)\b/i.test(t)) && /silver\s*cert/i.test(t),
+  },
+  {
+    series: 'us_red_seal_2',
+    label: '$2 Red Seal Note',
+    test: (t) => (/\$2\b|\btwo\s*dollar\b/i.test(t) || /\bFr\.?\s*150\d\b/i.test(t)) && /(?:red\s*seal|legal\s*tender|united\s*states\s*note)/i.test(t),
+  },
+  {
+    series: 'us_silver_cert_5',
+    label: '$5 Silver Certificate',
+    test: (t) => (/\$5\b|\bfive\s*dollar\b/i.test(t)) && /silver\s*cert/i.test(t),
+  },
+  {
+    series: 'us_red_seal_5',
+    label: '$5 Red Seal Note',
+    test: (t) => (/\$5\b|\bfive\s*dollar\b/i.test(t)) && /(?:red\s*seal|legal\s*tender|united\s*states\s*note)/i.test(t),
+  },
 ];
 
 export interface GradeTierValues {
@@ -82,6 +106,10 @@ const COMMON_FMV: Record<FmvSeries, GradeTierValues> = {
   jefferson_nickel: { G4: 1, VG8: 1, F12: 1.25, VF20: 1.5, XF40: 2, AU50: 3, AU58: 4, MS60: 5, MS63: 8, MS64: 12, MS65: 22, MS66: 45, MS67: 140 },
   indian_cent: { G4: 2.5, VG8: 3.5, F12: 5, VF20: 7, XF40: 12, AU50: 24, AU58: 38, MS60: 50, MS63: 65, MS64: 95, MS65: 150, MS66: 350, MS67: 900 },
   lincoln_cent: { G4: 0.25, VG8: 0.35, F12: 0.5, VF20: 0.75, XF40: 1.25, AU50: 2, AU58: 3, MS60: 4, MS63: 6, MS64: 10, MS65: 18, MS66: 38, MS67: 110 },
+  us_silver_cert_1: { G4: 4, VG8: 5, F12: 6, VF20: 8, XF40: 12, AU50: 16, AU58: 20, MS60: 25, MS63: 32, MS64: 42, MS65: 65, MS66: 110, MS67: 220 },
+  us_red_seal_2: { G4: 5, VG8: 6, F12: 8, VF20: 10, XF40: 14, AU50: 18, AU58: 24, MS60: 32, MS63: 42, MS64: 55, MS65: 85, MS66: 150, MS67: 320 },
+  us_silver_cert_5: { G4: 10, VG8: 12, F12: 15, VF20: 20, XF40: 28, AU50: 38, AU58: 50, MS60: 68, MS63: 88, MS64: 120, MS65: 180, MS66: 320, MS67: 650 },
+  us_red_seal_5: { G4: 12, VG8: 15, F12: 18, VF20: 24, XF40: 32, AU50: 44, AU58: 58, MS60: 78, MS63: 98, MS64: 135, MS65: 210, MS66: 380, MS67: 750 },
 };
 
 // Key and semi-key date specific FMV overrides/multipliers for renowned dates:
@@ -182,7 +210,33 @@ export const fmvLookup = (item: Partial<AppraisalItem>): RefPrice | null => {
     }
   }
 
-  const gradeLabel = gradeNo ? `grade ${gradeNo}` : tier.replace(/^([A-Z]+)(\d+)$/, '$1-$2');
+  const isPaper = matched.series.startsWith('us_');
+  const isEpq =
+    item.paper_quality === 'epq' ||
+    item.paper_quality === 'ppq' ||
+    /\b(epq|ppq|exceptional\s*paper|premium\s*paper)\b/i.test([item.grade, text].filter(Boolean).join(' '));
+  const isStar =
+    Boolean(item.star_note) ||
+    /\b(star\s*note|replacement\s*note|★|\*)\b/i.test([item.grade, text].filter(Boolean).join(' '));
+
+  if (isPaper) {
+    if (isEpq && (gradeNo ?? 50) >= 64) {
+      basePrice = Math.round(basePrice * 1.35);
+    }
+    if (isStar) {
+      basePrice = Math.round(basePrice * 2.5);
+    }
+  }
+
+  const isPremiumSlab = hasPremiumSlabAttributes(item);
+  let detail = isPaper ? 'NumisMedia FMV / Paper Guide' : 'NumisMedia FMV retail guide';
+  if (isPremiumSlab && !isPaper) {
+    detail = 'NumisMedia FMV retail guide (common-date bullion baseline)';
+  }
+
+  const gradeSuffix = [isEpq ? 'EPQ' : '', isStar ? '★' : ''].filter(Boolean).join(' ');
+  const baseGradeLabel = gradeNo ? `grade ${gradeNo}` : tier.replace(/^([A-Z]+)(\d+)$/, '$1-$2');
+  const gradeLabel = [baseGradeLabel, gradeSuffix].filter(Boolean).join(' ');
   const coinTitle = [year, mint ? `-${mint}` : '', matched.label].filter(Boolean).join('').replace(/--/, '-');
 
   return {
@@ -190,7 +244,7 @@ export const fmvLookup = (item: Partial<AppraisalItem>): RefPrice | null => {
     kind: 'market',
     value: Math.round(basePrice * 100) / 100,
     name: `${coinTitle} (${gradeLabel})`,
-    detail: 'NumisMedia FMV retail guide',
+    detail,
     link: 'https://www.numismedia.com/fmv.html',
   };
 };

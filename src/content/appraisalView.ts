@@ -1,6 +1,6 @@
 // What the appraisal card shows, most important first: the max bid, why it's worth bidding, the
 // numbers behind the value, and what to watch out for. Everything else stays in the side panel.
-import { BASIS_LABEL, ITEM_TYPE_LABEL, MIN_COMPS, bidHeadline, isPcgsPriceable, lotLine, type AppraisalRecord } from '../shared/appraisal';
+import { BASIS_LABEL, ITEM_TYPE_LABEL, MIN_COMPS, basisDetail, bidHeadline, isPcgsPriceable, lotLine, type AppraisalRecord } from '../shared/appraisal';
 import { checksFor } from '../shared/counterfeit';
 import { keyDateCallouts } from '../shared/keyDates';
 import { formatMoney } from '../shared/money';
@@ -128,10 +128,7 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
     facts.push({
       label: 'Market',
       value: `${formatMoney(v.marketValue)}${each}`,
-      detail:
-        v.basis === 'estimate' && record.estimate
-          ? `AI guess ${range(record.estimate.low, record.estimate.high)} each${calibrationText(record)}`
-          : BASIS_LABEL[v.basis] || null,
+      detail: basisDetail(v.basis, record.refs, record.estimate, calibrationText(record)),
     });
   }
   if (record.price?.guide && record.price.guide > 0 && v.basis !== 'guide') {
@@ -214,11 +211,15 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
   const more = lot && lot.pieces.length > 1 ? `+${lot.pieces.length - 1} more` : null;
 
   const qtyLabel = record.countNote ?? (record.quantity > 1 ? `x${record.quantity}` : null);
+  const sigLabel = record.signature ? `Signed ${record.signature}` : null;
+  const cacLabel = record.cac && record.cac !== 'none' ? `${record.cac.toUpperCase()} CAC` : null;
+  const epqLabel = record.paperQuality && record.paperQuality !== 'none' && !record.grade?.includes('EPQ') ? record.paperQuality.toUpperCase() : null;
+  const starLabel = record.starNote && !record.grade?.includes('★') ? '★ Star' : null;
 
   return {
     status,
     title: record.name,
-    subtitle: [kind, record.grade, qtyLabel, more, confidence].filter(Boolean).join(' · ') || null,
+    subtitle: [kind, record.grade, epqLabel, starLabel, sigLabel, cacLabel, qtyLabel, more, confidence].filter(Boolean).join(' · ') || null,
     highlight: headline,
     valueLine: valueLine(record),
     reasons,

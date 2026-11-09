@@ -1,4 +1,4 @@
-import { BASIS_LABEL, ITEM_TYPE_LABEL, bidHeadline, guardAppraisal, lotLine, type AppraisalRecord } from '../../shared/appraisal';
+import { BASIS_LABEL, ITEM_TYPE_LABEL, basisDetail, bidHeadline, guardAppraisal, lotLine, type AppraisalRecord } from '../../shared/appraisal';
 import {
   DEFAULT_BUYER_SETTINGS,
   matchWatch,
@@ -143,7 +143,7 @@ const renderAppraisal = () => {
     ['Item', `${appraisal.name}${appraisal.grade ? ` · ${appraisal.grade}` : ''}${appraisal.quantity > 1 ? ` · x${appraisal.quantity}` : ''}`],
     ...(appraisal.itemType ? [['Type', ITEM_TYPE_LABEL[appraisal.itemType]] as [string, string]] : []),
     ['Melt', formatMoney(v.meltValue)],
-    ['Market', v.marketValue !== null ? `${formatMoney(v.marketValue)} (${BASIS_LABEL[v.basis]})` : '—'],
+    ['Market', v.marketValue !== null ? `${formatMoney(v.marketValue)} (${basisDetail(v.basis, appraisal.refs, appraisal.estimate) ?? BASIS_LABEL[v.basis]})` : '—'],
     ...(appraisal.lot && appraisal.lot.pieces.length >= 2
       ? ([
         ['By price', appraisal.lot.pieces.map(lotLine).join(' · ')],

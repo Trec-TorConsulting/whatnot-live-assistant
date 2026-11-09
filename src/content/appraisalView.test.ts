@@ -187,6 +187,33 @@ describe('appraisalView', () => {
     expect(v.facts).toContainEqual({ label: 'PCGS guide', value: '$50', detail: 'price guide, not a sale' });
     expect(v.cautions).not.toContain('No sales, price guide, or metal value, so no max bid.');
   });
+
+  it('renders signature, CAC, EPQ, and Star badges in subtitle and accurate market basis detail', () => {
+    const v = appraisalView(
+      record({
+        name: '2017-W American Silver Eagle Burnished',
+        grade: 'MS 70',
+        slabbed: true,
+        signature: 'Elizabeth Jones',
+        cac: 'green',
+        refs: [{ source: 'ebay', kind: 'market', value: 175, name: 'Comps', detail: 'recent sales', link: null }],
+        valuation: {
+          marketValue: 175,
+          meltValue: 30,
+          suggestedMax: 140,
+          basis: 'market',
+        },
+      }),
+      'done',
+      [],
+    );
+    expect(v.subtitle).toBe('Coin · MS 70 · Signed Elizabeth Jones · GREEN CAC');
+    expect(v.facts).toContainEqual({
+      label: 'Market',
+      value: '$175',
+      detail: 'eBay sold comps',
+    });
+  });
 });
 
 describe('listingView', () => {

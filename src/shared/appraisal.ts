@@ -331,6 +331,14 @@ export interface AppraisalItem {
   grade?: string | null;
   grade_estimate?: string | null;
   cert_number?: string | null;
+  finish?: string | null;
+  designation?: string | null;
+  pedigree?: string | null;
+  signature?: string | null;
+  cac?: 'none' | 'green' | 'gold' | null;
+  paper_quality?: 'none' | 'epq' | 'ppq' | null;
+  star_note?: boolean | null;
+  catalog_number?: string | null;
   estimate_low_usd?: number | null;
   estimate_high_usd?: number | null;
   confidence: 'high' | 'medium' | 'low';
@@ -377,6 +385,14 @@ export const APPRAISAL_SCHEMA = {
     grade: { type: 'STRING', nullable: true },
     grade_estimate: { type: 'STRING', nullable: true },
     cert_number: { type: 'STRING', nullable: true },
+    finish: { type: 'STRING', nullable: true },
+    designation: { type: 'STRING', nullable: true },
+    pedigree: { type: 'STRING', nullable: true },
+    signature: { type: 'STRING', nullable: true },
+    cac: { type: 'STRING', enum: ['none', 'green', 'gold'], nullable: true },
+    paper_quality: { type: 'STRING', enum: ['none', 'epq', 'ppq'], nullable: true },
+    star_note: { type: 'BOOLEAN', nullable: true },
+    catalog_number: { type: 'STRING', nullable: true },
     estimate_low_usd: { type: 'NUMBER' },
     estimate_high_usd: { type: 'NUMBER' },
     confidence: { type: 'STRING', enum: ['high', 'medium', 'low'] },
@@ -440,6 +456,7 @@ export const APPRAISAL_INSTRUCTIONS = [
   'card: trading cards only: game (magic, pokemon, yugioh, sports, other), the card\'s own printed name (e.g. "Charizard", "Black Lotus", "Dark Magician"), its set name, and the collector number as printed (e.g. "4/102", "LOB-005"); null for everything else.',
   'grade: from a slab or the listing only; grade_estimate: rough raw range like "VF-XF" (coins), "AU-CU" (paper), "PSA 7-8" (cards), or a condition like "Near Mint", "Good, light wear", "complete in box" for everything else. cert_number: only if legible.',
   'Slabs: read grading_service (coins: PCGS/NGC/ANACS/ICG/CACG; paper: PMG/PCGS Banknote/CGA; cards: PSA/BGS/SGC/CGC; comics: CGC/CBCS; games: WATA/VGA; autographs: PSA/DNA, JSA, Beckett), grade (e.g. "MS 63", "PMG 64 EPQ", "PSA 10", "CGC 9.8"; include +, PL, DMPL, CAC sticker, star note, auto grade), and cert_number from the label or listing.',
+  'Slab details: finish (e.g. Burnished, Proof, Reverse Proof, Enhanced, Matte, Specimen), designation (e.g. DCAM, UCAM, Cameo, PL, DMPL, FB, FBL, FS, FH, RD), pedigree (e.g. First Day of Issue, Early Releases, First Strike, Advance Release), signature (signer name on autograph labels like Elizabeth Jones, John Mercanti, Ed Moy), cac (green, gold, or none), paper_quality (EPQ or PPQ on paper money slabs), star_note (true for ★ replacement banknotes), catalog_number (Friedberg Fr. number on paper money).',
   'year / mint_mark: the date (series year for paper, release or manufacture year for everything else) and coin mint mark ("" for no mint mark / Philadelphia, null for anything that is not a coin). Null if not readable.',
   'pcgs_number: US or world coins only: the PCGS CoinFacts coin number for this exact date, mint, and designation (PL/DMPL/RD/Cameo variants have their own numbers); null if you are not sure. It gets verified, so never invent one. Null for everything that is not an unaltered coin (paper money, hobo nickel carvings, counterstamps, coin jewelry, cards, and all other items).',
   'estimate_low_usd / estimate_high_usd: per-piece US price range where most recent SOLD copies of this exact item in this condition land (eBay sold or Whatnot), i.e. the middle of typical sales, not asking prices and not the full span from junk to perfect. Account for errors, star notes, fancy serials, signature combos, autographs, rookie cards, first editions, completeness, original box or tags, damage, and the chance it is a reproduction.',
@@ -728,11 +745,65 @@ export type ValueBasis = 'auctions' | 'guide' | 'market' | 'whatnot' | 'estimate
 export const BASIS_LABEL: Record<ValueBasis, string> = {
   auctions: 'recent PCGS sales',
   guide: 'PCGS guide',
-  market: 'TCGplayer market price',
+  market: 'market price',
   whatnot: 'Whatnot sales you watched',
   estimate: 'AI estimate',
   melt: 'melt',
   none: '',
+};
+
+export const basisDetail = (
+  basis: ValueBasis,
+  refs?: RefPrice[] | null,
+  estimate?: Estimate | null,
+  calibrationText?: string,
+): string | null => {
+  if (basis === 'estimate' && estimate) {
+    const rangeStr = estimate.low === estimate.high ? formatMoney(estimate.low) : `${formatMoney(estimate.low)}–${formatMoney(estimate.high)}`;
+    return `AI guess ${rangeStr} each${calibrationText ?? ''}`;
+  }
+  if (basis === 'market') {
+    const marketRef = refs?.find((r) => r.kind === 'market' && r.value && r.value > 0);
+    if (marketRef) {
+      if (marketRef.source === 'fmv') return 'NumisMedia FMV retail guide';
+      if (marketRef.source === 'greysheet') return 'Greysheet CPG retail guide';
+      if (marketRef.source === 'ebay') return 'eBay sold comps';
+      if (['scryfall', 'pokemontcg', 'ygoprodeck'].includes(marketRef.source)) return 'TCGplayer market price';
+    }
+    return 'market price';
+  }
+  return BASIS_LABEL[basis] || null;
+};
+
+export const hasPremiumSlabAttributes = (item: Partial<AppraisalItem | AppraisalRecord>): boolean => {
+  const isSlab = ('is_slabbed' in item && Boolean(item.is_slabbed)) || ('slabbed' in item && Boolean(item.slabbed));
+  if (!isSlab) return false;
+  if (item.signature && item.signature.trim()) return true;
+  if (item.finish && !['regular', 'standard', 'none', ''].includes(item.finish.toLowerCase().trim())) return true;
+  if (item.pedigree && !['none', ''].includes(item.pedigree.toLowerCase().trim())) return true;
+  if (item.cac && item.cac !== 'none') return true;
+  const pq = 'paper_quality' in item ? item.paper_quality : 'paperQuality' in item ? item.paperQuality : null;
+  if (pq && pq !== 'none') return true;
+  const sn = 'star_note' in item ? item.star_note : 'starNote' in item ? item.starNote : null;
+  if (sn) return true;
+
+  const text = [
+    'item_name' in item ? item.item_name : 'name' in item ? item.name : '',
+    item.special,
+    item.grade,
+    item.notes,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (/\b(?:elizabeth\s*jones|mercanti|ed\s*moy|david\s*ryder|thomas\s*cleveland|gaudioso|damstra|cabral|signature|signed|autograph|auto\s*label)\b/i.test(text)) return true;
+  if (/\b(?:first\s*day\s*of\s*issue|fdi|early\s*releases|first\s*strike|advance\s*release)\b/i.test(text)) return true;
+  if (/\b(?:burnished|reverse\s*proof|enhanced\s*rev|enhanced\s*proof|matte\s*proof|specimen|satin\s*finish)\b/i.test(text)) return true;
+  if (/\b(?:green\s*cac|gold\s*cac|cac\s*sticker|cacg?)\b/i.test(text) && !/\bno\s*cac\b/i.test(text)) return true;
+  if (/\b(?:epq|ppq|exceptional\s*paper|premium\s*paper)\b/i.test(text)) return true;
+  if (/\b(?:star\s*note|replacement\s*note|★|\*)\b/i.test(text)) return true;
+
+  return false;
 };
 
 // One matching sale could be a fluke or a different variant; two or more set the value.
@@ -757,7 +828,16 @@ export const computeValue = (
     market = null,
     estimate = null,
     comps = null,
-  }: { quantity: number; melt: Melt | null; price: PriceInfo | null; market?: number | null; estimate?: Estimate | null; comps?: CompSummary | null },
+    isPremiumSlab = false,
+  }: {
+    quantity: number;
+    melt: Melt | null;
+    price: PriceInfo | null;
+    market?: number | null;
+    estimate?: Estimate | null;
+    comps?: CompSummary | null;
+    isPremiumSlab?: boolean;
+  },
   maxBidPercent = 80,
 ): Valuation => {
   const qty = Math.max(1, quantity || 1);
@@ -765,16 +845,26 @@ export const computeValue = (
   const estimateMid = estimate ? (estimate.low + estimate.high) / 2 : null;
   const compMedian = comps && comps.count >= MIN_COMPS ? comps.median : null;
   const marketPrice = market && market > 0 ? market : null;
-  const perCoin = price?.auctions?.median ?? marketPrice ?? compMedian ?? estimateMid;
-  let basis: ValueBasis = price?.auctions?.median
-    ? 'auctions'
-    : marketPrice
-      ? 'market'
-      : compMedian
-        ? 'whatnot'
-        : estimateMid
-          ? 'estimate'
-          : 'none';
+
+  let perCoin: number | null;
+  let basis: ValueBasis;
+
+  if (isPremiumSlab && estimateMid !== null && (!marketPrice || estimateMid > marketPrice)) {
+    perCoin = price?.auctions?.median ?? compMedian ?? estimateMid;
+    basis = price?.auctions?.median ? 'auctions' : compMedian ? 'whatnot' : 'estimate';
+  } else {
+    perCoin = price?.auctions?.median ?? marketPrice ?? compMedian ?? estimateMid;
+    basis = price?.auctions?.median
+      ? 'auctions'
+      : marketPrice
+        ? 'market'
+        : compMedian
+          ? 'whatnot'
+          : estimateMid
+            ? 'estimate'
+            : 'none';
+  }
+
   const collector = perCoin !== null ? perCoin * qty : null;
   const marketValue = collector !== null ? Math.max(collector, meltValue ?? 0) : meltValue;
   if (marketValue === null) return { marketValue: null, meltValue, suggestedMax: null, basis };
@@ -878,6 +968,14 @@ export interface AppraisalRecord {
   slabbed?: boolean;
   special?: string | null;
   grade: string | null;
+  finish?: string | null;
+  designation?: string | null;
+  pedigree?: string | null;
+  signature?: string | null;
+  cac?: 'none' | 'green' | 'gold' | null;
+  paperQuality?: 'none' | 'epq' | 'ppq' | null;
+  starNote?: boolean | null;
+  catalogNumber?: string | null;
   quantity: number;
   countNote?: string | null;
   confidence: AppraisalItem['confidence'] | 'quick';

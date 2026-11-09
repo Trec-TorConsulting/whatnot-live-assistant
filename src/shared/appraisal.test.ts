@@ -5,6 +5,7 @@ import {
   ITEM_TYPES,
   ITEM_TYPE_LABEL,
   appraisalContext,
+  basisDetail,
   capFineOz,
   bidHeadline,
   coinNamesAgree,
@@ -12,6 +13,7 @@ import {
   estimateOf,
   guardAppraisal,
   hallmarkPurity,
+  hasPremiumSlabAttributes,
   isPcgsPriceable,
   jewelryFineOz,
   lotRollup,
@@ -463,5 +465,98 @@ describe('bid headline', () => {
     expect(guardAppraisal({ confidence: 'high', valuation: computeValue({ quantity: 1, melt: null, price: { guide: 50, auctions: null } }) })).toBeNull();
     const melt = computeValue({ quantity: 1, melt: { metal: 'silver', spot: 30, oz: 1, perPiece: 30, total: 30 }, price: null });
     expect(guardAppraisal({ confidence: 'quick', valuation: melt })).toEqual({ marketValue: 30, suggestedMax: 30 });
+  });
+
+  it('detects premium slab attributes accurately', () => {
+    expect(
+      hasPremiumSlabAttributes({
+        is_slabbed: true,
+        item_name: '2017-W American Silver Eagle Burnished',
+        grade: 'MS 70',
+        special: 'Burnished finish, First Day of Issue, Elizabeth Jones signature label',
+      }),
+    ).toBe(true);
+
+    expect(
+      hasPremiumSlabAttributes({
+        is_slabbed: true,
+        item_name: '1928 $1 Silver Certificate',
+        grade: '64 EPQ',
+        paper_quality: 'epq',
+      }),
+    ).toBe(true);
+
+    expect(
+      hasPremiumSlabAttributes({
+        is_slabbed: true,
+        item_name: '1881-S Morgan Silver Dollar',
+        grade: 'MS 65',
+        cac: 'green',
+      }),
+    ).toBe(true);
+
+    expect(
+      hasPremiumSlabAttributes({
+        is_slabbed: false,
+        item_name: '1881-S Morgan Silver Dollar',
+        grade: 'MS 65',
+      }),
+    ).toBe(false);
+
+    expect(
+      hasPremiumSlabAttributes({
+        is_slabbed: true,
+        item_name: '2022 American Silver Eagle',
+        grade: 'MS 70',
+      }),
+    ).toBe(false);
+  });
+
+  it('preserves premium slab value against generic common-date bullion market guide', () => {
+    // 2017-W Burnished Eagle MS 70 with Elizabeth Jones signature:
+    // AI estimated $160-$190 (midpoint $175), but generic bullion FMV is $75.
+    const res = computeValue({
+      quantity: 1,
+      melt: null,
+      price: null,
+      market: 75,
+      estimate: { low: 160, high: 190 },
+      isPremiumSlab: true,
+    });
+    expect(res.marketValue).toBe(175);
+    expect(res.basis).toBe('estimate');
+    expect(res.suggestedMax).toBe(140);
+
+    // If an exact realized eBay comp exists at $185, it prefers the exact comp
+    const withExactComp = computeValue({
+      quantity: 1,
+      melt: null,
+      price: null,
+      market: 185,
+      estimate: { low: 160, high: 190 },
+      isPremiumSlab: true,
+    });
+    expect(withExactComp.marketValue).toBe(185);
+    expect(withExactComp.basis).toBe('market');
+  });
+
+  it('renders context-sensitive basis detail labels', () => {
+    expect(
+      basisDetail('market', [{ source: 'fmv', kind: 'market', value: 75, name: 'ASE', detail: null, link: null }]),
+    ).toBe('NumisMedia FMV retail guide');
+
+    expect(
+      basisDetail('market', [{ source: 'ebay', kind: 'market', value: 175, name: 'Comps', detail: null, link: null }]),
+    ).toBe('eBay sold comps');
+
+    expect(
+      basisDetail('market', [{ source: 'greysheet', kind: 'market', value: 120, name: 'CPG', detail: null, link: null }]),
+    ).toBe('Greysheet CPG retail guide');
+
+    expect(
+      basisDetail('market', [{ source: 'scryfall', kind: 'market', value: 20, name: 'Card', detail: null, link: null }]),
+    ).toBe('TCGplayer market price');
+
+    expect(basisDetail('estimate', [], { low: 160, high: 190 })).toBe('AI guess $160–$190 each');
   });
 });

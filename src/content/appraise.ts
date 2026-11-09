@@ -1,6 +1,7 @@
 import {
   computeValue,
   estimateOf,
+  hasPremiumSlabAttributes,
   isPcgsPriceable,
   lotRollup,
   reconcileCount,
@@ -214,14 +215,16 @@ const cachedForLot = (liveId: string | null, lotId: string | null, showType: Sho
 
 const showCached = async (record: AppraisalRecord) => {
   const guard = await getGuardSettings();
+  const isPremiumSlab = hasPremiumSlabAttributes(record);
   const valuation = computeValue(
     {
       quantity: record.quantity,
       melt: record.melt,
       price: record.price,
-      market: marketOf(record.refs, Boolean(record.slabbed)),
+      market: marketOf(record.refs, Boolean(record.slabbed), isPremiumSlab),
       estimate: record.estimate ?? null,
       comps: record.comps ?? null,
+      isPremiumSlab,
     },
     guard.maxBidPercent,
   );
@@ -282,9 +285,10 @@ const addRefs = async (id: string, item: Partial<AppraisalItem>, others: OtherIt
   const f = filling.get(id);
   const psaName = verifiedName(res.refs);
   const comps = psaName && f ? ((await compsFor([psaName, f.record.lotTitle], f.record.showType ?? 'general').catch(() => null)) ?? f.record.comps ?? null) : null;
+  const isPremiumSlab = hasPremiumSlabAttributes(item);
   await finishFill(id, 'refs', (r) => {
     const valuation = computeValue(
-      { quantity: r.quantity, melt: r.melt, price: r.price, market: marketOf(res.refs, Boolean(r.slabbed)), estimate: r.estimate ?? null, comps: comps ?? r.comps ?? null },
+      { quantity: r.quantity, melt: r.melt, price: r.price, market: marketOf(res.refs, Boolean(r.slabbed), isPremiumSlab), estimate: r.estimate ?? null, comps: comps ?? r.comps ?? null, isPremiumSlab },
       maxBidPercent,
     );
     return {
@@ -492,7 +496,8 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       refreshEstate();
     }
     const reconciled = reconcileCount(resolvedCase.count, res.item.quantity);
-    const valuation = computeValue({ quantity: reconciled.quantity, melt, price: null, estimate: rawEstimate, comps: null }, guard.maxBidPercent);
+    const isPremiumSlab = hasPremiumSlabAttributes(item);
+    const valuation = computeValue({ quantity: reconciled.quantity, melt, price: null, estimate: rawEstimate, comps: null, isPremiumSlab }, guard.maxBidPercent);
     const record: AppraisalRecord = {
       ...base,
       name,
@@ -500,6 +505,14 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       year: res.item.year ?? null,
       mintMark: res.item.mint_mark ?? null,
       slabbed: Boolean(item.is_slabbed),
+      finish: res.item.finish ?? null,
+      designation: res.item.designation ?? null,
+      pedigree: res.item.pedigree ?? null,
+      signature: res.item.signature ?? null,
+      cac: res.item.cac ?? null,
+      paperQuality: res.item.paper_quality ?? null,
+      starNote: res.item.star_note ?? null,
+      catalogNumber: res.item.catalog_number ?? null,
       special: res.item.special?.trim() || null,
       grade: res.item.grade ?? res.item.grade_estimate ?? null,
       quantity: reconciled.quantity,
@@ -548,14 +561,23 @@ export const appraiseNow = async ({ auto = false } = {}) => {
         await finishFill(record.id, 'market', (r) => {
           const estimate = r.rawEstimate ? calibrated(r.rawEstimate, calibration) : null;
           const nextMelt = r.melt ?? settled?.melt ?? null;
+          const isPricedPremium = hasPremiumSlabAttributes(priced);
           const nextValuation = computeValue(
-            { quantity: r.quantity, melt: nextMelt, price: priceInfo, estimate, comps },
+            { quantity: r.quantity, melt: nextMelt, price: priceInfo, market: marketOf(r.refs, Boolean(priced.is_slabbed), isPricedPremium), estimate, comps, isPremiumSlab: isPricedPremium },
             guard.maxBidPercent,
           );
           return {
             ...r,
             slabbed: Boolean(priced.is_slabbed),
             grade: priced.grade ?? priced.grade_estimate ?? r.grade,
+            finish: priced.finish ?? r.finish ?? null,
+            designation: priced.designation ?? r.designation ?? null,
+            pedigree: priced.pedigree ?? r.pedigree ?? null,
+            signature: priced.signature ?? r.signature ?? null,
+            cac: priced.cac ?? r.cac ?? null,
+            paperQuality: priced.paper_quality ?? r.paperQuality ?? null,
+            starNote: priced.star_note ?? r.starNote ?? null,
+            catalogNumber: priced.catalog_number ?? r.catalogNumber ?? null,
             melt: nextMelt,
             price: priceInfo,
             priceNote: priceNote(price),

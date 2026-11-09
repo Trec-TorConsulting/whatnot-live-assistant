@@ -46,6 +46,31 @@ describe('ebayComps', () => {
     ).toBe('1881 S Morgan Dollar');
   });
 
+  it('incorporates slab service, signatures, finish, pedigree, and paper designations into queries', () => {
+    expect(
+      buildEbayQuery({
+        item_name: '2017-W American Silver Eagle Burnished',
+        grade: 'MS 70',
+        is_slabbed: true,
+        grading_service: 'NGC',
+        signature: 'Elizabeth Jones',
+        pedigree: 'First Day of Issue',
+      }),
+    ).toBe('2017-W American Silver Eagle Burnished NGC MS 70 Elizabeth Jones First Day of Issue');
+
+    expect(
+      buildEbayQuery({
+        item_name: '1928 $1 Silver Certificate',
+        grade: '64 EPQ',
+        is_slabbed: true,
+        grading_service: 'PMG',
+        paper_quality: 'epq',
+        star_note: true,
+        catalog_number: 'Fr. 1606',
+      }),
+    ).toBe('1928 $1 Silver Certificate PMG 64 EPQ Star Fr. 1606');
+  });
+
   it('parses sold items from eBay search HTML', () => {
     const sampleHtml = `
       <ul>

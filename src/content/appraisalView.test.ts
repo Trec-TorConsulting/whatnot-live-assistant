@@ -214,6 +214,32 @@ describe('appraisalView', () => {
       detail: 'eBay sold comps',
     });
   });
+
+  it('attaches links to verified cert and reference facts when present', () => {
+    const v = appraisalView(
+      record({
+        slabbed: true,
+        refs: [
+          {
+            source: 'ngc',
+            kind: 'verified',
+            value: null,
+            name: '1881-S Morgan Dollar',
+            detail: 'NGC MS 65',
+            link: 'https://www.ngccoin.com/certlookup/6066357-002/65/',
+          },
+        ],
+      }),
+      'done',
+      [],
+    );
+    expect(v.facts).toContainEqual({
+      label: 'NGC cert',
+      value: 'NGC MS 65',
+      detail: '1881-S Morgan Dollar',
+      link: 'https://www.ngccoin.com/certlookup/6066357-002/65/',
+    });
+  });
 });
 
 describe('listingView', () => {

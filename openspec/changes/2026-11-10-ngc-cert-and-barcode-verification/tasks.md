@@ -1,0 +1,24 @@
+# Tasks: NGC Slab Certification Verification & Live Video Barcode Scanning
+
+- [x] 1. Define capability delta specifications
+  - [x] 1.1 Update `openspec/changes/2026-11-10-ngc-cert-and-barcode-verification/specs/appraisal/spec.md` with barcode detection requirements.
+  - [x] 1.2 Update `openspec/changes/2026-11-10-ngc-cert-and-barcode-verification/specs/reference-prices/spec.md` with NGC cert lookup requirements.
+- [x] 2. Reference pricing & NGC cert URL resolver
+  - [x] 2.1 In `src/shared/refPrice.ts`, add `'ngc'` to `RefSource` and `REF_LABEL`.
+  - [x] 2.2 Add `extractNumericGrade`, `formatNgcCert`, and `ngcCertUrl` helpers with tests.
+  - [x] 2.3 In `src/background/refPrices.ts`, add automatic NGC verified ref price generation when `grading_service === 'NGC'` and a cert is present.
+- [x] 3. Barcode scanning on video stream
+  - [x] 3.1 Create `src/content/barcode.ts` to decode Code 128, Code 39, and QR codes via `BarcodeDetector`.
+  - [x] 3.2 Add unit tests in `src/content/barcode.test.ts`.
+  - [x] 3.3 In `src/content/appraise.ts`, invoke `scanVideoBarcode` during `appraiseNow` to ground cert numbers and grading service.
+- [x] 4. Clickable Fact links in appraisal UI
+  - [x] 4.1 In `src/content/overlay.ts`, add `link?: string | null` to `Fact` interface and update `factsHtml` to render clickable `<a>` links.
+  - [x] 4.2 In `src/content/appraisalView.ts`, pass `ref.link` into `Fact.link` for verified certs and price sources.
+- [x] 5. Quick read parser enhancements
+  - [x] 5.1 In `src/shared/appraisal.ts`, update `quickRead` to match hyphenated NGC certs (`XXXXXXX-XXX`) and detect `gradingService`.
+  - [x] 5.2 Add unit tests for NGC cert quick reading in `src/shared/appraisal.test.ts`.
+- [ ] 6. Verification & Version Bump
+  - [x] 6.1 Bump package version in `package.json` to `0.24.0` and update `README.md`.
+  - [x] 6.2 Run `npm test` and `npm run typecheck`.
+  - [x] 6.3 Run `npm run build` to update committed `dist/` and `dist-userscript/`.
+  - [x] 6.4 Execute ship chain: branch `feature/ngc-cert-and-barcode-verification`, commit changes without tokens or secrets, push, open PR into `main`, and merge with `gh pr merge --admin`.

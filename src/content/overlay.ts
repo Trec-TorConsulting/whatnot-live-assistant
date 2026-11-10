@@ -12,6 +12,7 @@ export interface Fact {
   label: string;
   value: string;
   detail: string | null;
+  link?: string | null;
 }
 export type WheelFact = Fact;
 
@@ -224,6 +225,8 @@ const STYLE = `
   .facts dt { color: #9aa3b2; }
   .facts dd { margin: 0; min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .facts dd .muted { font-size: 12px; overflow-wrap: anywhere; }
+  .fact-link { color: #60a5fa; text-decoration: underline; }
+  .fact-link:hover { color: #93c5fd; }
   .wheel-name { font-weight: 700; overflow-wrap: anywhere; }
   .wheel-spots { color: #c9cfda; font-variant-numeric: tabular-nums; }
   .wrap { overflow-wrap: anywhere; }
@@ -416,7 +419,7 @@ const factsHtml = (facts: Fact[]) =>
     ? `<dl class="facts">${facts
       .map(
         (f) =>
-          `<dt>${esc(f.label)}</dt><dd><strong>${esc(f.value)}</strong>${f.detail ? `<div class="muted" title="${esc(f.detail)}">${esc(f.detail)}</div>` : ''}</dd>`,
+          `<dt>${esc(f.label)}</dt><dd>${f.link ? `<strong><a href="${esc(f.link)}" target="_blank" rel="noopener noreferrer" class="fact-link">${esc(f.value)} ↗</a></strong>` : `<strong>${esc(f.value)}</strong>`}${f.detail ? `<div class="muted" title="${esc(f.detail)}">${esc(f.detail)}</div>` : ''}</dd>`,
       )
       .join('')}</dl>`
     : '';

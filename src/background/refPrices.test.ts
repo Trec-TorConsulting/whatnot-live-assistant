@@ -158,4 +158,25 @@ describe('refLookup', () => {
       detail: expect.stringContaining('CPG retail $400'),
     });
   });
+
+  it('generates an NGC verified reference link for NGC slabs', async () => {
+    stubFetch([]);
+    const res = await refLookup({
+      item_type: 'coin',
+      item_name: '1881-S Morgan Dollar',
+      is_slabbed: true,
+      grading_service: 'NGC',
+      grade: 'MS 65',
+      cert_number: '6066357-002',
+    });
+    const ngc = res.refs.find((r) => r.source === 'ngc');
+    expect(ngc).toEqual({
+      source: 'ngc',
+      kind: 'verified',
+      value: null,
+      name: '1881-S Morgan Dollar',
+      detail: 'NGC MS 65',
+      link: 'https://www.ngccoin.com/certlookup/6066357-002/65/',
+    });
+  });
 });

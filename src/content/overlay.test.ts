@@ -494,6 +494,34 @@ describe('overlay', () => {
     overlay.setEstate(null);
   });
 
+  it('renders fact links as clickable anchors opening in new tab', () => {
+    overlay.mount({});
+    overlay.setAppraisal({
+      status: 'done',
+      title: '1881-S Morgan Dollar',
+      subtitle: null,
+      highlight: null,
+      reasons: [],
+      facts: [
+        {
+          label: 'NGC cert',
+          value: 'Verified',
+          detail: 'NGC MS 65',
+          link: 'https://www.ngccoin.com/certlookup/6066357-002/65/',
+        },
+      ],
+      cautions: [],
+      footer: null,
+      similar: [],
+    });
+    const link = shadow().querySelector<HTMLAnchorElement>('.fact-link');
+    expect(link).not.toBeNull();
+    expect(link?.href).toBe('https://www.ngccoin.com/certlookup/6066357-002/65/');
+    expect(link?.target).toBe('_blank');
+    expect(link?.rel).toBe('noopener noreferrer');
+    expect(link?.textContent).toContain('Verified ↗');
+  });
+
   it('hides Appraise while a wheel is running', () => {
     overlay.mount({});
     overlay.setWheel(null);

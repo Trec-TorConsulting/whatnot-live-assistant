@@ -1,6 +1,6 @@
 # Whatnot Live Assistant
 
-Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.24.0. In Chrome the extension is named **Whatnot Assistant**.
+Whatnot Live Assistant is a live-show assistant for [Whatnot](https://www.whatnot.com/). This repository is the Chrome extension and the iPhone auto-share userscript, at version 0.25.0. In Chrome the extension is named **Whatnot Assistant**.
 
 It runs on a show you already have open. API keys stay in the browser. Nothing in this repository is a key, a login, or a bid.
 
@@ -49,7 +49,7 @@ The extension reads the listing first, then fills in prices it can actually look
 
 - Chrome's on-device model runs first when Chrome says it is available.
 - Gemini runs when the on-device model is missing or fails. An optional Ollama server can stand in when Gemini is slow, or handle every appraisal if you turn that on.
-- Coin prices come from PCGS when you add a token, and Greysheet (CDN) when you add your dealer API key and token (BYOK). Coins also reference the NumisMedia Fair Market Value (FMV) guide, direct NGC certification lookup with live video barcode scanning, and recent auction / eBay completed sold comps. Graded-card certs can use a PSA token. Record prices can use a Discogs token. Card prices also use Scryfall, Pokémon TCG, and YGOPRODeck after the item is identified.
+- Coin prices come from PCGS when you add a token, and Greysheet (CDN) when you add your dealer API key and token (BYOK). Collectibles also reference the NumisMedia Fair Market Value (FMV) guide, universal third-party certification verification (PCGS, NGC, PMG, PCGS Banknote, PSA, CGC Cards, CGC Comics, CACG, ANACS, BGS, SGC) with live video barcode and QR scanning, and recent auction / eBay completed sold comps. Graded-card certs can use a PSA token. Record prices can use a Discogs token. Card prices also use Scryfall, Pokémon TCG, and YGOPRODeck after the item is identified.
 - On case-pack and wholesale shows, the appraisal values one piece and reconciles the stated piece count against the visible count to compute the pack total and per-piece cost. Seller MSRP, retail, comp, and struck-through flash prices are labeled as seller claims rather than market value.
 
 A figure with no sale behind it is labeled as an estimate. The extension does not invent certification numbers.

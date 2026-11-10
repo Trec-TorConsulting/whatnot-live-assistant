@@ -1,7 +1,23 @@
 // Prices and checks from outside databases, looked up once the model has named the item. They
 // arrive after the answer is on screen, so a slow database never delays the max bid.
 
-export type RefSource = 'scryfall' | 'pokemontcg' | 'ygoprodeck' | 'psa' | 'ngc' | 'discogs' | 'greysheet' | 'fmv' | 'ebay';
+export type RefSource =
+  | 'scryfall'
+  | 'pokemontcg'
+  | 'ygoprodeck'
+  | 'psa'
+  | 'pcgs'
+  | 'ngc'
+  | 'pmg'
+  | 'cgc'
+  | 'cacg'
+  | 'anacs'
+  | 'bgs'
+  | 'sgc'
+  | 'discogs'
+  | 'greysheet'
+  | 'fmv'
+  | 'ebay';
 
 export interface RefPrice {
   source: RefSource;
@@ -24,7 +40,14 @@ export const REF_LABEL: Record<RefSource, string> = {
   pokemontcg: 'TCGplayer',
   ygoprodeck: 'TCGplayer',
   psa: 'PSA cert',
+  pcgs: 'PCGS cert',
   ngc: 'NGC cert',
+  pmg: 'PMG cert',
+  cgc: 'CGC cert',
+  cacg: 'CACG cert',
+  anacs: 'ANACS cert',
+  bgs: 'BGS cert',
+  sgc: 'SGC cert',
   discogs: 'Discogs',
   greysheet: 'Greysheet CPG',
   fmv: 'NumisMedia FMV',
@@ -92,4 +115,95 @@ export const ngcCertUrl = (cert: string | null | undefined, grade?: string | nul
     return `https://www.ngccoin.com/certlookup/${formatted}/`;
   }
   return 'https://www.ngccoin.com/certlookup/';
+};
+
+export const pmgCertUrl = (cert: string | null | undefined, grade?: string | null): string => {
+  const formatted = formatNgcCert(cert);
+  const numGrade = extractNumericGrade(grade);
+  if (formatted && numGrade) {
+    return `https://www.pmgnotes.com/certlookup/${formatted}/${numGrade}/`;
+  }
+  if (formatted) {
+    return `https://www.pmgnotes.com/certlookup/${formatted}/`;
+  }
+  return 'https://www.pmgnotes.com/certlookup/';
+};
+
+export const cgcCertUrl = (cert: string | null | undefined, isComic = false): string => {
+  const digits = String(cert ?? '').replace(/\D/g, '') || String(cert ?? '').trim();
+  const base = isComic ? 'https://www.cgccomics.com/certlookup/' : 'https://www.cgccards.com/certlookup/';
+  return digits ? `${base}${digits}/` : base;
+};
+
+export interface ResolvedCertLookup {
+  source: RefSource;
+  label: string;
+  url: string;
+  direct: boolean;
+}
+
+export const certLookupUrl = (
+  service: string | null | undefined,
+  cert: string | null | undefined,
+  grade?: string | null,
+  itemType?: string | null,
+): ResolvedCertLookup | null => {
+  const svc = String(service ?? '').trim().toLowerCase();
+  const cleanCert = String(cert ?? '').trim();
+  if (!svc || !cleanCert) return null;
+
+  // 1. PMG
+  if (/\bpmg\b/.test(svc)) {
+    return { source: 'pmg', label: 'PMG cert', url: pmgCertUrl(cleanCert, grade), direct: true };
+  }
+
+  // 2. PCGS (Coins and PCGS Banknote)
+  if (/\bpcgs\b/.test(svc)) {
+    const digits = cleanCert.replace(/\D/g, '');
+    const isBanknote = /\bbanknote\b/.test(svc) || itemType === 'banknote';
+    const url = isBanknote
+      ? (digits ? `https://www.pcgs.com/banknote/cert/${digits}` : 'https://www.pcgs.com/banknote/cert')
+      : (digits ? `https://www.pcgs.com/cert/${digits}` : 'https://www.pcgs.com/cert');
+    return { source: 'pcgs', label: 'PCGS cert', url, direct: true };
+  }
+
+  // 3. NGC
+  if (/\bngc\b/.test(svc)) {
+    return { source: 'ngc', label: 'NGC cert', url: ngcCertUrl(cleanCert, grade), direct: true };
+  }
+
+  // 4. CGC (Cards & Comics)
+  if (/\bcgc\b/.test(svc)) {
+    const isComic = /\bcomic/.test(svc) || itemType === 'comic_book' || itemType === 'magazine';
+    return { source: 'cgc', label: 'CGC cert', url: cgcCertUrl(cleanCert, isComic), direct: true };
+  }
+
+  // 5. PSA
+  if (/\bpsa\b/.test(svc)) {
+    const digits = cleanCert.replace(/\D/g, '');
+    const url = digits ? `https://www.psacard.com/cert/${digits}` : 'https://www.psacard.com/cert/';
+    return { source: 'psa', label: 'PSA cert', url, direct: true };
+  }
+
+  // 6. CACG (CAC Grading)
+  if (/\bcacg?\b/.test(svc)) {
+    return { source: 'cacg', label: 'CACG cert', url: 'https://www.cacgrading.com/certlookup', direct: false };
+  }
+
+  // 7. ANACS
+  if (/\banacs\b/.test(svc)) {
+    return { source: 'anacs', label: 'ANACS cert', url: 'https://portal.anacs.com/Verify/CertVerification.aspx', direct: false };
+  }
+
+  // 8. Beckett (BGS / BVG / BCCG)
+  if (/\b(?:bgs|beckett|bvg|bccg)\b/.test(svc)) {
+    return { source: 'bgs', label: 'BGS cert', url: 'https://www.beckett.com/grading/card-lookup', direct: false };
+  }
+
+  // 9. SGC
+  if (/\bsgc\b/.test(svc)) {
+    return { source: 'sgc', label: 'SGC cert', url: 'https://gosgc.com/cert-code-lookup', direct: false };
+  }
+
+  return null;
 };

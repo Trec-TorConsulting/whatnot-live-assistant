@@ -127,8 +127,8 @@ const ozOf = (amount: string): number | null => {
 const QTY_RE = /\b(?:qty\.?|x)\s*(\d{1,3})\b|\b(\d{1,3})\s*(?:x|pcs|coins)\b/i;
 const SLAB_RE =
   /\b(PCGS|NGC|ANACS|ICG|CACG)\b[^\n]{0,12}?\b(MS|PR|PF|SP|AU|XF|EF|VF|VG|AG|F|G)\s*-?\s*(\d{1,2})\s*(\+)?\s*((?:DM)?PL|DCAM|CAM|RD|RB|BN)?/i;
-// PCGS certs are 7-9 digits; the lookarounds keep prices like "$1,250" and dates out.
-const CERT_RE = /(?<![\d$.,])(\d{7,9})(?![\d,.])/;
+// Slab certs are 7-10 digits; the lookarounds keep prices like "$1,250" and dates out.
+const CERT_RE = /(?<![\d$.,])(\d{7,10})(?![\d,.])/;
 // NGC certs are 7-10 digits or 7 digits with hyphen (e.g. 1234567-001).
 const NGC_CERT_RE = /(?<![\d$.,])(\d{7}-\d{3}|\d{10}|\d{7,9})(?![\d,.])/;
 
@@ -153,20 +153,50 @@ export const quickRead = (pageText: string): QuickResult => {
   let cert: string | null = null;
   let gradingService: string | null = null;
 
-  const ngcLine = lines.find((l) => /\bNGC\b/i.test(l) && NGC_CERT_RE.test(l));
-  if (ngcLine) {
-    const m = ngcLine.match(NGC_CERT_RE);
+  // Check for PMG: 1234567-001 or 7-10 digits
+  const pmgLine = lines.find((l) => /\bPMG\b/i.test(l) && NGC_CERT_RE.test(l));
+  if (pmgLine) {
+    const m = pmgLine.match(NGC_CERT_RE);
     if (m) {
       cert = m[1]!;
-      gradingService = 'NGC';
+      gradingService = 'PMG';
     }
   }
 
   if (!cert) {
-    const certLine = lines.find((l) => /\bPCGS\b/i.test(l) && CERT_RE.test(l));
-    if (certLine) {
-      cert = certLine.match(CERT_RE)?.[1] ?? null;
-      if (cert) gradingService = 'PCGS';
+    const ngcLine = lines.find((l) => /\bNGC\b/i.test(l) && NGC_CERT_RE.test(l));
+    if (ngcLine) {
+      const m = ngcLine.match(NGC_CERT_RE);
+      if (m) {
+        cert = m[1]!;
+        gradingService = 'NGC';
+      }
+    }
+  }
+
+  if (!cert) {
+    const cgcLine = lines.find((l) => /\bCGC\b/i.test(l) && /(?<![\d$.,])(\d{10,13})(?![\d,.])/.test(l));
+    if (cgcLine) {
+      const m = cgcLine.match(/(?<![\d$.,])(\d{10,13})(?![\d,.])/);
+      if (m) {
+        cert = m[1]!;
+        gradingService = 'CGC';
+      }
+    }
+  }
+
+  if (!cert) {
+    const otherServiceLine = lines.find(
+      (l) => /\b(PCGS|PSA|CACG?|ANACS|BGS|BECKETT|SGC)\b/i.test(l) && CERT_RE.test(l),
+    );
+    if (otherServiceLine) {
+      const svcMatch = otherServiceLine.match(/\b(PCGS|PSA|CACG?|ANACS|BGS|BECKETT|SGC)\b/i);
+      const m = otherServiceLine.match(CERT_RE);
+      if (m && svcMatch) {
+        cert = m[1]!;
+        const rawSvc = svcMatch[1]!.toUpperCase();
+        gradingService = rawSvc === 'BECKETT' ? 'BGS' : rawSvc.startsWith('CAC') ? 'CACG' : rawSvc;
+      }
     }
   }
 

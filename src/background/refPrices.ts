@@ -4,7 +4,7 @@
 import { isPcgsPriceable, type AppraisalItem, type CardId } from '../shared/appraisal';
 import { fmvLookup } from '../shared/fmv';
 import { titleTokens } from '../shared/purchases';
-import { formatNgcCert, ngcCertUrl, type RefLookupResult, type RefPrice } from '../shared/refPrice';
+import { certLookupUrl, formatNgcCert, ngcCertUrl, type RefLookupResult, type RefPrice } from '../shared/refPrice';
 import { getAppraisalSettings, getItem, setItem, type AppraisalSettings } from '../shared/storage';
 import { DAY, SECOND } from '../shared/time';
 import { fetchWithTimeout } from './appraisal';
@@ -233,22 +233,23 @@ const asksFor = (item: Partial<AppraisalItem>, settings: AppraisalSettings) => {
     if (settings.psaToken) asks.push({ key: `psa|${cert}`, ttl: CERT_TTL_MS, run: () => psa(cert, item, settings.psaToken) });
     else notes.push('Add a free PSA token in Settings to check this cert.');
   }
-  if (item.is_slabbed && /\bngc\b/i.test(item.grading_service ?? '') && cert.length >= 7) {
-    const formatted = formatNgcCert(rawCert.includes('-') ? rawCert : cert);
-    const link = ngcCertUrl(formatted, item.grade);
-    const detail = ['NGC', item.grade].filter(Boolean).join(' ') || 'NGC cert';
-    asks.push({
-      key: `ngc|${formatted}|${item.grade ?? ''}`,
-      ttl: CERT_TTL_MS,
-      run: async () => ({
-        source: 'ngc',
-        kind: 'verified',
-        value: null,
-        name: [item.year, item.mint_mark, name].filter(Boolean).join(' ') || 'NGC Certified Coin',
-        detail,
-        link,
-      }),
-    });
+  if (item.is_slabbed && item.grading_service && rawCert) {
+    const lookup = certLookupUrl(item.grading_service, rawCert, item.grade, item.item_type);
+    if (lookup && (lookup.source !== 'psa' || !settings.psaToken)) {
+      const detail = [item.grading_service.toUpperCase(), item.grade].filter(Boolean).join(' ') || lookup.label;
+      asks.push({
+        key: `cert|${lookup.source}|${rawCert}|${item.grade ?? ''}`,
+        ttl: CERT_TTL_MS,
+        run: async () => ({
+          source: lookup.source,
+          kind: 'verified',
+          value: null,
+          name: [item.year, item.mint_mark, name].filter(Boolean).join(' ') || lookup.label,
+          detail,
+          link: lookup.url,
+        }),
+      });
+    }
   }
   if (item.item_type === 'vinyl_media' && name) {
     if (settings.discogsToken) asks.push({ key: `discogs|${norm(name)}`, ttl: PRICE_TTL_MS, run: () => discogs(item, settings.discogsToken) });

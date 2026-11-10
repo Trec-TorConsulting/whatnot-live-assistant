@@ -303,11 +303,21 @@ const addRefs = async (id: string, item: Partial<AppraisalItem>, others: OtherIt
   });
 };
 
+const isSlabbable = (type: unknown) =>
+  !type ||
+  isPcgsPriceable(type) ||
+  type === 'banknote' ||
+  type === 'trading_card' ||
+  type === 'sports_memorabilia' ||
+  type === 'comic_book' ||
+  type === 'stamp' ||
+  type === 'other';
+
 const needsRefs = (item: Partial<AppraisalItem>) =>
   Boolean(
     item.card?.name ||
-      (item.is_slabbed && /\bpsa\b/i.test(item.grading_service ?? '')) ||
-      (item.is_slabbed && /\bngc\b/i.test(item.grading_service ?? '') && item.cert_number) ||
+      (item.is_slabbed && item.cert_number) ||
+      (item.is_slabbed && /\b(?:psa|ngc|pmg|cgc|pcgs|cacg|anacs|bgs|sgc)\b/i.test(item.grading_service ?? '')) ||
       item.item_type === 'vinyl_media' ||
       !item.item_type ||
       isPcgsPriceable(item.item_type) ||
@@ -320,12 +330,19 @@ const applyListingCert = (
   cert: string | null | undefined,
   gradingService?: string | null,
 ) => {
-  if (!cert || !isPcgsPriceable(item.item_type)) return;
+  if (!cert || !isSlabbable(item.item_type)) return;
   const cleanCert = cert.trim();
   const digits = cleanCert.replace(/\D/g, '');
   const itemDigits = String(item.cert_number ?? '').replace(/\D/g, '');
   if (!item.cert_number || itemDigits === digits) {
-    const service = gradingService || item.grading_service || (cleanCert.includes('-') ? 'NGC' : 'PCGS');
+    const service =
+      gradingService ||
+      item.grading_service ||
+      (cleanCert.includes('-')
+        ? item.item_type === 'banknote'
+          ? 'PMG'
+          : 'NGC'
+        : 'PCGS');
     Object.assign(item, { is_slabbed: true, grading_service: service, cert_number: cleanCert });
   }
 };

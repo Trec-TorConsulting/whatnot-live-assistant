@@ -1,0 +1,21 @@
+# Tasks: Universal Slab Certification Verification & Multi-Service Barcode Scanning
+
+- [x] 1. Define capability delta specifications
+  - [x] 1.1 Update `openspec/changes/2026-11-10-universal-cert-verification-and-barcode-scanning/specs/reference-prices/spec.md` with universal cert resolution requirements.
+  - [x] 1.2 Update `openspec/changes/2026-11-10-universal-cert-verification-and-barcode-scanning/specs/appraisal/spec.md` with multi-service barcode detection requirements.
+- [x] 2. Reference pricing & universal cert URL resolver
+  - [x] 2.1 In `src/shared/refPrice.ts`, expand `RefSource` and `REF_LABEL` to include `pmg`, `cgc`, `cacg`, `anacs`, `bgs`, and `sgc`.
+  - [x] 2.2 Implement `certLookupUrl(service, cert, grade, itemType)` covering all 11 grading services with unit tests in `src/shared/refPrice.test.ts`.
+  - [x] 2.3 In `src/background/refPrices.ts`, dispatch verified cert reference entries for all supported grading services with unit tests in `src/background/refPrices.test.ts`.
+- [x] 3. Multi-service stream barcode & QR decoding
+  - [x] 3.1 In `src/content/barcode.ts`, expand `parseBarcodeValue` to decode PMG, CGC, PCGS Banknote, PSA, and generic serials from both linear barcodes and QR URLs.
+  - [x] 3.2 Add comprehensive unit tests in `src/content/barcode.test.ts`.
+  - [x] 3.3 In `src/content/appraise.ts`, ground cert numbers and grading services across all supported services.
+- [x] 4. Listing quick read parser enhancements
+  - [x] 4.1 In `src/shared/appraisal.ts`, update `quickRead` to match cert numbers for PMG, CGC, CACG, ANACS, BGS, and SGC in listing text.
+  - [x] 4.2 Add unit tests for multi-service quick read cert parsing in `src/shared/appraisal.test.ts`.
+- [x] 5. Verification & Version Bump
+  - [x] 5.1 Bump package version in `package.json` to `0.25.0` and update `README.md`.
+  - [x] 5.2 Run `npm test` and `npm run typecheck`.
+  - [x] 5.3 Run `npm run build` to update committed `dist/` and `dist-userscript/`.
+  - [x] 5.4 Execute ship chain: branch `feature/universal-cert-verification-and-barcode-scanning`, commit changes without tokens or secrets, push, open PR into `main`, and merge with `gh pr merge --admin`.

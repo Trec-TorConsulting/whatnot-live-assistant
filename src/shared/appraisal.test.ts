@@ -307,6 +307,28 @@ describe('quickRead', () => {
     expect(ngcDigits.gradingService).toBe('NGC');
   });
 
+  it('finds PMG, CGC, CACG, ANACS, and BGS certs in listing text', () => {
+    const pmg = quickRead('1928 $10 Gold Certificate PMG 64 EPQ 2517345-003');
+    expect(pmg.cert).toBe('2517345-003');
+    expect(pmg.gradingService).toBe('PMG');
+
+    const cgc = quickRead('1999 Pokemon Base Set Charizard CGC 9 1401022941001');
+    expect(cgc.cert).toBe('1401022941001');
+    expect(cgc.gradingService).toBe('CGC');
+
+    const cacg = quickRead('1921 Peace Dollar CACG MS64 10012345');
+    expect(cacg.cert).toBe('10012345');
+    expect(cacg.gradingService).toBe('CACG');
+
+    const anacs = quickRead('1881-S Morgan Dollar ANACS MS63 5432109');
+    expect(anacs.cert).toBe('5432109');
+    expect(anacs.gradingService).toBe('ANACS');
+
+    const bgs = quickRead('2000 Tom Brady Rookie BGS 9.5 0012345678');
+    expect(bgs.cert).toBe('0012345678');
+    expect(bgs.gradingService).toBe('BGS');
+  });
+
   it('returns nothing for chatter', () => {
     expect(quickRead('lol nice\nlet me get one').read).toBeNull();
   });

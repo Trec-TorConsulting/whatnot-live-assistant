@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractNumericGrade, formatNgcCert, ngcCertUrl } from './refPrice';
+import { certLookupUrl, cgcCertUrl, extractNumericGrade, formatNgcCert, ngcCertUrl, pmgCertUrl } from './refPrice';
 
 describe('refPrice NGC utilities', () => {
   describe('extractNumericGrade', () => {
@@ -56,6 +56,124 @@ describe('refPrice NGC utilities', () => {
     it('falls back to base certlookup URL when cert is missing', () => {
       expect(ngcCertUrl(null, 'MS 65')).toBe('https://www.ngccoin.com/certlookup/');
       expect(ngcCertUrl('', null)).toBe('https://www.ngccoin.com/certlookup/');
+    });
+  });
+
+  describe('pmgCertUrl', () => {
+    it('constructs PMG lookup URL with cert and numeric grade', () => {
+      expect(pmgCertUrl('2517345-003', '64 EPQ')).toBe('https://www.pmgnotes.com/certlookup/2517345-003/64/');
+      expect(pmgCertUrl('2517345003', 'Gem Unc 66')).toBe('https://www.pmgnotes.com/certlookup/2517345-003/66/');
+    });
+
+    it('constructs PMG lookup URL without grade when grade is non-numeric', () => {
+      expect(pmgCertUrl('2517345-003', 'Choice About Unc')).toBe('https://www.pmgnotes.com/certlookup/2517345-003/');
+    });
+  });
+
+  describe('cgcCertUrl', () => {
+    it('constructs CGC Cards URL by default', () => {
+      expect(cgcCertUrl('1401022941001')).toBe('https://www.cgccards.com/certlookup/1401022941001/');
+    });
+
+    it('constructs CGC Comics URL when isComic is true', () => {
+      expect(cgcCertUrl('4057358001', true)).toBe('https://www.cgccomics.com/certlookup/4057358001/');
+    });
+  });
+
+  describe('certLookupUrl', () => {
+    it('resolves direct deep-links for PMG', () => {
+      expect(certLookupUrl('PMG', '2517345-003', '64 EPQ')).toEqual({
+        source: 'pmg',
+        label: 'PMG cert',
+        url: 'https://www.pmgnotes.com/certlookup/2517345-003/64/',
+        direct: true,
+      });
+    });
+
+    it('resolves direct deep-links for PCGS Banknote and PCGS Coins', () => {
+      expect(certLookupUrl('PCGS Banknote', '80123456')).toEqual({
+        source: 'pcgs',
+        label: 'PCGS cert',
+        url: 'https://www.pcgs.com/banknote/cert/80123456',
+        direct: true,
+      });
+
+      expect(certLookupUrl('PCGS', '12345678')).toEqual({
+        source: 'pcgs',
+        label: 'PCGS cert',
+        url: 'https://www.pcgs.com/cert/12345678',
+        direct: true,
+      });
+    });
+
+    it('resolves direct deep-links for NGC', () => {
+      expect(certLookupUrl('NGC', '6066357-002', 'MS 65')).toEqual({
+        source: 'ngc',
+        label: 'NGC cert',
+        url: 'https://www.ngccoin.com/certlookup/6066357-002/65/',
+        direct: true,
+      });
+    });
+
+    it('resolves direct deep-links for CGC Cards and Comics', () => {
+      expect(certLookupUrl('CGC', '1401022941001', '10', 'trading_card')).toEqual({
+        source: 'cgc',
+        label: 'CGC cert',
+        url: 'https://www.cgccards.com/certlookup/1401022941001/',
+        direct: true,
+      });
+
+      expect(certLookupUrl('CGC', '4057358001', '9.8', 'comic_book')).toEqual({
+        source: 'cgc',
+        label: 'CGC cert',
+        url: 'https://www.cgccomics.com/certlookup/4057358001/',
+        direct: true,
+      });
+    });
+
+    it('resolves direct deep-links for PSA', () => {
+      expect(certLookupUrl('PSA', '12345678')).toEqual({
+        source: 'psa',
+        label: 'PSA cert',
+        url: 'https://www.psacard.com/cert/12345678',
+        direct: true,
+      });
+    });
+
+    it('resolves portal search links for CACG, ANACS, BGS, and SGC', () => {
+      expect(certLookupUrl('CACG', '10012345')).toEqual({
+        source: 'cacg',
+        label: 'CACG cert',
+        url: 'https://www.cacgrading.com/certlookup',
+        direct: false,
+      });
+
+      expect(certLookupUrl('ANACS', '5432109')).toEqual({
+        source: 'anacs',
+        label: 'ANACS cert',
+        url: 'https://portal.anacs.com/Verify/CertVerification.aspx',
+        direct: false,
+      });
+
+      expect(certLookupUrl('BGS', '0012345678')).toEqual({
+        source: 'bgs',
+        label: 'BGS cert',
+        url: 'https://www.beckett.com/grading/card-lookup',
+        direct: false,
+      });
+
+      expect(certLookupUrl('SGC', '1234567')).toEqual({
+        source: 'sgc',
+        label: 'SGC cert',
+        url: 'https://gosgc.com/cert-code-lookup',
+        direct: false,
+      });
+    });
+
+    it('returns null for empty service or cert', () => {
+      expect(certLookupUrl(null, '12345')).toBeNull();
+      expect(certLookupUrl('PCGS', null)).toBeNull();
+      expect(certLookupUrl('Unknown', '12345')).toBeNull();
     });
   });
 });

@@ -22,6 +22,57 @@ describe('parseBarcodeValue', () => {
     });
   });
 
+  it('parses PMG direct cert URLs with grade', () => {
+    const res = parseBarcodeValue('https://www.pmgnotes.com/certlookup/2517345-003/64/');
+    expect(res).toEqual({
+      raw: 'https://www.pmgnotes.com/certlookup/2517345-003/64/',
+      cert: '2517345-003',
+      gradingService: 'PMG',
+      grade: '64',
+    });
+  });
+
+  it('parses CGC Cards and CGC Comics direct cert URLs', () => {
+    const cards = parseBarcodeValue('https://www.cgccards.com/certlookup/1401022941001/');
+    expect(cards).toEqual({
+      raw: 'https://www.cgccards.com/certlookup/1401022941001/',
+      cert: '1401022941001',
+      gradingService: 'CGC',
+    });
+
+    const comics = parseBarcodeValue('https://www.cgccomics.com/certlookup/4057358001/');
+    expect(comics).toEqual({
+      raw: 'https://www.cgccomics.com/certlookup/4057358001/',
+      cert: '4057358001',
+      gradingService: 'CGC',
+    });
+  });
+
+  it('parses PCGS Banknote and PSA direct cert URLs', () => {
+    const pcgsNote = parseBarcodeValue('https://www.pcgs.com/banknote/cert/80123456');
+    expect(pcgsNote).toEqual({
+      raw: 'https://www.pcgs.com/banknote/cert/80123456',
+      cert: '80123456',
+      gradingService: 'PCGS',
+    });
+
+    const psa = parseBarcodeValue('https://www.psacard.com/cert/98765432');
+    expect(psa).toEqual({
+      raw: 'https://www.psacard.com/cert/98765432',
+      cert: '98765432',
+      gradingService: 'PSA',
+    });
+  });
+
+  it('parses 11-13 digit CGC barcode strings', () => {
+    const res = parseBarcodeValue('1401022941001');
+    expect(res).toEqual({
+      raw: '1401022941001',
+      cert: '1401022941001',
+      gradingService: 'CGC',
+    });
+  });
+
   it('parses PCGS direct cert URLs', () => {
     const res = parseBarcodeValue('https://www.pcgs.com/cert/12345678');
     expect(res).toEqual({

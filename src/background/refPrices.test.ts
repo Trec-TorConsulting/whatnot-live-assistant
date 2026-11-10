@@ -179,4 +179,83 @@ describe('refLookup', () => {
       link: 'https://www.ngccoin.com/certlookup/6066357-002/65/',
     });
   });
+
+  it('generates a PMG verified reference link for PMG banknotes', async () => {
+    stubFetch([]);
+    const res = await refLookup({
+      item_type: 'banknote',
+      item_name: '1928 $10 Gold Certificate',
+      is_slabbed: true,
+      grading_service: 'PMG',
+      grade: '64 EPQ',
+      cert_number: '2517345-003',
+    });
+    const pmg = res.refs.find((r) => r.source === 'pmg');
+    expect(pmg).toEqual({
+      source: 'pmg',
+      kind: 'verified',
+      value: null,
+      name: '1928 $10 Gold Certificate',
+      detail: 'PMG 64 EPQ',
+      link: 'https://www.pmgnotes.com/certlookup/2517345-003/64/',
+    });
+  });
+
+  it('generates a CGC verified reference link for CGC cards', async () => {
+    stubFetch([]);
+    const res = await refLookup({
+      item_type: 'trading_card',
+      item_name: 'Charizard Base Set',
+      is_slabbed: true,
+      grading_service: 'CGC',
+      grade: '10 Pristine',
+      cert_number: '1401022941001',
+    });
+    const cgc = res.refs.find((r) => r.source === 'cgc');
+    expect(cgc).toEqual({
+      source: 'cgc',
+      kind: 'verified',
+      value: null,
+      name: 'Charizard Base Set',
+      detail: 'CGC 10 Pristine',
+      link: 'https://www.cgccards.com/certlookup/1401022941001/',
+    });
+  });
+
+  it('generates portal reference links for CACG and ANACS slabs', async () => {
+    stubFetch([]);
+    const cacgRes = await refLookup({
+      item_type: 'coin',
+      item_name: '1921 Peace Dollar',
+      is_slabbed: true,
+      grading_service: 'CACG',
+      grade: 'MS 64',
+      cert_number: '10012345',
+    });
+    expect(cacgRes.refs.find((r) => r.source === 'cacg')).toEqual({
+      source: 'cacg',
+      kind: 'verified',
+      value: null,
+      name: '1921 Peace Dollar',
+      detail: 'CACG MS 64',
+      link: 'https://www.cacgrading.com/certlookup',
+    });
+
+    const anacsRes = await refLookup({
+      item_type: 'coin',
+      item_name: '1881-S Morgan Dollar',
+      is_slabbed: true,
+      grading_service: 'ANACS',
+      grade: 'MS 63',
+      cert_number: '5432109',
+    });
+    expect(anacsRes.refs.find((r) => r.source === 'anacs')).toEqual({
+      source: 'anacs',
+      kind: 'verified',
+      value: null,
+      name: '1881-S Morgan Dollar',
+      detail: 'ANACS MS 63',
+      link: 'https://portal.anacs.com/Verify/CertVerification.aspx',
+    });
+  });
 });

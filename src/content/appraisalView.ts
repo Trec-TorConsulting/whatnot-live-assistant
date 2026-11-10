@@ -132,15 +132,30 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
     });
   }
   if (record.price?.guide && record.price.guide > 0 && v.basis !== 'guide') {
-    facts.push({ label: 'PCGS guide', value: formatMoney(record.price.guide), detail: 'price guide, not a sale' });
+    facts.push({
+      label: 'PCGS guide',
+      value: formatMoney(record.price.guide),
+      detail: 'price guide, not a sale',
+      ...(record.price.link ? { link: record.price.link } : {}),
+    });
   }
   for (const ref of record.refs ?? []) {
     if (ref.kind === 'verified') {
-      facts.push({ label: REF_LABEL[ref.source], value: ref.mismatch ? 'Does not match' : (ref.detail ?? 'Verified'), detail: ref.name });
+      facts.push({
+        label: REF_LABEL[ref.source],
+        value: ref.mismatch ? 'Does not match' : (ref.detail ?? 'Verified'),
+        detail: ref.name,
+        ...(ref.link ? { link: ref.link } : {}),
+      });
       continue;
     }
     if (ref.value === null) {
-      facts.push({ label: REF_LABEL[ref.source], value: '—', detail: [ref.name, ref.detail].filter(Boolean).join(' · ') });
+      facts.push({
+        label: REF_LABEL[ref.source],
+        value: '—',
+        detail: [ref.name, ref.detail].filter(Boolean).join(' · '),
+        ...(ref.link ? { link: ref.link } : {}),
+      });
       continue;
     }
     const value = ref.kind === 'range' && ref.high ? range(ref.value, ref.high) : formatMoney(ref.value);
@@ -151,11 +166,21 @@ export const appraisalView = (record: AppraisalRecord, status: AppraisalView['st
         : ref.kind === 'market' && record.slabbed && !isGradedComp
           ? 'raw price; graded sells differently'
           : ref.detail;
-    facts.push({ label: REF_LABEL[ref.source], value, detail: [ref.name, note].filter(Boolean).join(' · ') });
+    facts.push({
+      label: REF_LABEL[ref.source],
+      value,
+      detail: [ref.name, note].filter(Boolean).join(' · '),
+      ...(ref.link ? { link: ref.link } : {}),
+    });
   }
   const auctions = record.price?.auctions;
   if (auctions?.count && auctions.low !== undefined && auctions.high !== undefined) {
-    facts.push({ label: 'PCGS sales', value: `${auctions.count} sold ${range(auctions.low, auctions.high)}`, detail: null });
+    facts.push({
+      label: 'PCGS sales',
+      value: `${auctions.count} sold ${range(auctions.low, auctions.high)}`,
+      detail: null,
+      ...(record.price?.link ? { link: record.price.link } : {}),
+    });
   }
   const comps = record.comps;
   if (comps) {

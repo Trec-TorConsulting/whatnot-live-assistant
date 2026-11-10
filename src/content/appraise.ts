@@ -22,6 +22,7 @@ import { collectionLine, compareToCollection, type CollectionSettings } from '..
 import { getAppraisalSettings, getCollection, getGuardSettings, getItem } from '../shared/storage';
 import { MINUTE } from '../shared/time';
 import { emptyIdleScanGate, isIdleScanResultCurrent, runnerPassOn, stepIdleScanGate } from '../shared/runner';
+import { scanVideoBarcode } from './barcode';
 import { appraisalView, idleTableView, listingView, messageView, tableScanView } from './appraisalView';
 import { refreshEstate } from './estate';
 import { isShareWorker, liveSession, rememberElectronicsName, rememberEstateName } from './live';
@@ -306,17 +307,26 @@ const needsRefs = (item: Partial<AppraisalItem>) =>
   Boolean(
     item.card?.name ||
       (item.is_slabbed && /\bpsa\b/i.test(item.grading_service ?? '')) ||
+      (item.is_slabbed && /\bngc\b/i.test(item.grading_service ?? '') && item.cert_number) ||
       item.item_type === 'vinyl_media' ||
       !item.item_type ||
       isPcgsPriceable(item.item_type) ||
       item.item_type === 'banknote',
   );
 
-// A PCGS cert in the listing title beats one the model may have misread on camera.
-const applyListingCert = (item: Partial<AppraisalItem>, cert: string | null | undefined) => {
+// A cert in the listing title or scanned barcode beats one the model may have misread on camera.
+const applyListingCert = (
+  item: Partial<AppraisalItem>,
+  cert: string | null | undefined,
+  gradingService?: string | null,
+) => {
   if (!cert || !isPcgsPriceable(item.item_type)) return;
-  if (!item.cert_number || item.cert_number.replace(/\D/g, '') === cert) {
-    Object.assign(item, { is_slabbed: true, grading_service: 'PCGS', cert_number: cert });
+  const cleanCert = cert.trim();
+  const digits = cleanCert.replace(/\D/g, '');
+  const itemDigits = String(item.cert_number ?? '').replace(/\D/g, '');
+  if (!item.cert_number || itemDigits === digits) {
+    const service = gradingService || item.grading_service || (cleanCert.includes('-') ? 'NGC' : 'PCGS');
+    Object.assign(item, { is_slabbed: true, grading_service: service, cert_number: cleanCert });
   }
 };
 
@@ -375,6 +385,7 @@ export const appraiseNow = async ({ auto = false } = {}) => {
   let modelShown = false;
   try {
     const video = findStreamVideo();
+    const barcodePromise = scanVideoBarcode(video).catch(() => null);
     const pageText = [base.lotTitle, collectPlayerText(video, (el) => overlay.isOurs(el))].filter(Boolean).join('\n');
     const guardPromise = getGuardSettings();
     // Listing melt and the frame check run together. A slow spot fetch must not hold the model.
@@ -486,7 +497,14 @@ export const appraiseNow = async ({ auto = false } = {}) => {
     }
 
     const item: Partial<AppraisalItem> = { ...res.item };
-    applyListingCert(item, quickNow?.cert);
+    const scannedBarcode = await barcodePromise;
+    if (scannedBarcode?.cert) {
+      applyListingCert(item, scannedBarcode.cert, scannedBarcode.gradingService);
+      if (scannedBarcode.grade && !item.grade) {
+        item.grade = `MS ${scannedBarcode.grade}`;
+      }
+    }
+    applyListingCert(item, quickNow?.cert, quickNow?.gradingService);
     const rawEstimate = res.item.is_collectible ? estimateOf(res.item) : null;
     const melt = res.melt ?? quickNow?.melt ?? null;
     const name = res.item.is_collectible ? res.item.item_name : `No sellable item identified: ${res.item.item_name}`;
@@ -551,7 +569,10 @@ export const appraiseNow = async ({ auto = false } = {}) => {
       void (async () => {
         const settled = await quickPromise;
         const priced: Partial<AppraisalItem> = { ...res.item };
-        applyListingCert(priced, settled?.cert);
+        if (scannedBarcode?.cert) {
+          applyListingCert(priced, scannedBarcode.cert, scannedBarcode.gradingService);
+        }
+        applyListingCert(priced, settled?.cert, settled?.gradingService);
         const [price, comps, calibration] = await Promise.all([
           send('PRICE_LOOKUP', { item: priced }).catch(() => null),
           compsFor([res.item.item_name, base.lotTitle], showType).catch(() => null),

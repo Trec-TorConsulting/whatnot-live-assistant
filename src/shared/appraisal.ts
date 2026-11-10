@@ -129,6 +129,8 @@ const SLAB_RE =
   /\b(PCGS|NGC|ANACS|ICG|CACG)\b[^\n]{0,12}?\b(MS|PR|PF|SP|AU|XF|EF|VF|VG|AG|F|G)\s*-?\s*(\d{1,2})\s*(\+)?\s*((?:DM)?PL|DCAM|CAM|RD|RB|BN)?/i;
 // PCGS certs are 7-9 digits; the lookarounds keep prices like "$1,250" and dates out.
 const CERT_RE = /(?<![\d$.,])(\d{7,9})(?![\d,.])/;
+// NGC certs are 7-10 digits or 7 digits with hyphen (e.g. 1234567-001).
+const NGC_CERT_RE = /(?<![\d$.,])(\d{7}-\d{3}|\d{10}|\d{7,9})(?![\d,.])/;
 
 export interface QuickRead {
   name: string;
@@ -142,13 +144,31 @@ export interface QuickRead {
 export interface QuickResult {
   read: QuickRead | null;
   cert: string | null;
+  gradingService?: string | null;
 }
 
 // Instant melt floor from listing text, shown while the model looks at the video.
 export const quickRead = (pageText: string): QuickResult => {
   const lines = String(pageText || '').split('\n');
-  const certLine = lines.find((l) => /\bPCGS\b/i.test(l) && CERT_RE.test(l));
-  const cert = certLine?.match(CERT_RE)?.[1] ?? null;
+  let cert: string | null = null;
+  let gradingService: string | null = null;
+
+  const ngcLine = lines.find((l) => /\bNGC\b/i.test(l) && NGC_CERT_RE.test(l));
+  if (ngcLine) {
+    const m = ngcLine.match(NGC_CERT_RE);
+    if (m) {
+      cert = m[1]!;
+      gradingService = 'NGC';
+    }
+  }
+
+  if (!cert) {
+    const certLine = lines.find((l) => /\bPCGS\b/i.test(l) && CERT_RE.test(l));
+    if (certLine) {
+      cert = certLine.match(CERT_RE)?.[1] ?? null;
+      if (cert) gradingService = 'PCGS';
+    }
+  }
 
   // Listing titles carry a year or a weight; chat chatter usually doesn't.
   for (const line of lines.filter((l) => /\b(1[789]\d\d|20\d\d)\b|(?:\b|\d)ozt?\b/i.test(l))) {
@@ -186,9 +206,9 @@ export const quickRead = (pageText: string): QuickResult => {
     const grade = slab
       ? `${slab[1]!.toUpperCase()} ${slab[2]!.toUpperCase()} ${slab[3]}${slab[4] ?? ''}${slab[5] ? ` ${slab[5].toUpperCase()}` : ''}`
       : null;
-    return { read: { name, metal, oz, quantity, grade, source: line.slice(0, 80) }, cert };
+    return { read: { name, metal, oz, quantity, grade, source: line.slice(0, 80) }, cert, gradingService };
   }
-  return { read: null, cert };
+  return { read: null, cert, gradingService };
 };
 
 export interface Melt {

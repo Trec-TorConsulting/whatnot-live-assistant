@@ -1,7 +1,7 @@
 // Prices and checks from outside databases, looked up once the model has named the item. They
 // arrive after the answer is on screen, so a slow database never delays the max bid.
 
-export type RefSource = 'scryfall' | 'pokemontcg' | 'ygoprodeck' | 'psa' | 'discogs' | 'greysheet' | 'fmv' | 'ebay';
+export type RefSource = 'scryfall' | 'pokemontcg' | 'ygoprodeck' | 'psa' | 'ngc' | 'discogs' | 'greysheet' | 'fmv' | 'ebay';
 
 export interface RefPrice {
   source: RefSource;
@@ -24,6 +24,7 @@ export const REF_LABEL: Record<RefSource, string> = {
   pokemontcg: 'TCGplayer',
   ygoprodeck: 'TCGplayer',
   psa: 'PSA cert',
+  ngc: 'NGC cert',
   discogs: 'Discogs',
   greysheet: 'Greysheet CPG',
   fmv: 'NumisMedia FMV',
@@ -62,3 +63,33 @@ export const marketOf = (refs: RefPrice[] | undefined, slabbed: boolean, isPremi
 
 // The cert's own description, for Whatnot sold matching, when it agrees with what was read.
 export const verifiedName = (refs: RefPrice[] | undefined) => refs?.find((r) => r.kind === 'verified' && !r.mismatch)?.name ?? null;
+
+export const extractNumericGrade = (grade: string | null | undefined): string | null => {
+  if (!grade) return null;
+  const m = grade.match(/(?:^|[^0-9])(1|2|3|4|6|8|10|12|15|20|25|30|35|40|45|50|53|55|58|60|61|62|63|64|65|66|67|68|69|70)(?:[^0-9]|$)/);
+  return m ? m[1]! : null;
+};
+
+export const formatNgcCert = (cert: string | null | undefined): string => {
+  const s = String(cert ?? '').trim();
+  if (!s) return '';
+  const hyphenMatch = s.match(/(\d{7})-(\d{3})/);
+  if (hyphenMatch) return `${hyphenMatch[1]}-${hyphenMatch[2]}`;
+  const digits = s.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 7)}-${digits.slice(7)}`;
+  }
+  return digits;
+};
+
+export const ngcCertUrl = (cert: string | null | undefined, grade?: string | null): string => {
+  const formatted = formatNgcCert(cert);
+  const numGrade = extractNumericGrade(grade);
+  if (formatted && numGrade) {
+    return `https://www.ngccoin.com/certlookup/${formatted}/${numGrade}/`;
+  }
+  if (formatted) {
+    return `https://www.ngccoin.com/certlookup/${formatted}/`;
+  }
+  return 'https://www.ngccoin.com/certlookup/';
+};

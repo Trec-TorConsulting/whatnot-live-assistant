@@ -291,8 +291,20 @@ describe('quickRead', () => {
   });
 
   it('finds a PCGS cert but not prices or dates', () => {
-    expect(quickRead('PCGS 12345678 1881-S Morgan').cert).toBe('12345678');
+    const pcgs = quickRead('PCGS 12345678 1881-S Morgan');
+    expect(pcgs.cert).toBe('12345678');
+    expect(pcgs.gradingService).toBe('PCGS');
     expect(quickRead('PCGS MS65 $1,250,000 2024').cert).toBeNull();
+  });
+
+  it('finds an NGC cert with hyphen or 10 digits', () => {
+    const ngcHyphen = quickRead('1881-S Morgan NGC MS65 6066357-002');
+    expect(ngcHyphen.cert).toBe('6066357-002');
+    expect(ngcHyphen.gradingService).toBe('NGC');
+
+    const ngcDigits = quickRead('2024 Silver Eagle NGC MS70 6066357002');
+    expect(ngcDigits.cert).toBe('6066357002');
+    expect(ngcDigits.gradingService).toBe('NGC');
   });
 
   it('returns nothing for chatter', () => {

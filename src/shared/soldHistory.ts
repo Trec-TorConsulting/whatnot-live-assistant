@@ -71,16 +71,111 @@ export const addSold = (list: SoldItem[], items: SoldItem[]): SoldItem[] => {
 const isYear = (t: string) => /^(1[6-9]\d\d|20\d\d)$/.test(t);
 const meaningful = (s: string) => new Set([...titleTokens(s)].filter((t) => !NOISE.has(t)));
 
-// Share of the wanted words found in a sale title. Conflicting years, device specs, pack counts, or bullion weights rule a sale out;
+const GRAMS_PER_OZ = 31.1035;
+const GRAINS_PER_OZ = 480;
+const LBS_PER_OZ = 14.5833;
+
+const OZ_FRACTION_RE = /(?<![\d/.])(\d+)\/(\d+)(?:st|nd|rd|th)?\s*(?:troy\s*)?ozt?\b/i;
+const OZ_WORD_RE = /\b(tenth|quarter|half)\s*(?:troy\s*)?ozt?\b/i;
+const OZ_DECIMAL_RE = /(?<![\d/.])(\d+(?:\.\d+)?|\.\d+)(?:st|nd|rd|th)?\s*(?:troy\s*)?(?:oz|ozt|ounces?)\b/i;
+const KILO_RE = /(?<![\d/.])(\d+(?:\.\d+)?|\.\d+)\s*(?:kilos?|kg|kilograms?)\b/i;
+const GRAM_RE = /(?<![\d/.])(\d+(?:\.\d+)?|\.\d+)\s*(?:grams?|g)\b(?!\s*(?:cellular|lte|uwb|network|wifi|phone\b))/i;
+const GRAIN_RE = /(?<![\d/.])(\d+(?:\.\d+)?|\.\d+)\s*(?:grains?|gr)\b/i;
+const LB_RE = /(?<![\d/.])(\d+(?:\.\d+)?|\.\d+)\s*(?:lbs?|pounds?)\b/i;
+
+export const explicitBullionWeight = (text: string): number | null => {
+  const wordMatch = text.match(OZ_WORD_RE);
+  if (wordMatch) {
+    const w = wordMatch[1]!.toLowerCase();
+    return w === 'tenth' ? 0.1 : w === 'quarter' ? 0.25 : 0.5;
+  }
+  const fracMatch = text.match(OZ_FRACTION_RE);
+  if (fracMatch) {
+    const den = Number(fracMatch[2]);
+    if (den > 0) return Number(fracMatch[1]) / den;
+  }
+  const ozMatch = text.match(OZ_DECIMAL_RE);
+  if (ozMatch) {
+    const val = parseFloat(ozMatch[1]!);
+    if (Number.isFinite(val) && val > 0) return val;
+  }
+  const kiloMatch = text.match(KILO_RE);
+  if (kiloMatch) {
+    const val = parseFloat(kiloMatch[1]!);
+    if (Number.isFinite(val) && val > 0) return (val * 1000) / GRAMS_PER_OZ;
+  }
+  const gramMatch = text.match(GRAM_RE);
+  if (gramMatch) {
+    const val = parseFloat(gramMatch[1]!);
+    if (Number.isFinite(val) && val > 0) return val / GRAMS_PER_OZ;
+  }
+  const grainMatch = text.match(GRAIN_RE);
+  if (grainMatch) {
+    const val = parseFloat(grainMatch[1]!);
+    if (Number.isFinite(val) && val > 0) return val / GRAINS_PER_OZ;
+  }
+  const lbMatch = text.match(LB_RE);
+  if (lbMatch) {
+    const val = parseFloat(lbMatch[1]!);
+    if (Number.isFinite(val) && val > 0) return val * LBS_PER_OZ;
+  }
+  return null;
+};
+
+export const extractBullionWeight = (text: string): number | null => {
+  return explicitBullionWeight(text) ?? quickRead(text).read?.oz ?? null;
+};
+
+export const metalsOf = (text: string): Set<string> => {
+  const set = new Set<string>();
+  const qrMetal = quickRead(text).read?.metal;
+  if (qrMetal) set.add(qrMetal);
+  if (/\bgold\b/i.test(text)) set.add('gold');
+  if (/\bsilver\b/i.test(text)) set.add('silver');
+  if (/\bplatinum\b/i.test(text)) set.add('platinum');
+  if (/\bpalladium\b/i.test(text)) set.add('palladium');
+  if (/\brhodium\b/i.test(text)) set.add('rhodium');
+  if (/\b(?:copper|cobre)\b/i.test(text)) set.add('copper');
+  if (/\bbrass\b/i.test(text)) set.add('brass');
+  if (/\bbronze\b/i.test(text)) set.add('bronze');
+  if (/\b(?:clad|plated|gilt)\b/i.test(text)) set.add('clad');
+  return set;
+};
+
+export const metalsConflict = (aText: string, bText: string): boolean => {
+  const a = metalsOf(aText);
+  const b = metalsOf(bText);
+  if (!a.size || !b.size) return false;
+  for (const m of a) {
+    if (b.has(m)) return false;
+  }
+  return true;
+};
+
+const isNonStandardWeight = (oz: number | null): boolean => oz !== null && (oz < 0.8 || oz > 1.2);
+
+// Share of the wanted words found in a sale title. Conflicting years, precious metals, device specs, pack counts, or bullion weights rule a sale out;
 // a title with a missing spec can still match, since sellers often leave it off.
 const matchScore = (wantText: string, want: Set<string>, title: string) => {
   if (specsConflict(wantText, title)) return 0;
+  if (metalsConflict(wantText, title)) return 0;
   const wantPack = packCount(wantText).count ?? 1;
   const havePack = packCount(title).count ?? 1;
   if (wantPack !== havePack) return 0;
-  const wantOz = quickRead(wantText).read?.oz ?? null;
-  const haveOz = quickRead(title).read?.oz ?? null;
-  if (wantOz !== null && haveOz !== null && Math.abs(wantOz - haveOz) > 1e-4) return 0;
+
+  const wantExplicit = explicitBullionWeight(wantText);
+  const haveExplicit = explicitBullionWeight(title);
+  const wantOz = wantExplicit ?? quickRead(wantText).read?.oz ?? null;
+  const haveOz = haveExplicit ?? quickRead(title).read?.oz ?? null;
+
+  if (wantOz !== null && haveOz !== null) {
+    const max = Math.max(wantOz, haveOz);
+    if (max > 0 && Math.abs(wantOz - haveOz) / max > 0.05) return 0;
+  }
+  if ((isNonStandardWeight(wantExplicit) && haveOz === null) || (isNonStandardWeight(haveExplicit) && wantOz === null)) {
+    return 0;
+  }
+
   const have = meaningful(title);
   const wantYears = [...want].filter(isYear);
   const haveYears = [...have].filter(isYear);

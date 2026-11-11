@@ -61,7 +61,7 @@ Magic, Pokémon, and Yu-Gi-Oh prints SHALL be looked up without a token after th
 - **THEN** the spread is shown and the bid value is not replaced by it
 
 ### Requirement: Whatnot sold comps
-Saved sales SHALL drop giveaways and non-positive prices and SHALL NOT store buyers. A comp SHALL need a strong title match under 180 days. A conflicting year, precious-metal ounce weight, storage, RAM, screen size, chip, generation, model suffix, or part-number suffix SHALL rule it out. Specialty show types SHALL NOT match each other. A template, pull bucket, or generic device-class title SHALL NOT match. A stated MSRP SHALL NOT count as a sold price. The median SHALL need two comps; one SHALL show as too few.
+Saved sales SHALL drop giveaways and non-positive prices and SHALL NOT store buyers. A comp SHALL need a strong title match under 180 days. A conflicting year, precious-metal type (such as silver, gold, platinum, palladium, copper, or clad/plated novelty), precious-metal weight (in ounces, grams, kilograms, or grains, including fractional or multi-ounce weights against unweighted titles), storage, RAM, screen size, chip, generation, model suffix, or part-number suffix SHALL rule it out. Specialty show types SHALL NOT match each other. A template, pull bucket, or generic device-class title SHALL NOT match. A stated MSRP SHALL NOT count as a sold price. The median SHALL need two comps; one SHALL show as too few.
 
 #### Scenario: One matching sale
 - **WHEN** only one watched Whatnot sale matches the item
@@ -105,6 +105,18 @@ Saved sales SHALL drop giveaways and non-positive prices and SHALL NOT store buy
 
 #### Scenario: Fractional ounce against full ounce
 - **WHEN** the item is "1/10th oz Gold Eagle MS70 2022" and two watched sales are "1 oz Gold Eagle MS70 2022"
+- **THEN** those sales do not match
+
+#### Scenario: Precious metal conflict
+- **WHEN** the item is "1 oz silver 2026 Coca Cola polar bear" and watched sales are "2026 PAMP Coca-Cola Holiday Polar Bear 5 Gram Gold Bar" or "2026 Coca Cola polar bear gold"
+- **THEN** those sales do not match
+
+#### Scenario: Bullion gram weight against ounce weight
+- **WHEN** the item is "Valcambi 1g Silver" and watched sales are "Valcambi 1 oz Silver Bar"
+- **THEN** those sales do not match
+
+#### Scenario: Explicit fractional bullion weight against unweighted bar
+- **WHEN** the item is "Valcambi 1g Silver" and watched sales are "Valcambi Silver Bar" without a stated weight
 - **THEN** those sales do not match
 
 ### Requirement: Generic case-pack titles are not comps

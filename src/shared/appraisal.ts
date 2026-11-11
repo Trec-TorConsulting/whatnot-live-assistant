@@ -43,6 +43,7 @@ export const SERIES: Record<string, { metal: Metal; oz: number }> = {
   canada_80_half: { metal: 'silver', oz: 0.3 },
   canada_80_dollar: { metal: 'silver', oz: 0.6 },
   krugerrand_1oz: { metal: 'gold', oz: 1 },
+  krugerrand_silver_1oz: { metal: 'silver', oz: 1 },
   britannia_silver_1oz: { metal: 'silver', oz: 1 },
   britannia_gold_1oz: { metal: 'gold', oz: 1 },
   philharmonic_silver_1oz: { metal: 'silver', oz: 1 },
@@ -63,11 +64,13 @@ export const isMetal = (m: unknown): m is Metal => typeof m === 'string' && m in
 const OZ_AMOUNT = String.raw`(?<![\d/.])(\d+\/\d+|\d+(?:\.\d+)?|\.\d+)`;
 const OZ_UNIT = String.raw`(?:st|nd|rd|th)?\s*(?:troy\s*)?ozt?\b`;
 
-// Only the 1 oz issue: fractional, multi-ounce, gram, and kilo sizes fall through to the generic
-// "N oz metal" match below or to the model.
+export const SET_OR_LOT_RE = /\b(?:sets?|coin\s*sets?|collection|album|holder|display\s*cases?|booklets?)\b/i;
+
+// Only the 1 oz issue: fractional, multi-ounce, gram, kilo sizes, and multi-coin sets/lots fall
+// through to the generic "N oz metal" match below or to the model.
 const oneOz = (re: RegExp) =>
   new RegExp(
-    `^(?!.*(?:\\b\\d+\\/\\d+(?:st|nd|rd|th)?(?:\\s*(?:troy\\s*)?ozt?)?\\b|(?:(?<!\\d)\\.\\d+|\\b0+\\.\\d+|\\b1\\.\\d*[1-9]\\d*|\\b(?:[2-9]|\\d{2,})(?:\\.\\d+)?)\\s*(?:troy\\s*)?ozt?\\b|\\b(?:half|quarter|tenth)\\s*(?:troy\\s*)?ozt?\\b|\\bkilo|\\b\\d+(?:\\.\\d+)?\\s*(?:g|grams?)\\b)).*(?:${re.source})`,
+    `^(?!.*(?:\\b\\d+\\/\\d+(?:st|nd|rd|th)?(?:\\s*(?:troy\\s*)?ozt?)?\\b|(?:(?<!\\d)\\.\\d+|\\b0+\\.\\d+|\\b1\\.\\d*[1-9]\\d*|\\b(?:[2-9]|\\d{2,})(?:\\.\\d+)?)\\s*(?:troy\\s*)?ozt?\\b|\\b(?:half|quarter|tenth)\\s*(?:troy\\s*)?ozt?\\b|\\bkilo|\\b\\d+(?:\\.\\d+)?\\s*(?:g|grams?)\\b|\\b(?:sets?|coin\s*sets?|collection|album|holder|display\s*cases?|booklets?)\\b)).*(?:${re.source})`,
     'i',
   );
 
@@ -87,12 +90,17 @@ const QUICK_PATTERNS: [RegExp, string, string][] = [
   [oneOz(/\bgold\s*eagle\b/), 'american_gold_eagle_1oz', '1 oz Gold Eagle'],
   [oneOz(/\bgold\s*buffalo\b/), 'american_gold_buffalo', 'Gold Buffalo'],
   [oneOz(/\bgold\s*maple/), 'gold_maple_leaf', 'Gold Maple Leaf'],
-  [/\bdouble\s*eagle\b|\$20\s*(liberty|saint|gold)/i, 'us_gold_20_double_eagle', '$20 Gold Double Eagle'],
+  [
+    /^(?!.*\b(?:silver|copper|cobre|bronze|brass|clad|plated|norfed)\b)(?:.*\bdouble\s*eagle\b|.*\$20\s*(?:liberty\s*(?:head)?|saint(?:-gaudens)?|gold)\b(?!\s*dollar\b))/i,
+    'us_gold_20_double_eagle',
+    '$20 Gold Double Eagle',
+  ],
   [/\b(walking\s*liberty|franklin)\s*half/i, 'us_90_half', '90% Silver Half'],
   [/\bmercury\s*dime/i, 'us_90_dime', 'Mercury Dime'],
   [/\b(standing\s*liberty|barber)\s*quarter/i, 'us_90_quarter', '90% Silver Quarter'],
   [/\bwar\s*nickel/i, 'war_nickel_35', 'War Nickel'],
-  [oneOz(/\bkrugerrand/), 'krugerrand_1oz', '1 oz Krugerrand'],
+  [oneOz(/\bsilver\b.*\bkrugerrand|\bkrugerrand\b.*\bsilver\b/), 'krugerrand_silver_1oz', '1 oz Silver Krugerrand'],
+  [oneOz(/^(?!.*\b(?:silver|copper|cobre|bronze|brass|clad|plated)\b).*\bkrugerrand\b/), 'krugerrand_1oz', '1 oz Krugerrand'],
   [oneOz(/\bgold\b.*\bbritannia|\bbritannia\b.*\bgold\b/), 'britannia_gold_1oz', '1 oz Gold Britannia'],
   [oneOz(/\bbritannia\b/), 'britannia_silver_1oz', '1 oz Silver Britannia'],
   [oneOz(/\bgold\b.*\bphilharmonic|\bphilharmonic\b.*\bgold\b/), 'philharmonic_gold_1oz', '1 oz Gold Philharmonic'],
@@ -108,7 +116,7 @@ const QUICK_PATTERNS: [RegExp, string, string][] = [
 ];
 
 const SILVER_SERIES_RE =
-  /^(?!.*\b(?:gold|platinum|palladium|copper|cobre|bronze|brass)\b).*\b(?:noah'?s\s*ark|kookaburra|koala|libertad|britannia|philharmonic|kangaroo|silver\s*eagle|ase|silver\s*maple)\b/i;
+  /^(?!.*\b(?:gold|platinum|palladium|copper|cobre|bronze|brass)\b).*\b(?:noah'?s\s*ark|kookaburra|koala|libertad|britannia|philharmonic|kangaroo|krugerrand|silver\s*eagle|ase|silver\s*maple)\b/i;
 
 const BULLION_RE = new RegExp(
   `${OZ_AMOUNT}${OZ_UNIT}[^\\n]*?\\b(silver|gold|platinum|palladium)\\b|\\b(silver|gold|platinum|palladium)\\b[^\\n]*?${OZ_AMOUNT}${OZ_UNIT}`,
@@ -202,6 +210,23 @@ export const quickRead = (pageText: string): QuickResult => {
 
   // Listing titles carry a year or a weight; chat chatter usually doesn't.
   for (const line of lines.filter((l) => /\b(1[789]\d\d|20\d\d)\b|(?:\b|\d)ozt?\b/i.test(l))) {
+    const isSet = SET_OR_LOT_RE.test(line);
+    const bullionMatch = line.match(BULLION_RE);
+    const bullion = bullionMatch
+      ? (() => {
+          const amount = (bullionMatch[1] ?? bullionMatch[4])!;
+          const parsed = ozOf(amount);
+          if (parsed === null) return null;
+          const met = (bullionMatch[2] ?? bullionMatch[3])!.toLowerCase() as Metal;
+          return { amount, oz: parsed, metal: met };
+        })()
+      : null;
+
+    // Do not fabricate a 1-oz-per-piece melt floor on an unweighted multi-coin set or lot.
+    if (isSet && !bullion) {
+      continue;
+    }
+
     const qtyMatch = line.match(QTY_RE);
     const quantity = qtyMatch ? Math.max(1, parseInt(qtyMatch[1] ?? qtyMatch[2] ?? '1', 10)) : 1;
     const series = QUICK_PATTERNS.find(([re]) => re.test(line));
@@ -210,27 +235,28 @@ export const quickRead = (pageText: string): QuickResult => {
     let name: string;
     if (series) {
       const known = SERIES[series[1]]!;
-      ({ metal, oz } = known);
-      name = series[2];
-    } else {
-      const m = line.match(BULLION_RE);
-      if (m) {
-        const amount = (m[1] ?? m[4])!;
-        const parsed = ozOf(amount);
-        if (parsed === null) continue;
-        metal = (m[2] ?? m[3])!.toLowerCase() as Metal;
-        oz = parsed;
-        name = `${amount} oz ${metal}`;
-      } else if (SILVER_SERIES_RE.test(line)) {
-        const ozMatch = line.match(STATED_OZ_RE)?.[1];
-        const parsed = ozMatch ? ozOf(ozMatch) : null;
-        if (parsed === null) continue;
-        metal = 'silver';
-        oz = parsed;
-        name = `${ozMatch} oz silver`;
+      // If the listing explicitly stated a bullion metal that contradicts the series guess, trust the explicit bullion text.
+      if (bullion && bullion.metal !== known.metal) {
+        metal = bullion.metal;
+        oz = bullion.oz;
+        name = `${bullion.amount} oz ${metal}`;
       } else {
-        continue;
+        ({ metal, oz } = known);
+        name = series[2];
       }
+    } else if (bullion) {
+      metal = bullion.metal;
+      oz = bullion.oz;
+      name = `${bullion.amount} oz ${metal}`;
+    } else if (SILVER_SERIES_RE.test(line)) {
+      const ozMatch = line.match(STATED_OZ_RE)?.[1];
+      const parsed = ozMatch ? ozOf(ozMatch) : null;
+      if (parsed === null) continue;
+      metal = 'silver';
+      oz = parsed;
+      name = `${ozMatch} oz silver`;
+    } else {
+      continue;
     }
     const slab = line.match(SLAB_RE);
     const grade = slab

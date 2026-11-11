@@ -290,6 +290,40 @@ describe('quickRead', () => {
     expect(quickRead('2022 1 kilo silver kangaroo').read?.name).not.toBe('1 oz Silver Kangaroo');
   });
 
+  it('recognizes 1 oz silver Krugerrands and rejects unweighted multi-coin sets', () => {
+    expect(quickRead('2021 South Africa 1 oz Silver Krugerrand BU').read).toMatchObject({
+      name: '1 oz Silver Krugerrand',
+      metal: 'silver',
+      oz: 1,
+    });
+    expect(
+      quickRead('2007 Gold Krugerrand Investment Coin Set 3 Coins Limited Edition of 5000 Display Case & Booklet').read,
+    ).toBeNull();
+  });
+
+  it('correctly reads NORFED silver dollars as silver and distinguishes $20 gold double eagles', () => {
+    const norfed = quickRead('2009 NORFED $20 Liberty Dollar – 1 oz .999 Silver – Cali Evergreen RCO Stamp( mintage 250)');
+    expect(norfed.read).toMatchObject({
+      metal: 'silver',
+      oz: 1,
+    });
+    expect(norfed.read?.metal).not.toBe('gold');
+
+    const doubleEagle = quickRead('1908 $20 Saint-Gaudens Gold Double Eagle');
+    expect(doubleEagle.read).toMatchObject({
+      name: '$20 Gold Double Eagle',
+      metal: 'gold',
+      oz: 0.9675,
+    });
+
+    const libHead = quickRead('1904 $20 Liberty Head Double Eagle');
+    expect(libHead.read).toMatchObject({
+      name: '$20 Gold Double Eagle',
+      metal: 'gold',
+      oz: 0.9675,
+    });
+  });
+
   it('finds a PCGS cert but not prices or dates', () => {
     const pcgs = quickRead('PCGS 12345678 1881-S Morgan');
     expect(pcgs.cert).toBe('12345678');

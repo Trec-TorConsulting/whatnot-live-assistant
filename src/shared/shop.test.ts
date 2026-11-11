@@ -248,6 +248,35 @@ describe('scoreShop', () => {
     expect(shopMelt(mysteryWithGoldSub, spot)).toBeNull();
   });
 
+  it('does not flag an unweighted 3-coin set as a steal under fabricated melt', () => {
+    const spot = { gold: 4000, silver: 30 };
+    const setListing: ShopListing = {
+      id: 'krug-set',
+      title: '2007 Gold Krugerrand Investment Coin Set 3 Coins Limited Edition of 5000 Display Case & Booklet',
+      price: 325,
+      quantity: 1,
+      mode: 'bin',
+    };
+    expect(shopMelt(setListing, spot)).toBeNull();
+    const hits = score([setListing], { meltOf: (item) => shopMelt(item, spot) });
+    expect(hits).toEqual([]);
+  });
+
+  it('evaluates NORFED silver dollar against silver spot rather than gold melt', () => {
+    const spot = { gold: 4000, silver: 30 };
+    const norfedListing: ShopListing = {
+      id: 'norfed-cali',
+      title: '2009 NORFED $20 Liberty Dollar – 1 oz .999 Silver – Cali Evergreen RCO Stamp( mintage 250)',
+      price: 350,
+      quantity: 1,
+      mode: 'bin',
+    };
+    expect(shopMelt(norfedListing, spot)).toBeCloseTo(30);
+    // At $350 asking vs $30 silver melt, it is not under melt or a steal.
+    const hits = score([norfedListing], { meltOf: (item) => shopMelt(item, spot) });
+    expect(hits).toEqual([]);
+  });
+
   it('calls a price under melt a steal and ignores a price at melt', () => {
     const hits = score([list('1 oz silver round', 20), list('1 oz silver round #2', 30)]);
     expect(hits.map((h) => h.title)).toEqual(['1 oz silver round']);

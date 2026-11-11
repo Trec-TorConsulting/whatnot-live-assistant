@@ -162,6 +162,26 @@ describe('findComps', () => {
     ];
     expect(findComps(['1/10th oz gold eagle ms70 2022'], eagleSales, now, 8, 'coins').map((c) => c.price)).toEqual([310]);
   });
+
+  it('rejects silver bullion matches against gold sales and different bullion weights', () => {
+    const mixedSales = [
+      sold('2026 PAMP Coca-Cola Holiday Polar Bear 5 Gram Gold Bar', 760, { key: 'coke-gold-1', showType: 'coins' }),
+      sold('2026 Coca Cola polar bear gold', 750, { key: 'coke-gold-2', showType: 'coins' }),
+      sold('2026 Coca Cola polar bear 1 oz silver', 130, { key: 'coke-silver-1', showType: 'coins' }),
+      sold('Valcambi 1 oz Silver Bar', 30.5, { key: 'val-1oz-1', showType: 'coins' }),
+      sold('Valcambi 1 oz Silver', 31, { key: 'val-1oz-2', showType: 'coins' }),
+      sold('Valcambi Silver Bar', 30, { key: 'val-unweighted', showType: 'coins' }),
+      sold('Valcambi 1g Silver Bar', 9, { key: 'val-1g-1', showType: 'coins' }),
+    ];
+
+    // Coca Cola 1 oz silver must not match the 5g gold bar sales (~$760)
+    const cokeComps = findComps(['1 oz silver 2026 Coca Cola polar bear'], mixedSales, now, 8, 'coins');
+    expect(cokeComps.map((c) => c.price)).toEqual([130]);
+
+    // Valcambi 1g silver must not match 1 oz silver bars (~$30.50) or unweighted silver bars
+    const valComps = findComps(['Valcambi 1g Silver'], mixedSales, now, 8, 'coins');
+    expect(valComps.map((c) => c.price)).toEqual([9]);
+  });
 });
 
 describe('summarizeComps', () => {

@@ -890,4 +890,47 @@ describe('shop query text', () => {
     expect(fair.isDeal).toBe(false);
     expect(fair.isOverpriced).toBe(false);
   });
+
+  it('does not badge 1 oz silver Coca Cola polar bear or Valcambi 1g silver as steals against mismatched comps', () => {
+    const listings: ShopListing[] = [
+      { id: 'coke', title: '1 oz silver 2026 Coca Cola polar bear', price: 135, quantity: 17, mode: 'bin' },
+      { id: 'val', title: 'Valcambi 1g Silver', price: 8, quantity: 1, mode: 'bin' },
+    ];
+    const soldComps: SoldItem[] = [
+      // 7 sales of 5g gold polar bears at ~$760
+      ...Array.from({ length: 7 }, (_, i) => ({
+        key: `coke-gold-${i}`,
+        at: Date.now() - 1000 * 60 * i,
+        liveId: 'show-1',
+        showTitle: 'Bullion Show',
+        title: '2026 PAMP Coca-Cola Holiday Polar Bear 5 Gram Gold Bar',
+        price: 760,
+        showType: 'coins' as const,
+      })),
+      // 8 sales of 1 oz Valcambi silver bars at $30.50
+      ...Array.from({ length: 8 }, (_, i) => ({
+        key: `val-1oz-${i}`,
+        at: Date.now() - 1000 * 60 * i,
+        liveId: 'show-1',
+        showTitle: 'Bullion Show',
+        title: 'Valcambi 1 oz Silver Bar',
+        price: 30.5,
+        showType: 'coins' as const,
+      })),
+    ];
+
+    const hits = scoreShop({
+      listings,
+      sold: soldComps,
+      showType: 'coins',
+      watchlist: [],
+      wishlist: [],
+      maxBidPercent: 80,
+      meltOf: (item) => shopMelt(item, { silver: 32, gold: 2700 }),
+      now: Date.now(),
+    });
+
+    // Neither item should be flagged as a steal against the mismatched comps
+    expect(hits.filter((h) => h.kind === 'steal')).toEqual([]);
+  });
 });

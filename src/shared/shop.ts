@@ -2,7 +2,7 @@
 // Giveaways, sold listings, and template auctions are skipped. A $1 auction price is the pre-bid
 // opener, not a price you pay, so it is not scored. A hit is a price under melt or under sales
 // you've watched, a watchlist match, a missing set date, or a known key date. Nothing here buys.
-import { quickRead, type AppraisalItem, type AuctionSummary } from './appraisal';
+import { quickRead, SET_OR_LOT_RE, type AppraisalItem, type AuctionSummary } from './appraisal';
 import type { PerPieceShopRow } from './casePack';
 import { compareToCollection, type CollectionSettings } from './collection';
 import { DEFAULT_FEE_PERCENT, allInPrice, flipProfit, shippingOwed, type ShippingRules } from './costs';
@@ -1120,6 +1120,7 @@ export const shopCursor = (body: unknown): string | null => {
     const titleHasWeight = /(?<![\d/.])(?:\d+\/\d+|\d+(?:\.\d+)?)\s*(?:st|nd|rd|th)?\s*(?:troy\s*)?(?:ozt?|grams?|gr?|kilos?|kg)\b/i.test(
       listing.title,
     );
+    if (SET_OR_LOT_RE.test(fullText) && !titleHasWeight) return null;
     const sub =
       !titleHasWeight &&
       listing.subtitle &&

@@ -79,6 +79,8 @@ A coin series pattern for a precious metal (including `$20 Gold Double Eagle`, `
 
 Listings that represent multi-coin sets, collections, lots, proof sets, mint sets, or presentation cases without an explicit per-piece or total bullion weight SHALL NOT be assumed to contain 1 oz bullion coins, SHALL NOT multiply 1 oz melt by the coin count, and SHALL return no quick melt.
 
+Bullion patterns SHALL bind a stated weight strictly to its adjacent precious metal. When a listing contains multiple precious metals (such as gold and silver in composite pieces like `2.5g Gold 3oz Silver`), the bullion parser SHALL extract each metal component with its own stated weight and SHALL NOT associate a silver weight with gold or vice-versa. When a single baseline metal floor must be returned, the system SHALL under-estimate rather than over-estimate, using the conservative floor rather than attributing multi-ounce weights to gold.
+
 #### Scenario: Spot price is slow
 - **WHEN** the listing has a metal weight and the spot price has not come back yet
 - **THEN** the frame is still sent to the model
@@ -106,6 +108,10 @@ Listings that represent multi-coin sets, collections, lots, proof sets, mint set
 #### Scenario: Silver Krugerrand
 - **WHEN** the listing is "2021 South Africa 1 oz Silver Krugerrand BU"
 - **THEN** quick read identifies the coin as 1 oz silver rather than 1 oz gold
+
+#### Scenario: Multi-metal piece with gold and silver
+- **WHEN** the listing is "All Seeing Eye 2.5g Gold 3oz Silver"
+- **THEN** quick read does not evaluate the piece as 3 oz of pure gold and binds 2.5g strictly to gold and 3 oz strictly to silver
 
 ### Requirement: Automatic appraisal and flea scan
 Automatic appraisal SHALL run for each new auction only when that overlay preference is on. A flea-market table scan SHALL run only when scan is on, which defaults to on for a flea show type. The scan SHALL list other visible items and SHALL NOT change the main max bid.

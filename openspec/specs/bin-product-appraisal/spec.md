@@ -21,6 +21,8 @@ Upon receiving an appraisal result for a BIN listing, the system SHALL calculate
 
 Buy-It-Now listings for multi-coin sets, collector albums, or lots that do not state an explicit per-coin or total bullion weight SHALL NOT be evaluated against fabricated 1 oz melt floors or flagged as under melt steals. Listings for alternative silver currencies (such as NORFED Liberty Dollars) SHALL evaluate against silver spot rather than gold melt.
 
+Buy-It-Now listings containing multiple precious metals (such as gold and silver in composite art bars or rounds) SHALL evaluate melt by computing each metal component's stated weight against that metal's spot price, and SHALL NOT misattribute silver weights to gold. Listings where gold weight is unstated in a silver piece SHALL NOT evaluate the silver weight as gold.
+
 #### Scenario: Listing priced below market value
 - **WHEN** a BIN item with asking price $40 has an appraised market value of $65
 - **THEN** the listing displays "Value: $65 vs Ask: $40 (+$25 / +62%)" with a deal badge
@@ -36,6 +38,10 @@ Buy-It-Now listings for multi-coin sets, collector albums, or lots that do not s
 #### Scenario: NORFED 1 oz silver round in shop inventory
 - **WHEN** the shop inventory includes a "2009 NORFED $20 Liberty Dollar – 1 oz .999 Silver" listed at $350
 - **THEN** the listing evaluates against 1 oz silver melt (~$32) and is not badged as an under-melt steal
+
+#### Scenario: Mixed gold and silver item in shop inventory
+- **WHEN** the shop inventory includes an "All Seeing Eye 2.5g Gold 3oz Silver" listed at $777 with gold spot $3,878 and silver spot $33.50
+- **THEN** the listing evaluates against combined melt of 2.5g gold (~$312) plus 3 oz silver (~$101) totaling ~$413, and is not flagged as an under-melt steal under an inflated $11,000+ figure
 
 ### Requirement: Listing appraisal caching
 Appraisal results for a shop listing SHALL be cached by listing identifier in session storage for the duration of the stream. Revisiting or re-opening a previously appraised listing SHALL retrieve the cached valuation without making new API or model calls.

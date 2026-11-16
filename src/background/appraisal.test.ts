@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ON_DEVICE_HEADSTART_MS, appraise, geminiJson, gradeGuide, priceLookup } from './appraisal';
+import { ON_DEVICE_HEADSTART_MS, appraise, geminiJson, gradeGuide, priceLookup, quickAppraise } from './appraisal';
 import { resetDomainRates, setDomainRateDisabled } from './rateGate';
 
 const fakeArea = (initial: Record<string, unknown> = {}) => {
@@ -696,5 +696,26 @@ describe('gradeGuide', () => {
     );
     const res = await gradeGuide(quarter);
     expect(res).toMatchObject({ ok: true, guide: 175, auctions: { count: 2, median: 155 } });
+  });
+
+  it('quickAppraise sums melt across all components for multi-metal items', async () => {
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: fakeArea(),
+        session: fakeArea({
+          wn2_spot: {
+            XAU: { price: 3878.67, at: Date.now() },
+            XAG: { price: 33.5, at: Date.now() },
+          },
+        }),
+      },
+    });
+    const res = await quickAppraise('All Seeing Eye 2.5g Gold 3oz Silver');
+    expect(res.read).not.toBeNull();
+    expect(res.read?.pieces).toHaveLength(2);
+    // 2.5g gold (~$311.76) + 3 oz silver (~$100.50) = ~$412.26
+    const expected = (2.5 / 31.1035) * 3878.67 + 3 * 33.5;
+    expect(res.melt).not.toBeNull();
+    expect(res.melt!.total).toBeCloseTo(expected, 1);
   });
 });

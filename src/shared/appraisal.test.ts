@@ -20,6 +20,7 @@ import {
   matchesCoin,
   meltFor,
   parseOthers,
+  parseBullionPieces,
   quickRead,
   reconcileCount,
   summarizeAuctions,
@@ -322,6 +323,33 @@ describe('quickRead', () => {
       metal: 'gold',
       oz: 0.9675,
     });
+  });
+
+  it('correctly parses multi-metal compound pieces and guards against over-estimating gold', () => {
+    const pieces = parseBullionPieces('All Seeing Eye 2.5g Gold 3oz Silver');
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0]).toMatchObject({ metal: 'gold', rawAmount: '2.5', rawUnit: 'g' });
+    expect(pieces[0]!.oz).toBeCloseTo(2.5 / 31.1035, 4);
+    expect(pieces[1]).toMatchObject({ metal: 'silver', oz: 3, rawAmount: '3', rawUnit: 'oz' });
+
+    const eye = quickRead('All Seeing Eye 2.5g Gold 3oz Silver');
+    expect(eye.read).not.toBeNull();
+    // Must NOT evaluate as 3 oz of pure gold ($11,000+)
+    expect(eye.read?.metal).toBe('silver');
+    expect(eye.read?.oz).toBe(3);
+    expect(eye.read?.pieces).toHaveLength(2);
+    expect(eye.read?.pieces?.[0]?.metal).toBe('gold');
+    expect(eye.read?.pieces?.[1]?.metal).toBe('silver');
+    expect(eye.read?.name).toMatch(/2\.5g gold/i);
+    expect(eye.read?.name).toMatch(/3 oz silver/i);
+
+    // Unstated gold weight in silver piece must not evaluate silver weight as gold
+    const accents = parseBullionPieces('3oz Silver with Gold Accents');
+    expect(accents).toHaveLength(1);
+    expect(accents[0]).toMatchObject({ metal: 'silver', oz: 3 });
+
+    // Plated / novelty items must return no bullion pieces
+    expect(parseBullionPieces('Gold plated 3oz Silver bar')).toHaveLength(0);
   });
 
   it('finds a PCGS cert but not prices or dates', () => {

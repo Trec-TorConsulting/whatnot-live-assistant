@@ -277,6 +277,26 @@ describe('scoreShop', () => {
     expect(hits).toEqual([]);
   });
 
+  it('correctly calculates compound melt on multi-metal items and does not badge overpriced compound items as steals', () => {
+    const spot = { gold: 3878.67, silver: 33.5 };
+    const mixedListing: ShopListing = {
+      id: 'all-seeing-eye',
+      title: 'All Seeing Eye 2.5g Gold 3oz Silver',
+      price: 777,
+      quantity: 1,
+      mode: 'bin',
+    };
+    // 2.5g gold (~$311.76) + 3 oz silver (~$100.50) = ~$412.26 melt
+    const expectedMelt = (2.5 / 31.1035) * spot.gold + 3 * spot.silver;
+    const melt = shopMelt(mixedListing, spot);
+    expect(melt).not.toBeNull();
+    expect(melt!).toBeCloseTo(expectedMelt, 1);
+    expect(melt!).toBeLessThan(420);
+    // At $777 asking price vs ~$412 melt, it must NOT be flagged as under-melt ($11,636) steal!
+    const hits = score([mixedListing], { meltOf: (item) => shopMelt(item, spot) });
+    expect(hits).toEqual([]);
+  });
+
   it('calls a price under melt a steal and ignores a price at melt', () => {
     const hits = score([list('1 oz silver round', 20), list('1 oz silver round #2', 30)]);
     expect(hits.map((h) => h.title)).toEqual(['1 oz silver round']);

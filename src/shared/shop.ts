@@ -1130,9 +1130,24 @@ export const shopCursor = (body: unknown): string | null => {
     const titleRead = quickRead(listing.title).read;
     const subRead = !titleRead && sub ? quickRead(sub).read : null;
     const read = titleRead ?? subRead;
-    if (read && (read.metal === 'gold' || read.metal === 'silver')) {
-      const price = read.metal === 'gold' ? spot.gold : spot.silver;
-      return price ? price * read.oz * read.quantity : null;
+    if (read) {
+      if (read.pieces && read.pieces.length > 1) {
+        let total = 0;
+        let anySpotMissing = false;
+        for (const p of read.pieces) {
+          const price = p.metal === 'gold' ? spot.gold : p.metal === 'silver' ? spot.silver : null;
+          if (price === null) {
+            anySpotMissing = true;
+            break;
+          }
+          total += price * p.oz * read.quantity;
+        }
+        if (!anySpotMissing && total > 0) return total;
+      }
+      if (read.metal === 'gold' || read.metal === 'silver') {
+        const price = read.metal === 'gold' ? spot.gold : spot.silver;
+        return price ? price * read.oz * read.quantity : null;
+      }
     }
     const pm = prizeMelt(listing.title) ?? (sub ? prizeMelt(sub) : null);
     if (pm && (pm.metal === 'gold' || pm.metal === 'silver')) {

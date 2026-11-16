@@ -118,10 +118,94 @@ const QUICK_PATTERNS: [RegExp, string, string][] = [
 const SILVER_SERIES_RE =
   /^(?!.*\b(?:gold|platinum|palladium|copper|cobre|bronze|brass)\b).*\b(?:noah'?s\s*ark|kookaburra|koala|libertad|britannia|philharmonic|kangaroo|krugerrand|silver\s*eagle|ase|silver\s*maple)\b/i;
 
-const BULLION_RE = new RegExp(
-  `${OZ_AMOUNT}${OZ_UNIT}[^\\n]*?\\b(silver|gold|platinum|palladium)\\b|\\b(silver|gold|platinum|palladium)\\b[^\\n]*?${OZ_AMOUNT}${OZ_UNIT}`,
-  'i',
-);
+export interface BullionPiece {
+  metal: Metal;
+  oz: number;
+  rawAmount?: string;
+  rawUnit?: string;
+}
+
+const GRAMS_PER_OZ = 31.1035;
+const GRAINS_PER_OZ = 480;
+const PLATED_OR_NOVELTY_RE = /\b(?:plated|filled|gf|rgp|gp|vermeil|gilt|gilded|layered|clad|tone)\b/i;
+
+const parseAmountUnitToOz = (
+  amountStr: string | undefined,
+  unitStr: string | undefined,
+  wordStr: string | undefined,
+): number | null => {
+  if (wordStr) {
+    const w = wordStr.toLowerCase();
+    return w === 'tenth' ? 0.1 : w === 'quarter' ? 0.25 : w === 'half' ? 0.5 : null;
+  }
+  if (!amountStr || !unitStr) return null;
+  const frac = amountStr.match(/^(\d+)\/(\d+)$/);
+  const rawNum = frac
+    ? Number(frac[2]) > 0
+      ? Number(frac[1]) / Number(frac[2])
+      : null
+    : (() => {
+        const n = parseFloat(amountStr);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      })();
+  if (rawNum === null) return null;
+  const u = unitStr.toLowerCase();
+  if (/^g(ram)?s?$/i.test(u)) return rawNum / GRAMS_PER_OZ;
+  if (/^k(ilo)?(gram)?s?$/i.test(u) || u === 'kg') return (rawNum * 1000) / GRAMS_PER_OZ;
+  if (/^gr(ain)?s?$/i.test(u)) return rawNum / GRAINS_PER_OZ;
+  if (/^(oz|ozt|ounces?)$/i.test(u)) return rawNum;
+  return null;
+};
+
+// 1. Weight before Metal: e.g. "2.5g Gold", "3oz Silver", "1/10 oz .999 Gold", "tenth oz Gold"
+const WEIGHT_BEFORE_METAL_RE =
+  /(?:(?<![\d/.])(\d+\/\d+|\d+(?:\.\d+)?|\.\d+)(?:st|nd|rd|th)?\s*(?:troy\s*)?(ozt?|ounces?|grams?|g|kilos?|kg|grains?|gr)\b|\b(tenth|quarter|half)\s*(?:troy\s*)?ozt?\b)\s*(?:(?:\.999\d*|\.925|24\s*k(?:t)?|fine|pure|solid|troy)\s*){0,3}\b(silver|gold|platinum|palladium)\b/gi;
+
+// 2. Metal before Weight: e.g. "Gold 2.5g", "Silver round 2 oz"
+// Lookahead (?!\\s*(?:silver|gold|platinum|palladium)\\b) ensures that if the weight is followed by a metal
+// (e.g. "Gold 3oz Silver"), the weight is NOT captured as belonging to the preceding metal.
+const METAL_BEFORE_WEIGHT_RE =
+  /\b(silver|gold|platinum|palladium)\b\s*(?:(?:bullion|ingots?|bars?|rounds?|coins?|pieces?|\.999\d*|\.925|24\s*k(?:t)?|fine|pure|solid|troy)\s*){0,3}(?:(?<![\d/.])(\d+\/\d+|\d+(?:\.\d+)?|\.\d+)(?:st|nd|rd|th)?\s*(?:troy\s*)?(ozt?|ounces?|grams?|g|kilos?|kg|grains?|gr)\b|\b(tenth|quarter|half)\s*(?:troy\s*)?ozt?\b)(?!\s*(?:silver|gold|platinum|palladium)\b)/gi;
+
+export const parseBullionPieces = (text: string): BullionPiece[] => {
+  if (PLATED_OR_NOVELTY_RE.test(text)) return [];
+  const pieces: BullionPiece[] = [];
+  const claimedSpans: [number, number][] = [];
+
+  const isClaimed = (start: number, end: number) =>
+    claimedSpans.some(([s, e]) => Math.max(s, start) < Math.min(e, end));
+
+  for (const m of text.matchAll(WEIGHT_BEFORE_METAL_RE)) {
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    const amountStr = m[1];
+    const unitStr = m[2];
+    const wordStr = m[3];
+    const metal = m[4]!.toLowerCase() as Metal;
+    const oz = parseAmountUnitToOz(amountStr, unitStr, wordStr);
+    if (oz !== null && oz > 0) {
+      pieces.push({ metal, oz, rawAmount: amountStr ?? wordStr, rawUnit: unitStr ?? 'oz' });
+      claimedSpans.push([start, end]);
+    }
+  }
+
+  for (const m of text.matchAll(METAL_BEFORE_WEIGHT_RE)) {
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    if (isClaimed(start, end)) continue;
+    const metal = m[1]!.toLowerCase() as Metal;
+    const amountStr = m[2];
+    const unitStr = m[3];
+    const wordStr = m[4];
+    const oz = parseAmountUnitToOz(amountStr, unitStr, wordStr);
+    if (oz !== null && oz > 0) {
+      pieces.push({ metal, oz, rawAmount: amountStr ?? wordStr, rawUnit: unitStr ?? 'oz' });
+      claimedSpans.push([start, end]);
+    }
+  }
+
+  return pieces;
+};
 
 const ozOf = (amount: string): number | null => {
   const frac = /^(\d+)\/(\d+)$/.exec(amount);
@@ -147,6 +231,7 @@ export interface QuickRead {
   quantity: number;
   grade: string | null;
   source: string;
+  pieces?: BullionPiece[];
 }
 
 export interface QuickResult {
@@ -209,16 +294,20 @@ export const quickRead = (pageText: string): QuickResult => {
   }
 
   // Listing titles carry a year or a weight; chat chatter usually doesn't.
-  for (const line of lines.filter((l) => /\b(1[789]\d\d|20\d\d)\b|(?:\b|\d)ozt?\b/i.test(l))) {
+  for (const line of lines.filter((l) => /\b(1[789]\d\d|20\d\d)\b|(?:\b|\d)(?:ozt?|ounces?|grams?|g|kilos?|kg|grains?|gr)\b/i.test(l))) {
     const isSet = SET_OR_LOT_RE.test(line);
-    const bullionMatch = line.match(BULLION_RE);
-    const bullion = bullionMatch
+    const pieces = parseBullionPieces(line);
+    const bullion = pieces.length > 0
       ? (() => {
-          const amount = (bullionMatch[1] ?? bullionMatch[4])!;
-          const parsed = ozOf(amount);
-          if (parsed === null) return null;
-          const met = (bullionMatch[2] ?? bullionMatch[3])!.toLowerCase() as Metal;
-          return { amount, oz: parsed, metal: met };
+          if (pieces.length === 1) {
+            const p = pieces[0]!;
+            return { amount: p.rawAmount ?? String(p.oz), oz: p.oz, metal: p.metal, unit: p.rawUnit ?? 'oz' };
+          }
+          // Multiple pieces: conservative under-estimation guard.
+          // Pick the lowest-value metal piece (prefer silver) as the single-metal fallback.
+          const silverPiece = pieces.find((p) => p.metal === 'silver');
+          const p = silverPiece ?? pieces[0]!;
+          return { amount: p.rawAmount ?? String(p.oz), oz: p.oz, metal: p.metal, unit: p.rawUnit ?? 'oz' };
         })()
       : null;
 
@@ -239,7 +328,9 @@ export const quickRead = (pageText: string): QuickResult => {
       if (bullion && bullion.metal !== known.metal) {
         metal = bullion.metal;
         oz = bullion.oz;
-        name = `${bullion.amount} oz ${metal}`;
+        name = pieces.length > 1
+          ? pieces.map((p) => `${p.rawAmount ?? p.oz}${p.rawUnit && p.rawUnit !== 'oz' ? p.rawUnit : ' oz'} ${p.metal}`).join(' & ')
+          : `${bullion.amount} oz ${metal}`;
       } else {
         ({ metal, oz } = known);
         name = series[2];
@@ -247,7 +338,11 @@ export const quickRead = (pageText: string): QuickResult => {
     } else if (bullion) {
       metal = bullion.metal;
       oz = bullion.oz;
-      name = `${bullion.amount} oz ${metal}`;
+      name = pieces.length > 1
+        ? pieces.map((p) => `${p.rawAmount ?? p.oz}${p.rawUnit && p.rawUnit !== 'oz' ? p.rawUnit : ' oz'} ${p.metal}`).join(' & ')
+        : bullion.unit && bullion.unit !== 'oz' && bullion.unit !== 'ozt'
+          ? `${bullion.amount}${bullion.unit} ${metal}`
+          : `${bullion.amount} oz ${metal}`;
     } else if (SILVER_SERIES_RE.test(line)) {
       const ozMatch = line.match(STATED_OZ_RE)?.[1];
       const parsed = ozMatch ? ozOf(ozMatch) : null;
@@ -262,7 +357,19 @@ export const quickRead = (pageText: string): QuickResult => {
     const grade = slab
       ? `${slab[1]!.toUpperCase()} ${slab[2]!.toUpperCase()} ${slab[3]}${slab[4] ?? ''}${slab[5] ? ` ${slab[5].toUpperCase()}` : ''}`
       : null;
-    return { read: { name, metal, oz, quantity, grade, source: line.slice(0, 80) }, cert, gradingService };
+    return {
+      read: {
+        name,
+        metal,
+        oz,
+        quantity,
+        grade,
+        source: line.slice(0, 80),
+        ...(pieces.length > 1 ? { pieces } : {}),
+      },
+      cert,
+      gradingService,
+    };
   }
   return { read: null, cert, gradingService };
 };

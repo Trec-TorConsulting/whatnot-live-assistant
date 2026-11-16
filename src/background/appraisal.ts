@@ -19,6 +19,7 @@ import {
   summarizeAuctions,
   type AppraisalContext,
   type AppraisalItem,
+  type Melt,
   type Metal,
 } from '../shared/appraisal';
 import type { GeminiResult, PcgsUsage, PriceLookupResult, TestResult } from '../shared/messages';
@@ -98,8 +99,29 @@ export const warmSpots = () => Promise.all([getSpot('silver'), getSpot('gold')])
 
 export const quickAppraise = async (pageText: string) => {
   const result = quickRead(pageText);
-  const spot = result.read ? await getSpot(result.read.metal) : null;
-  return { ...result, melt: result.read && spot ? meltFor(result.read.metal, result.read.oz, result.read.quantity, spot) : null };
+  if (!result.read) return { ...result, melt: null };
+  if (result.read.pieces && result.read.pieces.length > 1) {
+    const spots = await Promise.all(result.read.pieces.map((p) => getSpot(p.metal)));
+    let totalPerPiece = 0;
+    for (let i = 0; i < result.read.pieces.length; i++) {
+      const p = result.read.pieces[i]!;
+      const s = spots[i];
+      if (s) {
+        totalPerPiece += s * p.oz;
+      }
+    }
+    const q = Math.max(1, result.read.quantity);
+    const melt: Melt = {
+      metal: result.read.metal,
+      spot: 0,
+      oz: result.read.oz,
+      perPiece: Math.round(totalPerPiece * 100) / 100,
+      total: Math.round(totalPerPiece * q * 100) / 100,
+    };
+    return { ...result, melt: totalPerPiece > 0 ? melt : null };
+  }
+  const spot = await getSpot(result.read.metal);
+  return { ...result, melt: spot ? meltFor(result.read.metal, result.read.oz, result.read.quantity, spot) : null };
 };
 
 // --- PCGS Public API: 100 calls/day, so every answer is cached and calls are counted ---

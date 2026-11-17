@@ -88,6 +88,39 @@ describe('extractManifestAi', () => {
     expect(fetchUrls).toHaveLength(0);
   });
 
+  it('re-extracts when show notes arrive or change after an initial description-only run', async () => {
+    let calls = 0;
+    stubFetch((url) => {
+      if (url.includes('/api/chat')) {
+        calls++;
+        return json(200, {
+          message: {
+            content: JSON.stringify(
+              calls === 1
+                ? { items: [], floor_name: '1 oz silver round', floor_value: 30 }
+                : { items: [{ name: '2024 Silver Eagle', qty: 5 }], floor_name: '1 oz silver round', floor_value: 30 },
+            ),
+          },
+        });
+      }
+      return json(500, { error: 'cloud fallback not expected' });
+    });
+
+    const first = await extractManifestAi('break-notes', 'Mystery wheel', null, ['coins']);
+    expect(first.ok).toBe(true);
+    expect(calls).toBe(1);
+
+    const second = await extractManifestAi('break-notes', 'Mystery wheel', 'On the board: 5x 2024 Silver Eagle', ['coins']);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.manifest.items).toEqual([{ name: '2024 Silver Eagle', qty: 5 }]);
+    expect(calls).toBe(2);
+
+    const third = await extractManifestAi('break-notes', 'Mystery wheel', 'On the board: 5x 2024 Silver Eagle', ['coins']);
+    expect(third.ok).toBe(true);
+    expect(calls).toBe(2);
+  });
+
   it('fails cleanly when neither description nor notes exist', async () => {
     const res = await extractManifestAi('break-empty', null, null);
     expect(res.ok).toBe(false);

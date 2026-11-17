@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BreakPrize, BreakSnapshot } from './breaks';
-import { boardIsCurrent, envelopeSummary, nextEnvelopeBoard, numberedShare, unmatchedEnvelopes, unseenPrizes, wheelRows, type EnvelopeBoard } from './envelopes';
+import { boardIsCurrent, envelopeSummary, hiddenManifestShare, nextEnvelopeBoard, numberedShare, unmatchedEnvelopes, unseenPrizes, wheelRows, type EnvelopeBoard } from './envelopes';
 import { prizePriceKey } from './breaks';
 import type { PrizeValue } from './prizeValue';
 import { emptyWheel, wheelOdds } from './wheel';
@@ -213,7 +213,7 @@ describe('named prizes read off the video', () => {
       ...wheel(0),
       prizes: [prize('Wheat Cent', 5), prize('Buffalo Nickel', 4), prize('Board Pick Hit', 1)],
     };
-    const rows = wheelRows(b, { 'wheat cent': 0.15, 'buffalo nickel': 0.75, 'board pick hit': 50 }, {}, null, notes);
+    const rows = wheelRows(b, { 'wheat cent': 0.15, 'buffalo nickel': 0.75, 'b1#board pick hit': 50 }, {}, null, notes);
     const wheat = rows.find((r) => r.title === 'Wheat Cent');
     const buffalo = rows.find((r) => r.title === 'Buffalo Nickel');
     const hit = rows.find((r) => r.title === 'Board Pick Hit');
@@ -250,5 +250,41 @@ describe('named prizes read off the video', () => {
     expect(envelope1).toMatchObject({ value: 31, floor: true });
     expect(envelope248).toMatchObject({ value: 31, floor: true });
     expect(rows.every((r) => r.value === 31 && r.floor)).toBe(true);
+  });
+
+  it('values hidden and board-pick spots from show notes when no camera board is available', () => {
+    const b: BreakSnapshot = {
+      ...wheel(0),
+      total: 10,
+      prizes: [prize('Wheat Cent', 8), prize('Board Pick', 2)],
+    };
+    const notes = '8x Wheat Cent\n2x 1 oz silver eagle';
+    const auto = {
+      'wheat cent': item('wheat cent', 1, 'sold'),
+      '1 oz silver eagle': item('1 oz silver eagle', 35, 'melt'),
+    };
+    expect(hiddenManifestShare(b, auto, notes)).toEqual({ value: 35, floor: false });
+    const rows = wheelRows(b, {}, auto, null, notes);
+    expect(rows.find((r) => r.title === 'Board Pick')).toMatchObject({ value: 35, floor: false });
+    expect(rows.find((r) => r.title === 'Wheat Cent')?.value).toBe(1);
+  });
+
+  it('combines show-notes board hits with guaranteed floor for unlisted spots', () => {
+    const b: BreakSnapshot = {
+      ...wheel(0),
+      total: 10,
+      prizes: Array.from({ length: 10 }, (_, i) => prize(`ENVELOPE #${i + 1}`, 1)),
+    };
+    const aiManifest = {
+      items: [{ name: 'Morgan Dollar', qty: 2 }],
+      floorName: '1 oz silver round',
+      floorValue: 30,
+    };
+    const auto = {
+      'morgan dollar': item('Morgan Dollar', 50, 'sold'),
+    };
+    const rows = wheelRows(b, {}, auto, null, 'On the board: 2x Morgan Dollar, $30 floor', aiManifest);
+    // (2 * 50 + 8 * 30) / 10 = 34
+    expect(rows[0]).toMatchObject({ value: 34, floor: true });
   });
 });

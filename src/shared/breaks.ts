@@ -114,7 +114,7 @@ export const prizePriceKey = (p: { title: string; detail: string }) => {
 // Envelope wheels list their big prizes as "ENVELOPE #3" (or "LOPE 3", "MYSTERY BAG #1") and show
 // what each one holds on camera. The title names no item, so it can't be valued by name.
 const HIDDEN_PRIZE_RE =
-  /^(?:(?:mystery|secret|bonus|special|big|top|grand|gold(?:en)?|red|blue|green|black|white|pink|purple)\s+)*(?:envelopes?|envelops?|envs?|e?lopes?|velopes?|bags?|pouch(?:es)?|tickets?|slips?|box(?:es)?|mystery|chase|hits?|prizes?|wins?)\s*(?:#|no\.?|number)?\s*(?:\d{1,3}|[a-z])?$/i;
+  /^(?:(?:mystery|secret|bonus|special|big|top|grand|gold(?:en)?|red|blue|green|black|white|pink|purple)\s+)*(?:envelopes?|envelops?|envs?|e?lopes?|velopes?|bags?|pouch(?:es)?|tickets?|slips?|box(?:es)?|board\s+pick(?:\s+hit)?|board(?:\s+spots?)?|picks?|mystery|chase|hits?|prizes?|wins?)\s*(?:#|no\.?|number)?\s*(?:\d{1,3}|[a-z])?$/i;
 
 // "Item #12" names a sticker on the board, not the coin. "Spot 3" is the same kind of placeholder.
 const NUMBERED_RE = /^(?:items?|spots?)\s*(?:#|no\.?|number)?\s*\d{1,3}$/i;

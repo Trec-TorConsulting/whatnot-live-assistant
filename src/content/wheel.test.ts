@@ -196,4 +196,17 @@ describe('wheelView', () => {
     expect(v.warnings).toContain('Unassigned envelopes use the guaranteed floor estimate.');
     expect(v.warnings.some((w) => w.includes('have no value yet'))).toBe(false);
   });
+
+  it('values board spots from show notes without warning about unread video envelopes', () => {
+    const prizes = [prize('1', 'Board Pick', 2), prize('2', 'Wheat Penny', 8)];
+    const notes = 'On the board:\n2x 1 oz silver eagle';
+    const auto = {
+      '1 oz silver eagle': { low: 35, high: 40, source: 'melt' as const, note: null, at: NOW },
+    };
+    const v = wheelView(wheel({ prizes }), lot(), { 'wheat penny': 1 }, auto, NOW, null, notes);
+    // (2 * 35 + 8 * 1) / 10 = $7.80
+    expect(v.value).toBe('Worth $7.80 a spin');
+    expect(v.warnings.some((w) => w.includes('not read off the video yet'))).toBe(false);
+    expect(v.warnings.some((w) => w.includes('have no value yet'))).toBe(false);
+  });
 });

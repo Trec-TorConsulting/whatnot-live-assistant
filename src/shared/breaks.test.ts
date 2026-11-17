@@ -67,7 +67,7 @@ const auctionEnded = JSON.stringify([
 describe('hidden prizes', () => {
   it('spots prizes named only by an envelope or bag number', () => {
     // From a live envelope wheel (jesusmac09032, Oct 2026).
-    for (const t of ['ENVELOPE #2', 'Envelope 12', 'ENVELOPES', 'LOPE 3', 'lopes #4', 'ENV #5', 'MYSTERY ENVELOPE #1', 'Gold Envelope A', 'MYSTERY BAG #1', 'Top Prize 2', 'BIG WIN #1']) {
+    for (const t of ['ENVELOPE #2', 'Envelope 12', 'ENVELOPES', 'LOPE 3', 'lopes #4', 'ENV #5', 'MYSTERY ENVELOPE #1', 'Gold Envelope A', 'MYSTERY BAG #1', 'Top Prize 2', 'BIG WIN #1', 'Board Pick', 'Board Pick Hit', 'Pick #1', 'Board #2']) {
       expect(isHiddenPrize(t), t).toBe(true);
     }
     for (const t of ['BUFFALO NICKEL RANDOM YEAR ', 'VAULTBOX SELECT BOX RIP/SHIP', 'NOAHS ARK 1OZ GOLD CHASE BREAKMINT RIP/SHIP', '1 Kilo Silver Bar', 'Envelope of Wheat Pennies', 'Proof Quarter', 'Family Pack #7']) {

@@ -19,8 +19,10 @@ export const extractManifestAi = async (
     return { ok: false, error: 'no description or notes to extract manifest from' };
   }
   const cached = (await getItem('aiManifests')) ?? {};
-  if (cached[breakId]) {
-    return { ok: true, manifest: cached[breakId]! };
+  const existing = cached[breakId];
+  const notesKey = notes ?? '';
+  if (existing && (existing.notesKey ?? '') === notesKey) {
+    return { ok: true, manifest: existing };
   }
 
   const prompt = manifestPrompt(description ?? null, notes ?? null, categories);
@@ -39,7 +41,8 @@ export const extractManifestAi = async (
     return { ok: false, error: answer.error };
   }
 
-  const manifest = parseManifestAiAnswer(answer.text);
+  const parsed = parseManifestAiAnswer(answer.text);
+  const manifest: AiManifestResult = notesKey ? { ...parsed, notesKey } : parsed;
   const next = { ...cached, [breakId]: manifest };
   await setItem('aiManifests', next);
   return { ok: true, manifest };

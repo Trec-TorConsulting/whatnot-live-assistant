@@ -2,7 +2,7 @@
 // its bid instead of an appraisal. Same values as the side panel: yours first, then automatic ones
 // at the low end of their range.
 import { isNumberedPrize, spotsLeft, type BreakSnapshot } from '../shared/breaks';
-import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
+import { envelopeSummary, hiddenManifestShare, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../shared/envelopes';
 import { manifestFrom, type AiManifestResult, type PrizeValue } from '../shared/prizeValue';
 import type { LiveSession, Lot } from '../shared/live';
 import { formatMoney } from '../shared/money';
@@ -60,8 +60,9 @@ export const wheelView = (
   const lastHit = b.hits?.filter((h) => !h.pending).pop() ?? null;
   const unpriced = rows.filter((r) => r.value === null).length;
   const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
-  const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
-  const numberedUnread = numberedShare(b, autoValues, notes, aiManifest) ? 0 : unreadRows.length - envelopeUnread;
+  const hiddenFromNotes = hiddenManifestShare(b, autoValues, notes, aiManifest);
+  const envelopeUnread = hiddenFromNotes && !hiddenFromNotes.floor ? 0 : unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
+  const numberedUnread = numberedShare(b, autoValues, notes, aiManifest) ? 0 : unreadRows.filter((r) => isNumberedPrize(r.title)).length;
   const cutOff = manifestFrom(b.description, notes, aiManifest).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeFacts: WheelFact[] =

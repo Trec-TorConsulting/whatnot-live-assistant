@@ -253,8 +253,9 @@ const valueWheel = (s: LiveSession) => {
   const context = { showTitle: s.show.title, wheelTitle: wheel.title, categories: s.show.categories, notes };
   void send('WHEEL_VALUE', { prizes, context }).catch(() => undefined);
 
-  if (!extractedManifests.has(wheel.id) && (wheel.description || notes)) {
-    extractedManifests.add(wheel.id);
+  const manifestKey = `${wheel.id}|${wheel.description ?? ''}|${notes ?? ''}`;
+  if (!extractedManifests.has(manifestKey) && (wheel.description || notes)) {
+    extractedManifests.add(manifestKey);
     void send('EXTRACT_MANIFEST_AI', {
       breakId: wheel.id,
       description: wheel.description,
@@ -284,6 +285,7 @@ const onHookMessage = (e: MessageEvent) => {
   const msg = e.data as HookToContent;
   if (msg.kind === 'hello') {
     hookAlive = true;
+    if (session?.show.liveId && !session.show.note) refreshNotes();
     return;
   }
   const s = currentSession();

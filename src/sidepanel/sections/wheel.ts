@@ -1,6 +1,6 @@
 import { isNumberedPrize, MAX_HITS, pendingSpins, prizeKey, scopedKey, spotsLeft, wheelTitleKey, type BreakSnapshot } from '../../shared/breaks';
 import { manifestFrom, type AiManifestResult } from '../../shared/prizeValue';
-import { envelopeSummary, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
+import { envelopeSummary, hiddenManifestShare, numberedShare, unmatchedEnvelopes, wheelRows, type EnvelopeBoard } from '../../shared/envelopes';
 import { UNUSUAL, bigHitCheck, chanceWorthWithin, nextSpinTurnsWorth, spinPrices, type StatPrize } from '../../shared/wheelStats';
 import type { LiveSession } from '../../shared/live';
 import { formatMoney } from '../../shared/money';
@@ -277,9 +277,10 @@ const renderAuto = (b: BreakSnapshot) => {
         ? `AI couldn't value prizes: ${prizeStatus.detail ?? 'unknown error'}`
         : null;
   const unreadRows = board?.items.length ? [] : unmatchedEnvelopes(b, values, autoValues);
-  const envelopeUnread = unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
-  const numberedUnread = numberedShare(b, autoValues, notes) ? 0 : unreadRows.length - envelopeUnread;
-  const cutOff = manifestFrom(b.description, notes).truncated && rows.some((r) => isNumberedPrize(r.title));
+  const hiddenFromNotes = hiddenManifestShare(b, autoValues, notes, aiManifest);
+  const envelopeUnread = hiddenFromNotes && !hiddenFromNotes.floor ? 0 : unreadRows.filter((r) => !isNumberedPrize(r.title)).length;
+  const numberedUnread = numberedShare(b, autoValues, notes, aiManifest) ? 0 : unreadRows.filter((r) => isNumberedPrize(r.title)).length;
+  const cutOff = manifestFrom(b.description, notes, aiManifest).truncated && rows.some((r) => isNumberedPrize(r.title));
   const pool = envelopeSummary(b, values, autoValues, board);
   const envelopeLine =
     envelopeStatus?.state === 'running' && Date.now() - envelopeStatus.at < 60 * SECOND

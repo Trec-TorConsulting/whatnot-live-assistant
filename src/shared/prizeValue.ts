@@ -448,9 +448,10 @@ export const parseEnvelopeAnswer = (
 };
 
 export const MANIFEST_INSTRUCTIONS = [
-  'You extract wheel prize distributions, tier breakdowns, and guaranteed floor rules from Whatnot seller show notes, pinned comments, or break descriptions.',
+  'You extract wheel prize distributions, board lists, tier breakdowns, and guaranteed floor rules from Whatnot seller show notes, pinned comments, or break descriptions.',
+  'Sellers often list what is on the board in the show notes (e.g. "Board:", "On the board:", "Board picks:", numbered items like "#1 ...", or mystery/envelope contents).',
   'Extract:',
-  '1. items: An array of specific prizes and their quantities, e.g. [{"name": "1881-S Morgan Dollar MS 64", "qty": 1}, {"name": "American Silver Eagle", "qty": 40}].',
+  '1. items: An array of specific prizes on the wheel or board and their quantities, e.g. [{"name": "1881-S Morgan Dollar MS 64", "qty": 1}, {"name": "American Silver Eagle", "qty": 40}].',
   '2. floor_name: The item guaranteed as the minimum or floor prize for unlisted / base spots (e.g. "1 oz silver round", "90% silver half dollar"), or null if none mentioned.',
   '3. floor_value: Any explicit minimum dollar value guaranteed for every spot (e.g. 15 for "$15 minimum value"), or null if not explicitly stated in dollars.',
   'Return valid JSON only.',
@@ -502,6 +503,7 @@ export interface AiManifestResult {
   items: ManifestItem[];
   floorName: string | null;
   floorValue: number | null;
+  notesKey?: string;
 }
 
 export const manifestPrompt = (description: string | null, notes: string | null, categories: string[] = []) =>

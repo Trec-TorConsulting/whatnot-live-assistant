@@ -2,7 +2,18 @@
 // without saying which envelope holds which. Until an envelope is opened it is equally likely to
 // hold any item on the board, so for the odds the unopened envelopes count as the board's items,
 // one spot each. That keeps the spin's worth and its odds exact when the counts agree.
-import { isHiddenSpot, isNumberedPrize, prizeKey, prizePriceKey, prizeValueKey, soldHiddenCount, wheelTitleKey, wheelValueKey, type BreakSnapshot } from './breaks';
+import {
+  isHiddenSpot,
+  isNumberedPrize,
+  prizeIdentity,
+  prizeKey,
+  prizePriceKey,
+  prizeValueKey,
+  soldHiddenCount,
+  wheelTitleKey,
+  wheelValueKey,
+  type BreakSnapshot,
+} from './breaks';
 import { manifestFrom, type AiManifestResult, type PrizeValue } from './prizeValue';
 import { extractFloorsFromNotes, isFloorSlot, prizeSlotLabel } from './wheel';
 
@@ -200,6 +211,34 @@ export const nextEnvelopeBoard = (prev: EnvelopeBoard | null, next: EnvelopeBoar
   return { ...fresh, revealed: gained ? false : (prev.revealed ?? false) };
 };
 
+const manifestPoolShare = (
+  b: BreakSnapshot,
+  auto: Record<string, PrizeValue>,
+  notes: string | null | undefined,
+  ai: AiManifestResult | null | undefined,
+  original: number | null,
+  floorVal = 0,
+): { value: number; floor: boolean } | null => {
+  if (!original || original <= 0) return null;
+  const manifest = manifestFrom(b.description, notes, ai);
+  if (!manifest.items.length) return null;
+  // Items already listed as named spots on the wheel are not part of the hidden board pool.
+  const named = new Set(b.prizes.filter((p) => !isHiddenSpot(p)).map((p) => prizeIdentity(p.title)));
+  let sum = 0;
+  let missing = 0;
+  let listed = 0;
+  for (const item of manifest.items) {
+    if (named.has(prizeIdentity(item.name))) continue;
+    listed += item.qty;
+    const priced = auto[prizePriceKey({ title: item.name, detail: '' })];
+    if (!priced) missing += item.qty;
+    else sum += priced.low * item.qty;
+  }
+  if (!listed || missing === listed || listed > original) return null;
+  const total = sum + (floorVal > 0 ? (original - listed + missing) * floorVal : 0);
+  return { value: total / original, floor: manifest.truncated || missing > 0 || listed < original };
+};
+
 // Each Item #N is an equal share of the coins named in the break description, or in the show notes
 // when that description is empty or cut off, until a sticker read prices that number. A cut-off
 // description counts the coins it never listed as zero.
@@ -209,27 +248,28 @@ export const numberedShare = (
   notes?: string | null,
   ai?: AiManifestResult | null,
 ): { value: number; floor: boolean } | null => {
-  const manifest = manifestFrom(b.description, notes, ai);
-  if (!manifest.items.length || b.hits === null || b.soldHasMore) return null;
+  if (b.hits === null || b.soldHasMore) return null;
   const left = b.prizes.filter((p) => isNumberedPrize(p.title)).reduce((n, p) => n + Math.max(0, p.left), 0);
   const sold = b.hits.filter((h) => !h.pending && isNumberedPrize(h.title)).length;
-  const original = left + sold;
-  if (!original) return null;
-  let sum = 0;
-  let missing = 0;
-  let listed = 0;
-  for (const item of manifest.items) {
-    listed += item.qty;
-    const priced = auto[prizePriceKey({ title: item.name, detail: '' })];
-    if (!priced) missing += item.qty;
-    else sum += priced.low * item.qty;
-  }
-  if (!listed || missing === listed) return null;
-  return { value: sum / original, floor: manifest.truncated || missing > 0 || listed < original };
+  return manifestPoolShare(b, auto, notes, ai, left + sold);
 };
 
-// Hidden spots take the envelope average. Named spots keep their own prices. Board items are not
-// extra spots, and a crowded shelf is not trimmed down to the cheapest rows.
+// Hidden/board/envelope spots (not Item #N) fall back to the show-notes or break-description
+// board list when no camera board average is available yet.
+export const hiddenManifestShare = (
+  b: BreakSnapshot,
+  auto: Record<string, PrizeValue>,
+  notes?: string | null,
+  ai?: AiManifestResult | null,
+  floorVal = 0,
+): { value: number; floor: boolean } | null => {
+  const sealed = b.prizes.filter((p) => isHiddenSpot(p) && !isNumberedPrize(p.title)).reduce((n, p) => n + Math.max(0, p.left), 0);
+  const sold = soldHiddenCount(b);
+  return manifestPoolShare(b, auto, notes, ai, sold === null ? null : sealed + sold, floorVal);
+};
+
+// Hidden spots take the envelope average, or the board list from show notes when no camera board is
+// available yet. Named spots keep their own prices. Board items are not extra spots.
 export const wheelRows = (
   b: BreakSnapshot,
   yours: Record<string, number>,
@@ -241,6 +281,12 @@ export const wheelRows = (
   const summary = envelopeSummary(b, yours, auto, board);
   const { claimed } = splitBoard(b, yours, board?.items ?? []);
   const floorPatterns = extractFloorsFromNotes(notes, aiManifest?.floorName);
+  const floorVal =
+    aiManifest?.floorValue ??
+    (aiManifest?.floorName ? auto[prizePriceKey({ title: aiManifest.floorName, detail: '' })]?.low : null) ??
+    (floorPatterns.length ? auto[prizePriceKey({ title: floorPatterns[0]!, detail: '' })]?.low : null) ??
+    0;
+  const notesShare = summary.average === null ? hiddenManifestShare(b, auto, notes, aiManifest, floorVal ?? 0) : null;
   return prizeRows(b, yours, auto).map((row) => {
     const prize = b.prizes.find((p) => p.title === row.title && p.detail === row.detail);
     const isFloor = isFloorSlot(prizeSlotLabel(row), floorPatterns);
@@ -258,10 +304,9 @@ export const wheelRows = (
     const mine = yours[row.key] ?? (row.titleKey ? yours[row.titleKey] : undefined);
     if (mine !== undefined) return { ...row, value: mine, auto: null, ...(isFloor ? { floor: true } : {}) };
     if (summary.average === null) {
-      const floorVal =
-        aiManifest?.floorValue ??
-        (aiManifest?.floorName ? auto[prizePriceKey({ title: aiManifest.floorName, detail: '' })]?.low : null) ??
-        (floorPatterns.length ? auto[prizePriceKey({ title: floorPatterns[0]!, detail: '' })]?.low : null);
+      if (notesShare) {
+        return { ...row, value: notesShare.value, floor: notesShare.floor || isFloor, auto: null, inside: null };
+      }
       if (floorVal !== null && floorVal !== undefined && floorVal > 0) {
         return { ...row, value: floorVal, floor: true, auto: null, inside: aiManifest?.floorName ?? floorPatterns[0] ?? null };
       }

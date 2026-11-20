@@ -1,4 +1,5 @@
 import { evaluateListingSpread, type ListingAppraisal } from '../shared/shop';
+import { isMysteryPack, lookupMysteryPack } from '../shared/mysteryPacks';
 import { marketOf } from '../shared/refPrice';
 import type { AppraisalItem } from '../shared/appraisal';
 import { getItem } from '../shared/storage';
@@ -21,28 +22,30 @@ export const appraiseListingText = async ({
 }: AppraiseListingInput): Promise<ListingAppraisal> => {
   const text = `${title} ${subtitle ?? ''}`.trim();
   const askingPrice = price;
+  const mystery = isMysteryPack(title, subtitle);
+  const pack = mystery ? lookupMysteryPack(title, subtitle) : null;
 
-  // 1. Quick melt from spot metal
+  // 1. Quick melt from spot metal (skip for blind boxes / chase packs so chase metal isn't treated as guaranteed)
   const quick = await quickAppraise(text).catch(() => null);
-  if (quick?.melt && quick.melt.total > 0) {
+  if (!mystery && quick?.melt && quick.melt.total > 0) {
     return evaluateListingSpread(id, askingPrice, Math.round(quick.melt.total * 100) / 100, 'melt');
   }
 
-  // 2. Real price: prize melt or Whatnot sold history
+  // 2. Real price: prize melt (skip for mystery packs) or Whatnot sold history
   const sold = (await getItem('soldHistory')) ?? [];
-  const real = await realPrice(text, sold, Date.now()).catch(() => null);
-  if (real && real.low > 0) {
+  const real = await realPrice(pack?.queryName ?? text, sold, Date.now()).catch(() => null);
+  if (real && real.low > 0 && (!mystery || real.source !== 'melt')) {
     const val = real.high ? Math.round(((real.low + real.high) / 2) * 100) / 100 : real.low;
     return evaluateListingSpread(id, askingPrice, val, real.source === 'melt' ? 'melt' : 'ebay');
   }
 
   // 3. Reference pricing (Greysheet, FMV, eBay sold comps, TCG)
   const read = quick?.read;
-  const isSlabbed = Boolean(quick?.cert || read?.grade);
+  const isSlabbed = !mystery && Boolean(quick?.cert || read?.grade);
   const item: Partial<AppraisalItem> = {
-    item_name: title,
-    item_type: read?.metal ? 'coin' : 'other',
-    grade: read?.grade ?? (isSlabbed ? 'MS-65' : null),
+    item_name: pack?.queryName ?? title,
+    item_type: mystery ? 'coin' : read?.metal ? 'coin' : 'other',
+    grade: !mystery ? (read?.grade ?? (isSlabbed ? 'MS-65' : null)) : null,
     is_slabbed: isSlabbed,
   };
   const refsResult = await refLookup(item).catch(() => null);
@@ -60,8 +63,11 @@ export const appraiseListingText = async ({
   const prompt = [
     `Item title: ${title}`,
     subtitle ? `Subtitle: ${subtitle}` : '',
+    pack ? `Pack odds/floor: ${pack.summary}` : '',
     `Seller asking price: $${askingPrice}`,
-    'Provide estimated fair market resale value in USD.',
+    mystery
+      ? 'This is a blind box / mystery pack: value the sealed box/pack conservatively at its floor or typical sold sealed price, NOT the max chase prize.'
+      : 'Provide estimated fair market resale value in USD.',
   ]
     .filter(Boolean)
     .join('\n');

@@ -20,6 +20,7 @@ import { isTemplate } from './estate';
 import { matchWatch, matchWishlist, type WatchItem, type WishlistItem } from './buyer';
 import { keyDateCallouts, keyDatePrice } from './keyDates';
 import { formatMoney, moneyCurrency } from './money';
+import { isMysteryPack, lookupMysteryPack, type MysteryPackInfo } from './mysteryPacks';
 import { prizeMelt } from './prizeValue';
 import type { RefPrice } from './refPrice';
 import { findComps, summarizeComps, type SoldItem } from './soldHistory';
@@ -378,6 +379,7 @@ export const shopCursor = (body: unknown): string | null => {
     wishlist?: WishlistItem[];
     maxBidPercent: number;
     meltOf: (listing: ShopListing) => number | null;
+    packOf?: (listing: ShopListing) => MysteryPackInfo | null;
     now: number;
     currencyRate?: number | null;
     shipping?: number | null;
@@ -420,6 +422,7 @@ export const shopCursor = (body: unknown): string | null => {
       wishlist,
       maxBidPercent,
       meltOf,
+      packOf,
       now,
       currencyRate,
       shipping,
@@ -463,7 +466,8 @@ export const shopCursor = (body: unknown): string | null => {
         const compQueries = item.subtitle ? [fullText, item.title] : [item.title];
         const comps = summarizeComps(findComps(compQueries, sold, now, 8, showType));
         const median = comps && comps.count >= 2 ? comps.median : null;
-        const melt = meltOf(item);
+        const pack = packOf ? packOf(item) : lookupMysteryPack(item.title, item.subtitle);
+        const melt = pack ? pack.floorMelt : meltOf(item);
         const isBin = (item.mode ?? 'bin') === 'bin';
         const watch = matchWatch(item.title, watchlist) ?? (item.subtitle ? matchWatch(fullText, watchlist) : null);
         const wish = isBin && wishlist?.length
@@ -542,6 +546,7 @@ export const shopCursor = (body: unknown): string | null => {
         if (tLine) notes.push(tLine);
         else if (sLine) notes.push(sLine);
         if (missAcc) notes.push(missAcc);
+        if (pack?.summary) notes.push(pack.summary);
         if (wantHit) notes.push('Matches chat want');
 
         const reference = Math.max(melt ?? 0, median ?? 0);
@@ -757,6 +762,14 @@ export const shopCursor = (body: unknown): string | null => {
       };
     }
 
+    // 4. Named blind boxes, mystery boxes, and chase packs (look up sealed market comps)
+    const pack = lookupMysteryPack(listing.title, listing.subtitle);
+    if (pack?.queryName) {
+      return {
+        item_name: pack.queryName,
+      };
+    }
+
     return null;
   };
 
@@ -914,6 +927,7 @@ export const shopCursor = (body: unknown): string | null => {
   export const SHOP_AI_INSTRUCTIONS = [
     'You evaluate Whatnot live-show shop listings in the background.',
     'For each numbered listing, give the per-item US price range (low, high) where recent SOLD copies land (eBay sold or Whatnot sold), not asking or retail prices.',
+    'For blind boxes, mystery boxes, chase packs, and "X or Y" listings, the advertised top metal or coin is only a rare chase, NOT guaranteed. Value the sealed box/pack conservatively at its floor or typical sold sealed-box price, never at the chase prize.',
     'info: at most 10 words of helpful collector context (key date, semi-key, variety, silver/gold content, grade note, or notable model detail), or "" if ordinary. Never invent mintage or population numbers.',
     'Be conservative: if unsure, lean low. Keep high at most 2x low. Use 0 for low and high when the listing does not name a specific priceable item.',
   ].join('\n');
@@ -1009,7 +1023,10 @@ export const shopCursor = (body: unknown): string | null => {
       showTitle ? `Show: ${showTitle}` : '',
       showType && showType !== 'general' ? `Category: ${showType}` : '',
       'Shop listings:',
-      ...items.map((item, i) => `${i + 1}. ${item.title}${item.subtitle ? ` (${item.subtitle})` : ''} — listed at ${formatMoney(item.price)}`),
+      ...items.map((item, i) => {
+        const pack = lookupMysteryPack(item.title, item.subtitle);
+        return `${i + 1}. ${item.title}${item.subtitle ? ` (${item.subtitle})` : ''} — listed at ${formatMoney(item.price)}${pack ? ` [${pack.summary}]` : ''}`;
+      }),
     ]
       .filter(Boolean)
       .join('\n');
@@ -1115,6 +1132,8 @@ export const shopCursor = (body: unknown): string | null => {
   // Melt for one buy-it-now price. Whatnot's quantity is how many are left in stock, not how many
   // pieces that price buys, so only a count written in the title ("x10", "10 coins") multiplies it.
   export const shopMelt = (listing: ShopListing, spot: { gold: number | null; silver: number | null }): number | null => {
+    // Blind boxes, mystery packs, and chase packs advertise the max hit, not guaranteed metal.
+    if (isMysteryPack(listing.title, listing.subtitle)) return null;
     const fullText = listing.subtitle ? `${listing.title} ${listing.subtitle}` : listing.title;
     if (/\b(?:plated|filled|gf|rgp|gp|vermeil|gilt|gilded|layered|clad|tone)\b/i.test(fullText)) return null;
     const titleHasWeight = /(?<![\d/.])(?:\d+\/\d+|\d+(?:\.\d+)?)\s*(?:st|nd|rd|th)?\s*(?:troy\s*)?(?:ozt?|grams?|gr?|kilos?|kg)\b/i.test(

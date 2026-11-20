@@ -6,6 +6,7 @@ import { toUsd } from '../shared/currency';
 import { HOOK_SOURCE, type HookToContent } from '../shared/hookProtocol';
 import { keyDatePrice } from '../shared/keyDates';
 import { formatMoney } from '../shared/money';
+import { lookupMysteryPack } from '../shared/mysteryPacks';
 import type { RefPrice } from '../shared/refPrice';
 import {
   applySaleToShopListings,
@@ -256,6 +257,7 @@ const runFastScorePass = async (id: string, g: number) => {
     wishlist,
     maxBidPercent,
     meltOf: (item) => shopMelt(item, spot),
+    packOf: (item) => lookupMysteryPack(item.title, item.subtitle, spot),
     now: Date.now(),
     currencyRate,
     shipping,
@@ -386,6 +388,7 @@ const finish = async (g: number) => {
       wishlist,
       maxBidPercent,
       meltOf: (item) => shopMelt(item, spot),
+      packOf: (item) => lookupMysteryPack(item.title, item.subtitle, spot),
       now: Date.now(),
       currencyRate,
       shipping,

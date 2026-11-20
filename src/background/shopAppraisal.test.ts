@@ -57,4 +57,27 @@ describe('appraiseListingText', () => {
     expect(result.isOverpriced).toBe(true);
     expect(result.isDeal).toBe(false);
   });
+
+  it('does not value a blind box at its advertised chase gold melt', async () => {
+    const { quickAppraise } = await import('./appraisal');
+    const { realPrice } = await import('./aiPricing');
+    const { refLookup } = await import('./refPrices');
+    vi.mocked(quickAppraise).mockResolvedValueOnce({ melt: { total: 1785 }, read: { metal: 'gold', oz: 0.5 } } as never);
+    vi.mocked(realPrice).mockResolvedValueOnce({ low: 1785, high: 1785, source: 'melt', note: null });
+    vi.mocked(refLookup).mockResolvedValueOnce({
+      ok: true,
+      refs: [{ source: 'ebay', kind: 'market', value: 75, name: 'Agoro Blind Box 1/2 oz', detail: '', link: null }],
+      notes: [],
+    });
+
+    const res = await appraiseListingText({
+      id: 'goofy-1',
+      title: 'GOOFY BLIND BOX 1/2oz GOLD OR 1/2oz SILVER',
+      price: 209,
+    });
+
+    expect(res.marketValue).toBe(75);
+    expect(res.valueSource).toBe('ebay');
+    expect(res.isOverpriced).toBe(true);
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWatchLine, parseWishLine, parseWishlist } from './buyer';
 import { parseSetLine } from './collection';
+import { lookupMysteryPack } from './mysteryPacks';
 import type { RefPrice } from './refPrice';
 import { giveawayMatchesStem, giveawayShippingStems } from './runner';
 import type { SoldItem } from './soldHistory';
@@ -952,5 +953,40 @@ describe('shop query text', () => {
 
     // Neither item should be flagged as a steal against the mismatched comps
     expect(hits.filter((h) => h.kind === 'steal')).toEqual([]);
+  });
+
+  it('never flags a blind box as under chase melt and uses floor melt + odds instead', () => {
+    const spot = { gold: 3570, silver: 41.05 };
+    const goofy209: ShopListing = {
+      id: 'goofy-209',
+      title: 'GOOFY BLIND BOX 1/2oz GOLD OR 1/2oz SILVER',
+      price: 209,
+      quantity: 4,
+      mode: 'bin',
+    };
+    const goofy15: ShopListing = {
+      id: 'goofy-15',
+      title: 'GOOFY BLIND BOX 1/2oz GOLD OR 1/2oz SILVER',
+      price: 15,
+      quantity: 1,
+      mode: 'bin',
+    };
+    expect(shopMelt(goofy209, spot)).toBeNull();
+    expect(extractShopRefQuery(goofy209, 'coins')).toEqual({ item_name: 'Agoro Blind Box 1/2 oz' });
+
+    const hits = scoreShop({
+      listings: [goofy209, goofy15],
+      sold: [],
+      showType: 'coins',
+      watchlist: [],
+      wishlist: [],
+      maxBidPercent: 80,
+      meltOf: (item) => shopMelt(item, spot),
+      packOf: (item) => lookupMysteryPack(item.title, item.subtitle, spot),
+      now: Date.now(),
+    });
+    expect(hits.map((h) => h.id)).toEqual(['goofy-15']);
+    expect(hits[0]?.reason).toContain('Under melt ($20.53)');
+    expect(hits[0]?.reason).toContain('0.3% 1/2 oz gold chase');
   });
 });
